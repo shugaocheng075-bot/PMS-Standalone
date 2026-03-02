@@ -2,6 +2,7 @@ export interface HandoverItem {
   id: number
   handoverNo: string
   hospitalName: string
+  productName: string
   fromGroup: string
   fromOwner: string
   toOwner: string

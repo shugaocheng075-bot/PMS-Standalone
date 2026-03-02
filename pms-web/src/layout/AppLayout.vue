@@ -2,39 +2,51 @@
   <div class="app-shell">
     <header class="top-nav">
       <div class="nav-left">
+        <el-button v-if="isMobileViewport" link class="mobile-menu-btn" @click="mobileMenuVisible = true">
+          <el-icon><Menu /></el-icon>
+        </el-button>
         <div class="company-main">北京嘉和美康信息技术有限公司</div>
         <div class="company-sub">Goodwill Information Technology Co., Ltd.</div>
       </div>
 
-      <nav class="nav-center">
-        <a class="nav-link" :class="{ active: activeTop === 'home' }" @click.prevent="goTo('/dashboard')">首页</a>
-        <a class="nav-link" :class="{ active: activeTop === 'project' }" @click.prevent="goTo('/project/list')">项目管理</a>
-        <a class="nav-link" :class="{ active: activeTop === 'service' }" @click.prevent="goTo('/handover/list')">运营管理</a>
-      </nav>
-
       <div class="nav-right">
         <el-icon><Bell /></el-icon>
         <el-icon><User /></el-icon>
-        <span class="user-name">部门经理</span>
+        <el-select
+          v-model="selectedPersonnelId"
+          size="small"
+          class="user-select"
+          :loading="actorLoading"
+          filterable
+          placeholder="选择人员"
+          @change="onChangePersonnel"
+        >
+          <el-option
+            v-for="actor in actorOptions"
+            :key="actor.personnelId"
+            :label="`${actor.personnelName}（${actor.roleType}）`"
+            :value="actor.personnelId"
+          />
+        </el-select>
+        <span class="user-name">{{ displayUserName }}</span>
+        <el-button link class="logout-btn" @click="onLogout">退出</el-button>
       </div>
     </header>
 
     <div class="workspace">
-      <aside class="left-pane">
+      <aside class="left-pane" v-if="!isMobileViewport">
         <div class="left-search">
-          <el-input placeholder="搜索功能（名称/拼音首字母）" size="small" clearable />
+          <el-input v-model="searchKeyword" placeholder="搜索功能（名称）" size="small" clearable />
         </div>
 
         <div class="menu-section">
-          <div class="section-title">常用功能</div>
-          <div class="quick-card" @click="goTo(quickEntry.path)">{{ quickEntry.label }}</div>
-        </div>
-
-        <div class="menu-section">
-          <div class="section-title">{{ sectionTitle }}</div>
-          <el-menu :default-active="activePath" router class="side-menu">
-            <el-menu-item v-for="item in sideMenus" :key="item.path" :index="item.path">{{ item.label }}</el-menu-item>
-          </el-menu>
+          <div v-for="group in filteredSideMenuGroups" :key="group.title" class="menu-group">
+            <div class="section-title">{{ group.title }}</div>
+            <el-menu :default-active="activePath" router class="side-menu">
+              <el-menu-item v-for="item in group.items" :key="item.path" :index="item.path">{{ item.label }}</el-menu-item>
+            </el-menu>
+          </div>
+          <div v-if="filteredSideMenuGroups.length === 0" class="empty-menu-tip">未找到匹配功能</div>
         </div>
       </aside>
 
@@ -44,61 +56,177 @@
         </div>
       </main>
     </div>
+
+    <el-drawer v-model="mobileMenuVisible" direction="ltr" size="82%" class="mobile-menu-drawer" :with-header="false">
+      <div class="left-search mobile-search">
+        <el-input v-model="searchKeyword" placeholder="搜索功能（名称）" size="small" clearable />
+      </div>
+
+      <div class="menu-section">
+        <div v-for="group in filteredSideMenuGroups" :key="`mobile-${group.title}`" class="menu-group">
+          <div class="section-title">{{ group.title }}</div>
+          <el-menu :default-active="activePath" router class="side-menu">
+            <el-menu-item
+              v-for="item in group.items"
+              :key="`mobile-${item.path}`"
+              :index="item.path"
+              @click="mobileMenuVisible = false"
+            >{{ item.label }}</el-menu-item>
+          </el-menu>
+        </div>
+        <div v-if="filteredSideMenuGroups.length === 0" class="empty-menu-tip">未找到匹配功能</div>
+      </div>
+    </el-drawer>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Bell, User } from '@element-plus/icons-vue'
+import { Bell, Menu, User } from '@element-plus/icons-vue'
+import { logout } from '../api/modules/auth'
+import { fetchAccessActors } from '../api/modules/access'
+import { useAccessControl } from '../composables/useAccessControl'
+import { clearAuthState } from '../constants/access'
 
 const route = useRoute()
 const router = useRouter()
 const activePath = computed(() => route.path)
+const searchKeyword = ref('')
+const mobileMenuVisible = ref(false)
+const isMobileViewport = ref(false)
+const actorLoading = ref(false)
+const actorOptions = ref<Array<{ personnelId: number; personnelName: string; roleType: string }>>([])
 
-const activeTop = computed(() => {
-  if (route.path.startsWith('/project') || route.path.startsWith('/contract')) return 'project'
-  if (route.path.startsWith('/handover') || route.path.startsWith('/inspection') || route.path.startsWith('/annual-report') || route.path.startsWith('/hospital') || route.path.startsWith('/personnel') || route.path.startsWith('/product') || route.path.startsWith('/maintenance')) return 'service'
-  return 'home'
+const access = useAccessControl()
+const selectedPersonnelId = ref(access.currentPersonnelId.value)
+
+watch(access.currentPersonnelId, (value) => {
+  selectedPersonnelId.value = value
 })
 
-const sideMenuMap: Record<string, Array<{ label: string; path: string }>> = {
-  home: [
-    { label: '驾驶舱', path: '/dashboard' },
-    { label: '综合设计方案', path: '/docs/design-spec' },
-  ],
-  project: [
-    { label: '项目台账', path: '/project/list' },
-    { label: '合同预警', path: '/contract/alerts' },
-  ],
-  service: [
-    { label: '交接管理', path: '/handover/list' },
-    { label: '巡检计划', path: '/inspection/plan' },
-    { label: '年度报告', path: '/annual-report/list' },
-    { label: '医院管理', path: '/hospital/list' },
-    { label: '人员管理', path: '/personnel/list' },
-    { label: '产品管理', path: '/product/list' },
-    { label: '数据维护中心', path: '/maintenance/data' },
-  ],
+const displayUserName = computed(() => {
+  const profile = access.accessProfile.value
+  if (!profile) {
+    return ''
+  }
+
+  const adminLabel = profile.isAdmin ? '管理员' : profile.roleType
+  return `${profile.personnelName}（${adminLabel}）`
+})
+
+const sideMenuGroups: Array<{ title: string; items: Array<{ label: string; path: string; permission: string }> }> = [
+  {
+    title: '首页功能',
+    items: [
+    { label: '首页', path: '/dashboard', permission: 'dashboard.view' },
+    { label: '统一预警中心', path: '/alert/center', permission: 'alert-center.view' },
+    ],
+  },
+  {
+    title: '项目管理',
+    items: [
+    { label: '项目台账', path: '/project/list', permission: 'project.view' },
+    { label: '合同预警', path: '/contract/alerts', permission: 'contract.view' },
+    ],
+  },
+  {
+    title: '运营管理',
+    items: [
+    { label: '交接管理', path: '/handover/list', permission: 'handover.view' },
+    { label: '巡检计划', path: '/inspection/plan', permission: 'inspection.view' },
+    { label: '年度报告', path: '/annual-report/list', permission: 'annual-report.view' },
+    { label: '医院管理', path: '/hospital/list', permission: 'hospital.view' },
+    { label: '权限管理', path: '/permission/manage', permission: 'permission.manage' },
+    { label: '产品管理', path: '/product/list', permission: 'product.view' },
+    { label: '重大需求', path: '/major-demand/list', permission: 'major-demand.view' },
+    { label: '数据维护中心', path: '/maintenance/data', permission: 'maintenance.manage' },
+    ],
+  },
+]
+
+const filteredSideMenuGroups = computed(() => {
+  const visibleGroups = sideMenuGroups
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((item) => access.canPermission(item.permission)),
+    }))
+    .filter((group) => group.items.length > 0)
+
+  const keyword = searchKeyword.value.trim().toLowerCase()
+  if (!keyword) {
+    return visibleGroups
+  }
+
+  return visibleGroups
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((item) => {
+        const label = item.label.toLowerCase()
+        const path = item.path.toLowerCase()
+        return label.includes(keyword) || path.includes(keyword)
+      }),
+    }))
+    .filter((group) => group.items.length > 0)
+})
+
+const loadActors = async () => {
+  actorLoading.value = true
+  try {
+    const res = await fetchAccessActors()
+    actorOptions.value = res.data
+    if (!actorOptions.value.some((item) => item.personnelId === selectedPersonnelId.value) && actorOptions.value.length > 0) {
+      selectedPersonnelId.value = actorOptions.value[0]!.personnelId
+      access.setCurrentPersonnelId(selectedPersonnelId.value)
+      await access.ensureAccessProfileLoaded(true)
+    }
+  } finally {
+    actorLoading.value = false
+  }
 }
 
-const sideMenus = computed(() => sideMenuMap[activeTop.value] ?? sideMenuMap.home)
+const onChangePersonnel = async (value: number) => {
+  access.setCurrentPersonnelId(value)
+  await access.ensureAccessProfileLoaded(true)
 
-const sectionTitle = computed(() => {
-  if (activeTop.value === 'project') return '项目管理'
-  if (activeTop.value === 'service') return '运营管理'
-  return '首页功能'
-})
-
-const quickEntry = computed(() => {
-  if (activeTop.value === 'project') return { label: '项目台账', path: '/project/list' }
-  if (activeTop.value === 'service') return { label: '交接管理', path: '/handover/list' }
-  return { label: '驾驶舱', path: '/dashboard' }
-})
-
-const goTo = (path: string) => {
-  router.push(path)
+  if (!access.canAccessPath(route.path)) {
+    await router.push(access.getFirstAccessiblePath())
+  }
 }
+
+const onLogout = async () => {
+  try {
+    await logout()
+  } catch {
+  }
+  clearAuthState()
+  await router.replace('/login')
+}
+
+const updateViewportState = () => {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  isMobileViewport.value = window.innerWidth <= 992
+  if (!isMobileViewport.value) {
+    mobileMenuVisible.value = false
+  }
+}
+
+onMounted(() => {
+  void (async () => {
+    await access.ensureAccessProfileLoaded()
+    await loadActors()
+    updateViewportState()
+    window.addEventListener('resize', updateViewportState)
+  })()
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', updateViewportState)
+})
+
 </script>
 
 <style scoped>
@@ -108,7 +236,7 @@ const goTo = (path: string) => {
 }
 
 .top-nav {
-  height: 44px;
+  min-height: 44px;
   background: #2f3a96;
   color: #fff;
   display: flex;
@@ -120,48 +248,30 @@ const goTo = (path: string) => {
 
 .nav-left {
   display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.nav-left > div {
+  display: flex;
   flex-direction: column;
   line-height: 1.05;
+  min-width: 0;
 }
 
 .company-main {
   font-size: 12px;
   font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .company-sub {
   margin-top: 1px;
   font-size: 10px;
   opacity: 0.9;
-}
-
-.nav-center {
-  display: flex;
-  align-items: center;
-  height: 100%;
-  gap: 2px;
-}
-
-.nav-link {
-  height: 100%;
-  padding: 0 18px;
-  display: inline-flex;
-  align-items: center;
-  color: rgba(255, 255, 255, 0.86);
-  font-size: 13px;
-  text-decoration: none;
-  cursor: pointer;
-  border-bottom: 3px solid transparent;
-}
-
-.nav-link:hover {
-  color: #fff;
-  background: rgba(255, 255, 255, 0.08);
-}
-
-.nav-link.active {
-  color: #fff;
-  border-bottom-color: #65d6ff;
 }
 
 .nav-right {
@@ -173,6 +283,14 @@ const goTo = (path: string) => {
 
 .user-name {
   font-size: 12px;
+}
+
+.logout-btn {
+  color: #fff;
+}
+
+.user-select {
+  width: 168px;
 }
 
 .workspace {
@@ -196,6 +314,16 @@ const goTo = (path: string) => {
   margin-top: 10px;
 }
 
+.menu-group + .menu-group {
+  margin-top: 10px;
+}
+
+.empty-menu-tip {
+  padding: 8px 10px;
+  font-size: 12px;
+  color: #5f6e9b;
+}
+
 .section-title {
   position: relative;
   margin: 4px 0 8px;
@@ -214,20 +342,6 @@ const goTo = (path: string) => {
   height: 14px;
   border-radius: 2px;
   background: #2fb96f;
-}
-
-.quick-card {
-  border: 1px solid #d5ddf1;
-  background: #fff;
-  border-radius: 6px;
-  padding: 10px 12px;
-  font-size: 13px;
-  color: #2e3b63;
-  cursor: pointer;
-}
-
-.quick-card:hover {
-  border-color: #88a0e8;
 }
 
 .side-menu {
@@ -260,5 +374,46 @@ const goTo = (path: string) => {
 .content-wrap {
   width: 100%;
   min-height: calc(100vh - 72px);
+}
+
+.mobile-menu-btn {
+  color: #fff;
+  font-size: 18px;
+  padding: 4px;
+}
+
+.mobile-search {
+  margin-bottom: 12px;
+}
+
+@media (max-width: 992px) {
+  .top-nav {
+    padding: 8px 10px;
+  }
+
+  .company-sub {
+    display: none;
+  }
+
+  .nav-right {
+    gap: 8px;
+  }
+
+  .user-name {
+    display: none;
+  }
+
+  .workspace {
+    min-height: calc(100vh - 52px);
+  }
+
+  .main-pane {
+    width: 100%;
+    padding: 10px;
+  }
+
+  .content-wrap {
+    min-height: calc(100vh - 62px);
+  }
 }
 </style>

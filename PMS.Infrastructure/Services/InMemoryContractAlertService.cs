@@ -27,7 +27,7 @@ public class InMemoryContractAlertService : IContractAlertService
 
         if (!string.IsNullOrWhiteSpace(query.AlertLevel))
         {
-            alerts = alerts.Where(x => x.AlertLevel == query.AlertLevel);
+            alerts = alerts.Where(x => SmartTextMatcher.MatchExact(x.AlertLevel, query.AlertLevel));
         }
 
         if (!string.IsNullOrWhiteSpace(query.Province))
@@ -37,7 +37,12 @@ public class InMemoryContractAlertService : IContractAlertService
 
         if (!string.IsNullOrWhiteSpace(query.GroupName))
         {
-            alerts = alerts.Where(x => x.GroupName.Contains(query.GroupName, StringComparison.OrdinalIgnoreCase));
+            alerts = alerts.Where(x => SmartTextMatcher.Match(x.GroupName, query.GroupName));
+        }
+
+        if (!string.IsNullOrWhiteSpace(query.SalesName))
+        {
+            alerts = alerts.Where(x => SmartTextMatcher.Match(x.SalesName, query.SalesName));
         }
 
         var total = alerts.Count();
@@ -70,6 +75,7 @@ public class InMemoryContractAlertService : IContractAlertService
                 HospitalName = x.HospitalName,
                 Province = x.Province,
                 GroupName = x.GroupName,
+                SalesName = x.SalesName,
                 ContractStatus = x.ContractStatus,
                 MaintenanceAmount = x.MaintenanceAmount,
                 OverdueDays = x.OverdueDays,

@@ -5,24 +5,22 @@
         <h2 class="page-title">医院管理</h2>
         <div class="page-subtitle">医院与客户分级管理、区域筛选与联系信息维护</div>
       </div>
-      <el-button type="primary" @click="onOpenCreate">新增医院</el-button>
+      <el-button v-if="canManageHospital" type="primary" @click="onOpenCreate">新增医院</el-button>
     </div>
 
     <el-row :gutter="16" class="stats-row">
-      <el-col :span="6"><el-card shadow="never" class="stat-card stats-card"><div class="t">全部医院</div><div class="v">{{ summary.total }}</div></el-card></el-col>
-      <el-col :span="6"><el-card shadow="never" class="stat-card stats-card"><div class="t">三级医院</div><div class="v success">{{ summary.threeTierCount }}</div></el-card></el-col>
-      <el-col :span="6"><el-card shadow="never" class="stat-card stats-card"><div class="t">二级医院</div><div class="v warning">{{ summary.twoTierCount }}</div></el-card></el-col>
-      <el-col :span="6"><el-card shadow="never" class="stat-card stats-card"><div class="t">一级医院</div><div class="v danger">{{ summary.oneTierCount }}</div></el-card></el-col>
+      <el-col :span="6"><el-card shadow="never" class="stat-card stats-card clickable" :class="{ active: query.tier === '' }" @click="onStatClick('')"><div class="t">全部医院</div><div class="v">{{ summary.total }}</div></el-card></el-col>
+      <el-col :span="6"><el-card shadow="never" class="stat-card stats-card clickable" :class="{ active: query.tier === '三级' }" @click="onStatClick('三级')"><div class="t">三级医院</div><div class="v success">{{ summary.threeTierCount }}</div></el-card></el-col>
+      <el-col :span="6"><el-card shadow="never" class="stat-card stats-card clickable" :class="{ active: query.tier === '二级' }" @click="onStatClick('二级')"><div class="t">二级医院</div><div class="v warning">{{ summary.twoTierCount }}</div></el-card></el-col>
+      <el-col :span="6"><el-card shadow="never" class="stat-card stats-card clickable" :class="{ active: query.tier === '一级' }" @click="onStatClick('一级')"><div class="t">一级医院</div><div class="v danger">{{ summary.oneTierCount }}</div></el-card></el-col>
     </el-row>
 
     <el-card shadow="never" class="filter-card">
-      <el-form :model="query" inline>
-        <el-form-item label="医院名称"><el-input v-model="query.hospitalName" clearable /></el-form-item>
+      <el-form :model="query" inline class="filter-form" @submit.prevent="onSearch">
+        <el-form-item label="医院名称"><el-input v-model="query.hospitalName" clearable @keyup.enter="onSearch" /></el-form-item>
         <el-form-item label="医院等级">
           <el-select v-model="query.tier" clearable style="width: 140px" placeholder="全部">
-            <el-option label="三级" value="三级" />
-            <el-option label="二级" value="二级" />
-            <el-option label="一级" value="一级" />
+            <el-option v-for="tier in tierOptions" :key="tier" :label="tier" :value="tier" />
           </el-select>
         </el-form-item>
         <el-form-item label="省份">
@@ -35,7 +33,7 @@
             <el-option v-for="city in filteredCityOptions" :key="city" :label="city" :value="city" />
           </el-select>
         </el-form-item>
-        <el-form-item>
+        <el-form-item class="filter-actions">
           <el-button type="primary" @click="onSearch">查询</el-button>
           <el-button @click="onReset">重置</el-button>
         </el-form-item>
@@ -43,19 +41,19 @@
     </el-card>
 
     <el-card shadow="never" class="table-card">
-      <el-table :data="tableData" v-loading="loading" stripe>
-        <el-table-column prop="hospitalName" label="医院名称" min-width="220" show-overflow-tooltip />
-        <el-table-column prop="tier" label="等级" width="100">
+      <el-table :data="tableData" v-loading="loading" stripe empty-text="暂无符合条件的数据">
+        <el-table-column prop="hospitalName" label="医院名称" min-width="220" show-overflow-tooltip sortable />
+        <el-table-column prop="tier" label="等级" width="100" sortable>
           <template #default="scope">
             <el-tag :type="tierTag(scope.row.tier)">{{ scope.row.tier }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="province" label="省份" width="100" show-overflow-tooltip />
-        <el-table-column prop="city" label="城市" width="100" show-overflow-tooltip />
+        <el-table-column prop="province" label="省份" width="100" show-overflow-tooltip sortable />
+        <el-table-column prop="city" label="城市" width="100" show-overflow-tooltip sortable />
         <el-table-column prop="address" label="地址" min-width="220" show-overflow-tooltip />
         <el-table-column prop="contactPerson" label="联系人" width="100" show-overflow-tooltip />
         <el-table-column prop="contactPhone" label="联系电话" width="140" show-overflow-tooltip />
-        <el-table-column prop="departmentCount" label="科室数量" width="100" align="right" />
+        <el-table-column prop="departmentCount" label="科室数量" width="100" align="right" sortable />
         <el-table-column label="评级" min-width="180">
           <template #default="scope">
             <span>EMR: {{ scope.row.emrRatingLevel || '-' }}</span>
@@ -72,18 +70,21 @@
               @click="onOpenDetail(scope.row.id)"
             >详情</el-button>
             <el-button
+              v-if="canManageHospital"
               type="primary"
               link
               :disabled="submitLoading || deletingId === scope.row.id || ratingLoading"
               @click="onOpenEdit(scope.row)"
             >编辑</el-button>
             <el-button
+              v-if="canManageHospital"
               type="primary"
               link
               :disabled="submitLoading || deletingId === scope.row.id || ratingLoading"
               @click="onOpenRating(scope.row)"
             >评级</el-button>
             <el-button
+              v-if="canManageHospital"
               type="danger"
               link
               :loading="deletingId === scope.row.id"
@@ -164,6 +165,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { useRoute } from 'vue-router'
 import {
   createHospital,
   deleteHospital,
@@ -178,7 +180,9 @@ import type { FormInstance, FormRules } from 'element-plus'
 import { useResilientLoad } from '../../composables/useResilientLoad'
 import { getErrorMessage } from '../../utils/error'
 import { CITY_OPTIONS, PROVINCE_OPTIONS } from '../../constants/filterOptions'
+import { useFilterStatePersist } from '../../composables/useFilterStatePersist'
 import { useLinkedRealtimeRefresh } from '../../composables/useLinkedRealtimeRefresh'
+import { useAccessControl } from '../../composables/useAccessControl'
 
 const loading = ref(false)
 const total = ref(0)
@@ -199,6 +203,39 @@ const query = reactive({
   page: 1,
   size: 10,
 })
+const route = useRoute()
+
+const readRouteQueryValue = (value: unknown): string => {
+  if (typeof value === 'string') {
+    return value
+  }
+
+  if (Array.isArray(value) && typeof value[0] === 'string') {
+    return value[0]
+  }
+
+  return ''
+}
+
+type HospitalFilterState = {
+  hospitalName: string
+  tier: string
+  province: string
+  city: string
+  page: number
+  size: number
+}
+const tierOptions = ref<string[]>(['三级', '二级', '一级'])
+
+const applyDrillQuery = () => {
+  const tier = readRouteQueryValue(route.query.tier)
+  if (!tier) {
+    return
+  }
+
+  query.tier = tier
+  query.page = 1
+}
 
 const provinceOptions = ref<string[]>([...PROVINCE_OPTIONS])
 const cityOptionsByProvince = ref<Record<string, string[]>>({})
@@ -228,16 +265,21 @@ watch(
 
 const loadFilterOptions = async () => {
   try {
-    const res = await fetchHospitals({ page: 1, size: 200 })
+    const res = await fetchHospitals({ page: 1, size: 5000 })
     const items = res.data.items
 
     if (!items.length) {
       return
     }
 
-    const provinces = Array.from(new Set(items.map((item) => item.province).filter(Boolean)))
+    const provinces = Array.from(new Set(items.map((item) => item.province).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'zh-CN'))
     if (provinces.length > 0) {
       provinceOptions.value = provinces
+    }
+
+    const tiers = Array.from(new Set(items.map((item) => item.tier).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'zh-CN'))
+    if (tiers.length > 0) {
+      tierOptions.value = Array.from(new Set([...tierOptions.value, ...tiers]))
     }
 
     const cityMap: Record<string, string[]> = {}
@@ -255,7 +297,9 @@ const loadFilterOptions = async () => {
       }
     }
 
-    cityOptionsByProvince.value = cityMap
+    cityOptionsByProvince.value = Object.fromEntries(
+      Object.entries(cityMap).map(([province, cities]) => [province, cities.sort((a, b) => a.localeCompare(b, 'zh-CN'))]),
+    )
   } catch {
   }
 }
@@ -271,6 +315,9 @@ const submitLoading = ref(false)
 const ratingLoading = ref(false)
 const deletingId = ref<number | null>(null)
 const detailLoadingId = ref<number | null>(null)
+
+const access = useAccessControl()
+const canManageHospital = computed(() => access.canPermission('hospital.manage'))
 
 const editForm = reactive<HospitalUpsert>({
   hospitalName: '',
@@ -339,6 +386,12 @@ const loadData = async () => {
   }
 }
 
+const onStatClick = (tier: string) => {
+  query.tier = tier
+  query.page = 1
+  loadData()
+}
+
 const onSearch = () => {
   query.page = 1
   loadData()
@@ -351,8 +404,29 @@ const onReset = () => {
   query.city = ''
   query.page = 1
   query.size = 10
+  clearFilterState()
   loadData()
 }
+
+const { restore: restoreFilterState, clear: clearFilterState } = useFilterStatePersist<HospitalFilterState>({
+  key: 'hospital-list',
+  getState: () => ({
+    hospitalName: query.hospitalName,
+    tier: query.tier,
+    province: query.province,
+    city: query.city,
+    page: query.page,
+    size: query.size,
+  }),
+  applyState: (state) => {
+    query.hospitalName = state.hospitalName ?? ''
+    query.tier = state.tier ?? ''
+    query.province = state.province ?? ''
+    query.city = state.city ?? ''
+    query.page = typeof state.page === 'number' ? state.page : 1
+    query.size = typeof state.size === 'number' ? state.size : 10
+  },
+})
 
 const resetEditForm = () => {
   editForm.hospitalName = ''
@@ -366,6 +440,11 @@ const resetEditForm = () => {
 }
 
 const onOpenCreate = () => {
+  if (!canManageHospital.value) {
+    ElMessage.warning('当前账号无新增医院权限')
+    return
+  }
+
   editMode.value = 'create'
   activeId.value = null
   resetEditForm()
@@ -373,6 +452,11 @@ const onOpenCreate = () => {
 }
 
 const onOpenEdit = (row: HospitalItem) => {
+  if (!canManageHospital.value) {
+    ElMessage.warning('当前账号无编辑医院权限')
+    return
+  }
+
   editMode.value = 'edit'
   activeId.value = row.id
   editForm.hospitalName = row.hospitalName
@@ -387,6 +471,11 @@ const onOpenEdit = (row: HospitalItem) => {
 }
 
 const onOpenRating = (row: HospitalItem) => {
+  if (!canManageHospital.value) {
+    ElMessage.warning('当前账号无医院评级权限')
+    return
+  }
+
   activeId.value = row.id
   ratingForm.emrRatingLevel = row.emrRatingLevel || ''
   ratingForm.interopRatingLevel = row.interopRatingLevel || ''
@@ -408,6 +497,11 @@ const onOpenDetail = async (id: number) => {
 }
 
 const onSaveEdit = async () => {
+  if (!canManageHospital.value) {
+    ElMessage.warning('当前账号无医院维护权限')
+    return
+  }
+
   if (submitLoading.value) {
     return
   }
@@ -445,6 +539,11 @@ const onSaveEdit = async () => {
 }
 
 const onDelete = async (row: HospitalItem) => {
+  if (!canManageHospital.value) {
+    ElMessage.warning('当前账号无删除医院权限')
+    return
+  }
+
   if (submitLoading.value || ratingLoading.value || deletingId.value === row.id) {
     return
   }
@@ -473,6 +572,11 @@ const onDelete = async (row: HospitalItem) => {
 }
 
 const onSaveRating = async () => {
+  if (!canManageHospital.value) {
+    ElMessage.warning('当前账号无医院评级权限')
+    return
+  }
+
   if (ratingLoading.value) {
     return
   }
@@ -496,6 +600,9 @@ const onSaveRating = async () => {
 }
 
 onMounted(async () => {
+  await access.ensureAccessProfileLoaded()
+  restoreFilterState()
+  applyDrillQuery()
   await runInitialLoad({
     tasks: [loadSummary, loadFilterOptions, loadData],
     retryChecks: [

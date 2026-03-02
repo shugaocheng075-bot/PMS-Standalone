@@ -6,6 +6,18 @@ namespace PMS.Infrastructure.Services;
 
 public class InMemoryInspectionService : IInspectionService
 {
+    private static readonly object SyncRoot = new();
+    private const string ResultsStateKey = "inspection_results";
+
+    private static readonly List<InspectionResultDto> StoredResults =
+        SqliteJsonStore.LoadOrSeed(ResultsStateKey, () => new List<InspectionResultDto>());
+
+    private static long _nextResultId = StoredResults.Count > 0
+        ? StoredResults.Max(r => r.Id) + 1
+        : 1;
+
+    // ─── 巡检计划（种子数据） ───
+
     public Task<InspectionSummaryDto> GetSummaryAsync(CancellationToken cancellationToken = default)
     {
         var seed = BuildSeed();
@@ -31,19 +43,19 @@ public class InMemoryInspectionService : IInspectionService
         IEnumerable<InspectionPlanItemDto> filtered = BuildSeed();
 
         if (!string.IsNullOrWhiteSpace(query.Status))
-            filtered = filtered.Where(x => x.Status == query.Status);
+            filtered = filtered.Where(x => SmartTextMatcher.MatchExact(x.Status, query.Status));
 
         if (!string.IsNullOrWhiteSpace(query.Province))
             filtered = filtered.Where(x => x.Province.Equals(query.Province, StringComparison.OrdinalIgnoreCase));
 
         if (!string.IsNullOrWhiteSpace(query.ProductName))
-            filtered = filtered.Where(x => x.ProductName.Contains(query.ProductName, StringComparison.OrdinalIgnoreCase));
+            filtered = filtered.Where(x => SmartTextMatcher.Match(x.ProductName, query.ProductName));
 
         if (!string.IsNullOrWhiteSpace(query.GroupName))
-            filtered = filtered.Where(x => x.GroupName.Contains(query.GroupName, StringComparison.OrdinalIgnoreCase));
+            filtered = filtered.Where(x => SmartTextMatcher.Match(x.GroupName, query.GroupName));
 
         if (!string.IsNullOrWhiteSpace(query.Inspector))
-            filtered = filtered.Where(x => x.Inspector.Contains(query.Inspector, StringComparison.OrdinalIgnoreCase));
+            filtered = filtered.Where(x => SmartTextMatcher.Match(x.Inspector, query.Inspector));
 
         var total = filtered.Count();
         var page = query.Page < 1 ? 1 : query.Page;
@@ -65,10 +77,109 @@ public class InMemoryInspectionService : IInspectionService
         });
     }
 
+    // ─── SystemAuditTool 巡检结果 ───
+
+    public Task SubmitResultAsync(InspectionResultDto result, CancellationToken cancellationToken = default)
+    {
+        lock (SyncRoot)
+        {
+            result.Id = _nextResultId++;
+            StoredResults.Add(result);
+            PersistResults();
+        }
+
+        return Task.CompletedTask;
+    }
+
+    public Task SubmitResultsAsync(IReadOnlyList<InspectionResultDto> results, CancellationToken cancellationToken = default)
+    {
+        lock (SyncRoot)
+        {
+            foreach (var result in results)
+            {
+                result.Id = _nextResultId++;
+                StoredResults.Add(result);
+            }
+
+            PersistResults();
+        }
+
+        return Task.CompletedTask;
+    }
+
+    public Task<PagedResult<InspectionResultDto>> QueryResultsAsync(InspectionResultQuery query, CancellationToken cancellationToken = default)
+    {
+        List<InspectionResultDto> snapshot;
+        lock (SyncRoot)
+        {
+            snapshot = [.. StoredResults];
+        }
+
+        IEnumerable<InspectionResultDto> filtered = snapshot;
+
+        if (!string.IsNullOrWhiteSpace(query.HospitalName))
+            filtered = filtered.Where(x => SmartTextMatcher.Match(x.HospitalName, query.HospitalName));
+
+        if (!string.IsNullOrWhiteSpace(query.ProductName))
+            filtered = filtered.Where(x => SmartTextMatcher.Match(x.ProductName, query.ProductName));
+
+        if (!string.IsNullOrWhiteSpace(query.Inspector))
+            filtered = filtered.Where(x => SmartTextMatcher.Match(x.Inspector, query.Inspector));
+
+        if (!string.IsNullOrWhiteSpace(query.HealthLevel))
+            filtered = filtered.Where(x => x.HealthLevel.Equals(query.HealthLevel, StringComparison.OrdinalIgnoreCase));
+
+        if (query.From.HasValue)
+            filtered = filtered.Where(x => x.InspectedAt >= query.From.Value);
+
+        if (query.To.HasValue)
+            filtered = filtered.Where(x => x.InspectedAt <= query.To.Value);
+
+        var total = filtered.Count();
+        var page = query.Page < 1 ? 1 : query.Page;
+        var size = query.Size <= 0 ? 20 : query.Size;
+
+        var items = filtered
+            .OrderByDescending(x => x.InspectedAt)
+            .Skip((page - 1) * size)
+            .Take(size)
+            .ToList();
+
+        return Task.FromResult(new PagedResult<InspectionResultDto>
+        {
+            Items = items,
+            Total = total,
+            Page = page,
+            Size = size
+        });
+    }
+
+    public Task<InspectionResultDto?> GetLatestResultAsync(string hospitalName, string productName, CancellationToken cancellationToken = default)
+    {
+        lock (SyncRoot)
+        {
+            var latest = StoredResults
+                .Where(x => x.HospitalName.Equals(hospitalName, StringComparison.OrdinalIgnoreCase)
+                         && x.ProductName.Equals(productName, StringComparison.OrdinalIgnoreCase))
+                .OrderByDescending(x => x.InspectedAt)
+                .FirstOrDefault();
+
+            return Task.FromResult(latest);
+        }
+    }
+
+    // ─── 持久化 ───
+
+    private static void PersistResults()
+    {
+        SqliteJsonStore.Save(ResultsStateKey, StoredResults);
+    }
+
+    // ─── 种子数据 ───
+
     private static List<InspectionPlanItemDto> BuildSeed()
     {
         var statuses = new[] { "已完成", "已计划", "执行中", "已计划", "已取消" };
-        var inspectors = new[] { "张三", "李四", "王五", "赵六", "钱七", "孙八", "周九", "吴十" };
 
         return InMemoryProjectDataStore.Projects
             .OrderBy(x => x.Id)
@@ -76,6 +187,9 @@ public class InMemoryInspectionService : IInspectionService
             {
                 var status = statuses[index % statuses.Length];
                 var planDate = DateTime.Today.AddDays(index - 3);
+                var inspector = string.IsNullOrWhiteSpace(project.MaintenancePersonName)
+                    ? "未分配"
+                    : project.MaintenancePersonName.Trim();
 
                 return new InspectionPlanItemDto
                 {
@@ -84,7 +198,7 @@ public class InMemoryInspectionService : IInspectionService
                     ProductName = project.ProductName,
                     Province = project.Province,
                     GroupName = project.GroupName,
-                    Inspector = inspectors[index % inspectors.Length],
+                    Inspector = inspector,
                     PlanDate = planDate,
                     ActualDate = status == "已完成" ? planDate : null,
                     Status = status,

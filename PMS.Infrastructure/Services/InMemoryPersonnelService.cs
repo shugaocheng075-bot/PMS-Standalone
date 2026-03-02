@@ -32,22 +32,22 @@ public class InMemoryPersonnelService : IPersonnelService
 
         if (!string.IsNullOrWhiteSpace(query.Name))
         {
-            list = list.Where(x => x.Name.Contains(query.Name, StringComparison.OrdinalIgnoreCase));
+            list = list.Where(x => SmartTextMatcher.Match(x.Name, query.Name));
         }
 
         if (!string.IsNullOrWhiteSpace(query.Department))
         {
-            list = list.Where(x => x.Department.Contains(query.Department, StringComparison.OrdinalIgnoreCase));
+            list = list.Where(x => SmartTextMatcher.Match(x.Department, query.Department));
         }
 
         if (!string.IsNullOrWhiteSpace(query.GroupName))
         {
-            list = list.Where(x => x.GroupName.Contains(query.GroupName, StringComparison.OrdinalIgnoreCase));
+            list = list.Where(x => SmartTextMatcher.Match(x.GroupName, query.GroupName));
         }
 
         if (!string.IsNullOrWhiteSpace(query.RoleType))
         {
-            list = list.Where(x => x.RoleType == query.RoleType);
+            list = list.Where(x => SmartTextMatcher.MatchExact(x.RoleType, query.RoleType));
         }
 
         if (query.IsOnsite.HasValue)

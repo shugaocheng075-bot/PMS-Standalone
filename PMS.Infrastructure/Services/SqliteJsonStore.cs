@@ -11,11 +11,29 @@ internal static class SqliteJsonStore
         PropertyNameCaseInsensitive = true
     };
 
-    private static readonly string DbPath =
-        Environment.GetEnvironmentVariable("PMS_SQLITE_PATH")
-        ?? Path.Combine(Directory.GetCurrentDirectory(), "pms-data.db");
+    private static readonly string DbPath = ResolveDbPath();
 
     private static bool _initialized;
+
+    private static string ResolveDbPath()
+    {
+        var fromEnv = Environment.GetEnvironmentVariable("PMS_SQLITE_PATH");
+        if (!string.IsNullOrWhiteSpace(fromEnv))
+        {
+            return Path.GetFullPath(fromEnv.Trim());
+        }
+
+        var apiProjectCandidate = Path.GetFullPath(
+            Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "pms-data.db"));
+
+        var apiProjectDir = Path.GetDirectoryName(apiProjectCandidate);
+        if (!string.IsNullOrWhiteSpace(apiProjectDir) && Directory.Exists(apiProjectDir))
+        {
+            return apiProjectCandidate;
+        }
+
+        return Path.Combine(AppContext.BaseDirectory, "pms-data.db");
+    }
 
     public static T LoadOrSeed<T>(string key, Func<T> seedFactory)
     {

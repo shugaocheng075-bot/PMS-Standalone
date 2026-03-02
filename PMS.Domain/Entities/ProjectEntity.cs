@@ -7,6 +7,10 @@ public class ProjectEntity
     public string ProductName { get; set; } = string.Empty;
     public string Province { get; set; } = string.Empty;
     public string GroupName { get; set; } = string.Empty;
+    public string SalesName { get; set; } = string.Empty;
+    public string MaintenancePersonName { get; set; } = string.Empty;
+    public string AfterSalesStartDate { get; set; } = string.Empty;
+    public string AfterSalesEndDate { get; set; } = string.Empty;
     public string HospitalLevel { get; set; } = string.Empty;
     public string ContractStatus { get; set; } = string.Empty;
     public decimal MaintenanceAmount { get; set; }

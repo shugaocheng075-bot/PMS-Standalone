@@ -8,35 +8,28 @@
     </div>
 
     <el-row :gutter="16" class="stats-row">
-      <el-col :span="4"><el-card shadow="never" class="stat-card stats-card"><div class="t">未发</div><div class="v">{{ summary.pendingCount }}</div></el-card></el-col>
-      <el-col :span="4"><el-card shadow="never" class="stat-card stats-card"><div class="t">已发邮件</div><div class="v">{{ summary.emailSentCount }}</div></el-card></el-col>
-      <el-col :span="4"><el-card shadow="never" class="stat-card stats-card"><div class="t">交接中</div><div class="v warning">{{ summary.inProgressCount }}</div></el-card></el-col>
-      <el-col :span="4"><el-card shadow="never" class="stat-card stats-card"><div class="t">已交接</div><div class="v success">{{ summary.completedCount }}</div></el-card></el-col>
-      <el-col :span="4"><el-card shadow="never" class="stat-card stats-card"><div class="t">总数</div><div class="v">{{ summary.total }}</div></el-card></el-col>
+      <el-col :span="4"><el-card shadow="never" class="stat-card stats-card clickable" :class="{ active: query.stage === '未发' }" @click="onStatClick('未发')"><div class="t">未发</div><div class="v">{{ summary.pendingCount }}</div></el-card></el-col>
+      <el-col :span="4"><el-card shadow="never" class="stat-card stats-card clickable" :class="{ active: query.stage === '已发邮件' }" @click="onStatClick('已发邮件')"><div class="t">已发邮件</div><div class="v">{{ summary.emailSentCount }}</div></el-card></el-col>
+      <el-col :span="4"><el-card shadow="never" class="stat-card stats-card clickable" :class="{ active: query.stage === '交接中' }" @click="onStatClick('交接中')"><div class="t">交接中</div><div class="v warning">{{ summary.inProgressCount }}</div></el-card></el-col>
+      <el-col :span="4"><el-card shadow="never" class="stat-card stats-card clickable" :class="{ active: query.stage === '已交接' }" @click="onStatClick('已交接')"><div class="t">已交接</div><div class="v success">{{ summary.completedCount }}</div></el-card></el-col>
+      <el-col :span="4"><el-card shadow="never" class="stat-card stats-card clickable" :class="{ active: query.stage === '' }" @click="onStatClick('')"><div class="t">总数</div><div class="v">{{ summary.total }}</div></el-card></el-col>
     </el-row>
 
     <el-card shadow="never" class="filter-card">
-      <el-form :model="query" inline>
+      <el-form :model="query" inline class="filter-form" @submit.prevent="onSearch">
         <el-form-item label="阶段">
           <el-select v-model="query.stage" placeholder="全部" clearable style="width: 140px">
-            <el-option label="未发" value="未发" />
-            <el-option label="已发邮件" value="已发邮件" />
-            <el-option label="交接中" value="交接中" />
-            <el-option label="已交接" value="已交接" />
+            <el-option v-for="stage in stageOptions" :key="stage" :label="stage" :value="stage" />
           </el-select>
         </el-form-item>
         <el-form-item label="批次">
           <el-select v-model="query.batch" placeholder="全部" clearable style="width: 140px">
-            <el-option label="第一批" value="第一批" />
-            <el-option label="第二批" value="第二批" />
-            <el-option label="第三批" value="第三批" />
-            <el-option label="第四批" value="第四批" />
+            <el-option v-for="batch in batchOptions" :key="batch" :label="batch" :value="batch" />
           </el-select>
         </el-form-item>
         <el-form-item label="类型">
           <el-select v-model="query.type" placeholder="全部" clearable style="width: 160px">
-            <el-option label="实施→运维" value="实施→运维" />
-            <el-option label="区域/组间" value="区域/组间" />
+            <el-option v-for="type in typeOptions" :key="type" :label="type" :value="type" />
           </el-select>
         </el-form-item>
         <el-form-item label="原组别">
@@ -49,7 +42,7 @@
             <el-option v-for="owner in toOwnerOptions" :key="owner" :label="owner" :value="owner" />
           </el-select>
         </el-form-item>
-        <el-form-item>
+        <el-form-item class="filter-actions">
           <el-button type="primary" @click="onSearch">查询</el-button>
           <el-button @click="onReset">重置</el-button>
         </el-form-item>
@@ -57,15 +50,16 @@
     </el-card>
 
     <el-card shadow="never" class="table-card">
-      <el-table :data="tableData" v-loading="loading" stripe>
-        <el-table-column prop="handoverNo" label="交接单号" width="130" />
-        <el-table-column prop="hospitalName" label="医院" min-width="220" show-overflow-tooltip />
+      <el-table :data="tableData" v-loading="loading" stripe empty-text="暂无符合条件的数据">
+        <el-table-column prop="handoverNo" label="交接单号" width="130" sortable />
+        <el-table-column prop="hospitalName" label="医院" min-width="220" show-overflow-tooltip sortable />
+        <el-table-column prop="productName" label="产品" min-width="140" show-overflow-tooltip sortable />
         <el-table-column prop="type" label="类型" width="120" />
         <el-table-column prop="fromGroup" label="原组别" width="130" show-overflow-tooltip />
         <el-table-column prop="fromOwner" label="提出人" width="100" />
         <el-table-column prop="toOwner" label="对接人" width="100" />
-        <el-table-column prop="batch" label="批次" width="100" />
-        <el-table-column prop="stage" label="阶段" width="110">
+        <el-table-column prop="batch" label="批次" width="100" sortable />
+        <el-table-column prop="stage" label="阶段" width="110" sortable>
           <template #default="scope">
             <el-tag :type="stageTag(scope.row.stage)">{{ scope.row.stage }}</el-tag>
           </template>
@@ -78,7 +72,7 @@
         <el-table-column label="操作" width="140" fixed="right">
           <template #default="scope">
             <el-button
-              v-if="nextStage(scope.row.stage)"
+              v-if="canManageHandover && nextStage(scope.row.stage)"
               type="primary"
               link
               :loading="advancingId === scope.row.id"
@@ -117,7 +111,7 @@
             <div class="kanban-items">
               <div class="kanban-item" v-for="item in column.items" :key="item.id">
                 <div class="kanban-item-name">{{ item.hospitalName }}</div>
-                <div class="kanban-item-meta">{{ item.handoverNo }} · {{ item.toOwner }}</div>
+                <div class="kanban-item-meta">{{ item.handoverNo }} · {{ item.productName }} · {{ item.toOwner }}</div>
               </div>
               <div v-if="column.count === 0" class="kanban-empty">暂无数据</div>
             </div>
@@ -129,8 +123,9 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
-import { ElMessage } from 'element-plus'
+import { computed, onMounted, reactive, ref } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { useRoute } from 'vue-router'
 import {
   fetchHandovers,
   fetchHandoverKanban,
@@ -141,7 +136,9 @@ import type { HandoverItem, HandoverKanbanColumn, HandoverSummary } from '../../
 import { useResilientLoad } from '../../composables/useResilientLoad'
 import { getErrorMessage } from '../../utils/error'
 import { HANDOVER_GROUP_OPTIONS, HANDOVER_OWNER_OPTIONS } from '../../constants/filterOptions'
+import { useFilterStatePersist } from '../../composables/useFilterStatePersist'
 import { useLinkedRealtimeRefresh } from '../../composables/useLinkedRealtimeRefresh'
+import { useAccessControl } from '../../composables/useAccessControl'
 
 const loading = ref(false)
 const total = ref(0)
@@ -164,10 +161,48 @@ const query = reactive({
   page: 1,
   size: 10,
 })
+const route = useRoute()
 
+const readRouteQueryValue = (value: unknown): string => {
+  if (typeof value === 'string') {
+    return value
+  }
+
+  if (Array.isArray(value) && typeof value[0] === 'string') {
+    return value[0]
+  }
+
+  return ''
+}
+
+const applyDrillQuery = () => {
+  const stage = readRouteQueryValue(route.query.stage)
+  if (!stage) {
+    return
+  }
+
+  query.stage = stage
+  query.page = 1
+}
+
+type HandoverFilterState = {
+  stage: string
+  batch: string
+  type: string
+  fromGroup: string
+  toOwner: string
+  page: number
+  size: number
+}
+
+const stageOptions = ref<string[]>(['未发', '已发邮件', '交接中', '已交接'])
+const batchOptions = ref<string[]>(['第一批', '第二批', '第三批', '第四批'])
+const typeOptions = ref<string[]>(['实施→运维', '区域/组间'])
 const fromGroupOptions = ref<string[]>([...HANDOVER_GROUP_OPTIONS])
 const toOwnerOptions = ref<string[]>([...HANDOVER_OWNER_OPTIONS])
 const advancingId = ref<number | null>(null)
+const access = useAccessControl()
+const canManageHandover = computed(() => access.canPermission('handover.manage'))
 const { runInitialLoad } = useResilientLoad()
 const { notifyDataChanged } = useLinkedRealtimeRefresh({
   refresh: async () => {
@@ -214,19 +249,34 @@ const loadKanban = async () => {
 
 const loadFilterOptions = async () => {
   try {
-    const res = await fetchHandovers({ page: 1, size: 200 })
+    const res = await fetchHandovers({ page: 1, size: 5000 })
     const items = res.data.items
 
     if (!items.length) {
       return
     }
 
-    const fromGroups = Array.from(new Set(items.map((item) => item.fromGroup).filter(Boolean)))
+    const stages = Array.from(new Set(items.map((item) => item.stage).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'zh-CN'))
+    if (stages.length > 0) {
+      stageOptions.value = Array.from(new Set([...stageOptions.value, ...stages]))
+    }
+
+    const batches = Array.from(new Set(items.map((item) => item.batch).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'zh-CN'))
+    if (batches.length > 0) {
+      batchOptions.value = Array.from(new Set([...batchOptions.value, ...batches]))
+    }
+
+    const types = Array.from(new Set(items.map((item) => item.type).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'zh-CN'))
+    if (types.length > 0) {
+      typeOptions.value = Array.from(new Set([...typeOptions.value, ...types]))
+    }
+
+    const fromGroups = Array.from(new Set(items.map((item) => item.fromGroup).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'zh-CN'))
     if (fromGroups.length > 0) {
       fromGroupOptions.value = fromGroups
     }
 
-    const toOwners = Array.from(new Set(items.map((item) => item.toOwner).filter(Boolean)))
+    const toOwners = Array.from(new Set(items.map((item) => item.toOwner).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'zh-CN'))
     if (toOwners.length > 0) {
       toOwnerOptions.value = toOwners
     }
@@ -249,6 +299,12 @@ const loadData = async () => {
   }
 }
 
+const onStatClick = (stage: string) => {
+  query.stage = stage
+  query.page = 1
+  loadData()
+}
+
 const onSearch = () => {
   query.page = 1
   loadData()
@@ -262,14 +318,56 @@ const onReset = () => {
   query.toOwner = ''
   query.page = 1
   query.size = 10
+  clearFilterState()
   loadData()
 }
 
+const { restore: restoreFilterState, clear: clearFilterState } = useFilterStatePersist<HandoverFilterState>({
+  key: 'handover-list',
+  getState: () => ({
+    stage: query.stage,
+    batch: query.batch,
+    type: query.type,
+    fromGroup: query.fromGroup,
+    toOwner: query.toOwner,
+    page: query.page,
+    size: query.size,
+  }),
+  applyState: (state) => {
+    query.stage = state.stage ?? ''
+    query.batch = state.batch ?? ''
+    query.type = state.type ?? ''
+    query.fromGroup = state.fromGroup ?? ''
+    query.toOwner = state.toOwner ?? ''
+    query.page = typeof state.page === 'number' ? state.page : 1
+    query.size = typeof state.size === 'number' ? state.size : 10
+  },
+})
+
 const onAdvanceStage = async (item: HandoverItem) => {
+  if (!canManageHandover.value) {
+    ElMessage.warning('当前账号无交接推进权限')
+    return
+  }
+
   if (advancingId.value === item.id) return
 
   const targetStage = nextStage(item.stage)
   if (!targetStage) return
+
+  try {
+    await ElMessageBox.confirm(
+      `确认将「${item.hospitalName}」从「${item.stage}」推进到「${targetStage}」吗？该操作提交后将立即生效。`,
+      '请确认操作',
+      {
+        confirmButtonText: '确认推进',
+        cancelButtonText: '取消',
+        type: 'warning',
+      },
+    )
+  } catch {
+    return
+  }
 
   advancingId.value = item.id
   try {
@@ -285,6 +383,9 @@ const onAdvanceStage = async (item: HandoverItem) => {
 }
 
 onMounted(async () => {
+  await access.ensureAccessProfileLoaded()
+  restoreFilterState()
+  applyDrillQuery()
   await runInitialLoad({
     tasks: [loadSummary, loadFilterOptions, loadData, loadKanban],
     retryChecks: [
@@ -311,6 +412,11 @@ onMounted(async () => {
   border-radius: 8px;
   min-height: 280px;
   background: var(--el-fill-color-lighter);
+  transition: box-shadow 0.2s ease;
+}
+
+.kanban-col:hover {
+  box-shadow: 0 2px 8px rgba(47, 58, 150, 0.08);
 }
 
 .kanban-col-header {
@@ -332,6 +438,12 @@ onMounted(async () => {
   border: 1px solid var(--el-border-color-lighter);
   border-radius: 6px;
   padding: 8px;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.kanban-item:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(47, 58, 150, 0.08);
 }
 
 .kanban-item-name {

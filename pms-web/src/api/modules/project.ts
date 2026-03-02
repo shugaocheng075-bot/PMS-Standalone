@@ -6,3 +6,21 @@ export function fetchProjectList(params: ProjectQuery) {
     params,
   })
 }
+
+export function batchUpdateProjects(payload: {
+  projectIds: number[]
+  contractStatus?: string
+  groupName?: string
+  salesName?: string
+  maintenancePersonName?: string
+  hospitalLevel?: string
+}) {
+  return request.post<any, ApiResponse<any>>('/projects/batch-update', payload)
+}
+
+export function exportProjects(params: ProjectQuery) {
+  return request.get<any, Blob>('/projects/export', {
+    params,
+    responseType: 'blob',
+  })
+}

@@ -9,13 +9,13 @@
 
     <el-row :gutter="16" class="stats-row">
       <el-col :span="6">
-        <el-card shadow="never" class="stat-card stats-card"><div class="t">提醒</div><div class="v">{{ summary.reminderCount }}</div></el-card>
+        <el-card shadow="never" class="stat-card stats-card clickable" :class="{ active: query.alertLevel === '' }" @click="onStatClick('')"><div class="t">提醒</div><div class="v">{{ summary.reminderCount }}</div></el-card>
       </el-col>
       <el-col :span="6">
-        <el-card shadow="never" class="stat-card stats-card"><div class="t">警告</div><div class="v warning">{{ summary.warningCount }}</div></el-card>
+        <el-card shadow="never" class="stat-card stats-card clickable" :class="{ active: query.alertLevel === '警告' }" @click="onStatClick('警告')"><div class="t">警告</div><div class="v warning">{{ summary.warningCount }}</div></el-card>
       </el-col>
       <el-col :span="6">
-        <el-card shadow="never" class="stat-card stats-card"><div class="t">严重</div><div class="v danger">{{ summary.criticalCount }}</div></el-card>
+        <el-card shadow="never" class="stat-card stats-card clickable" :class="{ active: query.alertLevel === '严重' }" @click="onStatClick('严重')"><div class="t">严重</div><div class="v danger">{{ summary.criticalCount }}</div></el-card>
       </el-col>
       <el-col :span="6">
         <el-card shadow="never" class="stat-card stats-card"><div class="t">全部</div><div class="v">{{ summary.total }}</div></el-card>
@@ -23,12 +23,10 @@
     </el-row>
 
     <el-card shadow="never" class="filter-card">
-      <el-form :model="query" inline>
+      <el-form :model="query" inline class="filter-form" @submit.prevent="onSearch">
         <el-form-item label="预警级别">
           <el-select v-model="query.alertLevel" placeholder="全部" clearable style="width: 140px">
-            <el-option label="提醒" value="提醒" />
-            <el-option label="警告" value="警告" />
-            <el-option label="严重" value="严重" />
+            <el-option v-for="level in alertLevelOptions" :key="level" :label="level" :value="level" />
           </el-select>
         </el-form-item>
         <el-form-item label="省份">
@@ -41,7 +39,10 @@
             <el-option v-for="group in filteredGroupOptions" :key="group" :label="group" :value="group" />
           </el-select>
         </el-form-item>
-        <el-form-item>
+        <el-form-item label="销售">
+          <el-input v-model="query.salesName" placeholder="请输入销售" clearable style="width: 160px" @keyup.enter="onSearch" />
+        </el-form-item>
+        <el-form-item class="filter-actions">
           <el-button type="primary" @click="onSearch">查询</el-button>
           <el-button @click="onReset">重置</el-button>
         </el-form-item>
@@ -49,14 +50,19 @@
     </el-card>
 
     <el-card shadow="never" class="table-card">
-      <el-table :data="tableData" v-loading="loading" stripe>
-        <el-table-column prop="hospitalName" label="医院" min-width="220" show-overflow-tooltip />
+      <el-table :data="tableData" v-loading="loading" stripe empty-text="暂无符合条件的数据">
+        <el-table-column prop="hospitalName" label="医院" min-width="220" show-overflow-tooltip sortable />
         <el-table-column prop="province" label="省份" width="100" show-overflow-tooltip />
         <el-table-column prop="groupName" label="组别" width="120" show-overflow-tooltip />
+        <el-table-column prop="salesName" label="销售" width="120" show-overflow-tooltip />
         <el-table-column prop="contractStatus" label="合同状态" min-width="170" show-overflow-tooltip />
-        <el-table-column prop="maintenanceAmount" label="维护金额(万)" width="130" align="right" />
-        <el-table-column prop="overdueDays" label="超期天数" width="110" align="right" />
-        <el-table-column prop="alertLevel" label="预警级别" width="120">
+        <el-table-column prop="maintenanceAmount" label="维护金额(万)" width="130" align="right" sortable />
+        <el-table-column prop="overdueDays" label="超期天数" width="120" align="right" sortable>
+          <template #default="scope">
+            <span :class="overdueDaysClass(scope.row.overdueDays)">超期{{ scope.row.overdueDays }}天</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="alertLevel" label="预警级别" width="120" sortable>
           <template #default="scope">
             <el-tag :type="tagType(scope.row.alertLevel)">{{ scope.row.alertLevel }}</el-tag>
           </template>
@@ -81,11 +87,13 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
+import { useRoute } from 'vue-router'
 import { fetchContractAlerts, fetchContractAlertSummary } from '../../api/modules/contract'
 import type { ContractAlertItem, ContractAlertSummary } from '../../types/contract'
 import { useResilientLoad } from '../../composables/useResilientLoad'
 import { getErrorMessage } from '../../utils/error'
 import { GROUP_OPTIONS, PROVINCE_OPTIONS } from '../../constants/filterOptions'
+import { useFilterStatePersist } from '../../composables/useFilterStatePersist'
 import { useLinkedRealtimeRefresh } from '../../composables/useLinkedRealtimeRefresh'
 
 const loading = ref(false)
@@ -97,10 +105,44 @@ const query = reactive({
   alertLevel: '',
   province: '',
   groupName: '',
+  salesName: '',
   page: 1,
   size: 10,
 })
+const route = useRoute()
 
+const readRouteQueryValue = (value: unknown): string => {
+  if (typeof value === 'string') {
+    return value
+  }
+
+  if (Array.isArray(value) && typeof value[0] === 'string') {
+    return value[0]
+  }
+
+  return ''
+}
+
+const applyDrillQuery = () => {
+  const alertLevel = readRouteQueryValue(route.query.alertLevel)
+  if (!alertLevel) {
+    return
+  }
+
+  query.alertLevel = alertLevel
+  query.page = 1
+}
+
+type ContractFilterState = {
+  alertLevel: string
+  province: string
+  groupName: string
+  salesName: string
+  page: number
+  size: number
+}
+
+const alertLevelOptions = ref<string[]>(['提醒', '警告', '严重'])
 const provinceOptions = ref<string[]>([...PROVINCE_OPTIONS])
 const groupOptionsByProvince = ref<Record<string, string[]>>({})
 
@@ -129,16 +171,21 @@ watch(
 
 const loadFilterOptions = async () => {
   try {
-    const res = await fetchContractAlerts({ page: 1, size: 200 })
+    const res = await fetchContractAlerts({ page: 1, size: 5000 })
     const items = res.data.items
 
     if (!items.length) {
       return
     }
 
-    const provinces = Array.from(new Set(items.map((item) => item.province).filter(Boolean)))
+    const provinces = Array.from(new Set(items.map((item) => item.province).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'zh-CN'))
     if (provinces.length > 0) {
       provinceOptions.value = provinces
+    }
+
+    const alertLevels = Array.from(new Set(items.map((item) => item.alertLevel).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'zh-CN'))
+    if (alertLevels.length > 0) {
+      alertLevelOptions.value = Array.from(new Set([...alertLevelOptions.value, ...alertLevels]))
     }
 
     const map: Record<string, string[]> = {}
@@ -154,7 +201,9 @@ const loadFilterOptions = async () => {
       }
     }
 
-    groupOptionsByProvince.value = map
+    groupOptionsByProvince.value = Object.fromEntries(
+      Object.entries(map).map(([province, groups]) => [province, groups.sort((a, b) => a.localeCompare(b, 'zh-CN'))]),
+    )
   } catch {
   }
 }
@@ -164,6 +213,18 @@ const tagType = (level: string) => {
   if (level === '严重') return 'danger'
   if (level === '警告') return 'warning'
   return 'info'
+}
+
+const overdueDaysClass = (overdueDays: number) => {
+  if (overdueDays > 90) {
+    return 'text-danger'
+  }
+
+  if (overdueDays >= 30) {
+    return 'text-warning'
+  }
+
+  return 'text-info'
 }
 
 const loadSummary = async () => {
@@ -190,6 +251,12 @@ const loadData = async () => {
   }
 }
 
+const onStatClick = (alertLevel: string) => {
+  query.alertLevel = alertLevel
+  query.page = 1
+  loadData()
+}
+
 const onSearch = () => {
   query.page = 1
   loadData()
@@ -199,10 +266,32 @@ const onReset = () => {
   query.alertLevel = ''
   query.province = ''
   query.groupName = ''
+  query.salesName = ''
   query.page = 1
   query.size = 10
+  clearFilterState()
   loadData()
 }
+
+const { restore: restoreFilterState, clear: clearFilterState } = useFilterStatePersist<ContractFilterState>({
+  key: 'contract-alert',
+  getState: () => ({
+    alertLevel: query.alertLevel,
+    province: query.province,
+    groupName: query.groupName,
+    salesName: query.salesName,
+    page: query.page,
+    size: query.size,
+  }),
+  applyState: (state) => {
+    query.alertLevel = state.alertLevel ?? ''
+    query.province = state.province ?? ''
+    query.groupName = state.groupName ?? ''
+    query.salesName = state.salesName ?? ''
+    query.page = typeof state.page === 'number' ? state.page : 1
+    query.size = typeof state.size === 'number' ? state.size : 10
+  },
+})
 
 const refreshLinkedData = async () => {
   await Promise.allSettled([loadSummary(), loadFilterOptions(), loadData()])
@@ -215,6 +304,8 @@ useLinkedRealtimeRefresh({
 })
 
 onMounted(async () => {
+  restoreFilterState()
+  applyDrillQuery()
   await runInitialLoad({
     tasks: [loadSummary, loadFilterOptions, loadData],
     retryChecks: [

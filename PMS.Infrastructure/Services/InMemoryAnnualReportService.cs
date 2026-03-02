@@ -28,16 +28,16 @@ public class InMemoryAnnualReportService : IAnnualReportService
         IEnumerable<AnnualReportItemDto> filtered = BuildSeed();
 
         if (!string.IsNullOrWhiteSpace(query.Status))
-            filtered = filtered.Where(x => x.Status == query.Status);
+            filtered = filtered.Where(x => SmartTextMatcher.MatchExact(x.Status, query.Status));
 
         if (query.ReportYear.HasValue)
             filtered = filtered.Where(x => x.ReportYear == query.ReportYear.Value);
 
         if (!string.IsNullOrWhiteSpace(query.GroupName))
-            filtered = filtered.Where(x => x.GroupName.Contains(query.GroupName, StringComparison.OrdinalIgnoreCase));
+            filtered = filtered.Where(x => SmartTextMatcher.Match(x.GroupName, query.GroupName));
 
         if (!string.IsNullOrWhiteSpace(query.ServicePerson))
-            filtered = filtered.Where(x => x.ServicePerson.Contains(query.ServicePerson, StringComparison.OrdinalIgnoreCase));
+            filtered = filtered.Where(x => SmartTextMatcher.Match(x.ServicePerson, query.ServicePerson));
 
         var total = filtered.Count();
         var page = query.Page < 1 ? 1 : query.Page;
@@ -62,7 +62,6 @@ public class InMemoryAnnualReportService : IAnnualReportService
     private static List<AnnualReportItemDto> BuildSeed()
     {
         var statuses = new[] { "编写中", "已提交", "未开始", "已完成" };
-        var servicePeople = new[] { "张三", "李四", "王五", "赵六", "钱七", "孙八", "周九", "吴十" };
         var currentYear = DateTime.Today.Year;
 
         return InMemoryProjectDataStore.Projects
@@ -71,6 +70,9 @@ public class InMemoryAnnualReportService : IAnnualReportService
             {
                 var status = statuses[index % statuses.Length];
                 var reportYear = index % 3 == 0 ? currentYear - 1 : currentYear;
+                var servicePerson = string.IsNullOrWhiteSpace(project.MaintenancePersonName)
+                    ? "未分配"
+                    : project.MaintenancePersonName.Trim();
 
                 return new AnnualReportItemDto
                 {
@@ -78,7 +80,7 @@ public class InMemoryAnnualReportService : IAnnualReportService
                     HospitalName = project.HospitalName,
                     Province = project.Province,
                     GroupName = project.GroupName,
-                    ServicePerson = servicePeople[index % servicePeople.Length],
+                    ServicePerson = servicePerson,
                     ReportYear = reportYear,
                     Status = status,
                     SubmitDate = status is "已提交" or "已完成" ? DateTime.Today.AddDays(-(index + 1) * 3) : null

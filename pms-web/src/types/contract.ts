@@ -3,6 +3,7 @@ export interface ContractAlertItem {
   hospitalName: string
   province: string
   groupName: string
+  salesName: string
   contractStatus: string
   maintenanceAmount: number
   overdueDays: number
@@ -20,6 +21,7 @@ export interface ContractAlertQuery {
   alertLevel?: string
   province?: string
   groupName?: string
+  salesName?: string
   page?: number
   size?: number
 }

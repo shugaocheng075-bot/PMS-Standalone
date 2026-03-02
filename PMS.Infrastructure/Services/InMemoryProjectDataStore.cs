@@ -42,6 +42,10 @@ public static class InMemoryProjectDataStore
                         ProductName = x.ProductName,
                         Province = x.Province,
                         GroupName = x.GroupName,
+                        SalesName = x.SalesName,
+                        MaintenancePersonName = x.MaintenancePersonName,
+                        AfterSalesStartDate = x.AfterSalesStartDate,
+                        AfterSalesEndDate = x.AfterSalesEndDate,
                         HospitalLevel = x.HospitalLevel,
                         ContractStatus = x.ContractStatus,
                         MaintenanceAmount = x.MaintenanceAmount,
@@ -147,6 +151,93 @@ public static class InMemoryProjectDataStore
         }
     }
 
+    public static int BatchUpdateProjects(
+        IReadOnlyCollection<long> projectIds,
+        string? contractStatus,
+        string? groupName,
+        string? salesName,
+        string? maintenancePersonName,
+        string? hospitalLevel)
+    {
+        if (projectIds.Count == 0)
+        {
+            return 0;
+        }
+
+        lock (SyncRoot)
+        {
+            var idSet = projectIds.ToHashSet();
+            var affected = 0;
+
+            foreach (var item in ProjectsInternal.Where(x => idSet.Contains(x.Id)))
+            {
+                var changed = false;
+
+                if (!string.IsNullOrWhiteSpace(contractStatus))
+                {
+                    var normalizedContractStatus = NormalizeContractStatus(contractStatus);
+                    if (!string.Equals(item.ContractStatus, normalizedContractStatus, StringComparison.Ordinal))
+                    {
+                        item.ContractStatus = normalizedContractStatus;
+                        changed = true;
+                    }
+                }
+
+                if (!string.IsNullOrWhiteSpace(groupName))
+                {
+                    var normalizedGroupName = groupName.Trim();
+                    if (!string.Equals(item.GroupName, normalizedGroupName, StringComparison.Ordinal))
+                    {
+                        item.GroupName = normalizedGroupName;
+                        changed = true;
+                    }
+                }
+
+                if (!string.IsNullOrWhiteSpace(salesName))
+                {
+                    var normalizedSalesName = NormalizeSalesName(salesName);
+                    if (!string.Equals(item.SalesName, normalizedSalesName, StringComparison.Ordinal))
+                    {
+                        item.SalesName = normalizedSalesName;
+                        changed = true;
+                    }
+                }
+
+                if (!string.IsNullOrWhiteSpace(maintenancePersonName))
+                {
+                    var normalizedMaintenancePersonName = NormalizeMaintenancePersonName(maintenancePersonName);
+                    if (!string.Equals(item.MaintenancePersonName, normalizedMaintenancePersonName, StringComparison.Ordinal))
+                    {
+                        item.MaintenancePersonName = normalizedMaintenancePersonName;
+                        changed = true;
+                    }
+                }
+
+                if (!string.IsNullOrWhiteSpace(hospitalLevel))
+                {
+                    var normalizedHospitalLevel = NormalizeHospitalLevel(hospitalLevel);
+                    if (!string.Equals(item.HospitalLevel, normalizedHospitalLevel, StringComparison.Ordinal))
+                    {
+                        item.HospitalLevel = normalizedHospitalLevel;
+                        changed = true;
+                    }
+                }
+
+                if (changed)
+                {
+                    affected++;
+                }
+            }
+
+            if (affected > 0)
+            {
+                Persist();
+            }
+
+            return affected;
+        }
+    }
+
     public static int ReassignHospitalProductOwner(string hospitalName, string productName, string groupName)
     {
         if (string.IsNullOrWhiteSpace(hospitalName) || string.IsNullOrWhiteSpace(productName) || string.IsNullOrWhiteSpace(groupName))
@@ -221,6 +312,10 @@ public static class InMemoryProjectDataStore
                     ProductName = project.ProductName,
                 Province = project.Province,
                 GroupName = project.GroupName,
+                    SalesName = project.SalesName,
+                MaintenancePersonName = project.MaintenancePersonName,
+                AfterSalesStartDate = project.AfterSalesStartDate,
+                AfterSalesEndDate = project.AfterSalesEndDate,
                     HospitalLevel = project.HospitalLevel,
                 ContractStatus = project.ContractStatus,
                 MaintenanceAmount = project.MaintenanceAmount,
@@ -237,6 +332,7 @@ public static class InMemoryProjectDataStore
     {
         var sourceList = source.ToList();
         var cleaned = new List<ProjectEntity>();
+        var validRawCount = 0;
         var hospitalCanonicalMap = BuildHospitalCanonicalMap(sourceList);
         var validProvinces = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
@@ -265,28 +361,41 @@ public static class InMemoryProjectDataStore
             }
 
             var groupName = string.IsNullOrWhiteSpace(raw.GroupName) ? "未分组" : raw.GroupName.Trim();
-            var productName = NormalizeProductName(raw.ProductName);
-            if (string.IsNullOrWhiteSpace(productName))
+            var salesName = NormalizeSalesName(raw.SalesName);
+            var maintenancePersonName = NormalizeMaintenancePersonName(raw.MaintenancePersonName);
+            var afterSalesStartDate = NormalizeDateText(raw.AfterSalesStartDate);
+            var afterSalesEndDate = NormalizeDateText(raw.AfterSalesEndDate);
+            var productNames = NormalizeProductNames(raw.ProductName);
+            if (productNames.Count == 0)
             {
                 continue;
             }
+
+            validRawCount++;
 
             var hospitalLevel = NormalizeHospitalLevel(raw.HospitalLevel);
             var contractStatus = NormalizeContractStatus(raw.ContractStatus);
             var overdueDays = Math.Clamp(raw.OverdueDays, 0, 3650);
             var amount = raw.MaintenanceAmount < 0 ? 0 : Math.Min(raw.MaintenanceAmount, 2000m);
 
-            cleaned.Add(new ProjectEntity
+            foreach (var productName in productNames)
             {
-                HospitalName = hospitalName,
-                ProductName = productName,
-                Province = province,
-                GroupName = groupName,
-                HospitalLevel = hospitalLevel,
-                ContractStatus = contractStatus,
-                MaintenanceAmount = amount,
-                OverdueDays = overdueDays
-            });
+                cleaned.Add(new ProjectEntity
+                {
+                    HospitalName = hospitalName,
+                    ProductName = productName,
+                    Province = province,
+                    GroupName = groupName,
+                    SalesName = salesName,
+                    MaintenancePersonName = maintenancePersonName,
+                    AfterSalesStartDate = afterSalesStartDate,
+                    AfterSalesEndDate = afterSalesEndDate,
+                    HospitalLevel = hospitalLevel,
+                    ContractStatus = contractStatus,
+                    MaintenanceAmount = amount,
+                    OverdueDays = overdueDays
+                });
+            }
         }
 
         var grouped = cleaned
@@ -300,7 +409,7 @@ public static class InMemoryProjectDataStore
         {
             InputCount = sourceList.Count,
             KeptCount = grouped.Count,
-            RemovedInvalidCount = sourceList.Count - cleaned.Count,
+            RemovedInvalidCount = sourceList.Count - validRawCount,
             DeduplicatedCount = cleaned.Count - grouped.Count
         };
 
@@ -333,6 +442,34 @@ public static class InMemoryProjectDataStore
             .Select(g => g.Key)
             .FirstOrDefault() ?? "未评级";
 
+        var salesName = rows
+            .Where(x => !string.IsNullOrWhiteSpace(x.SalesName))
+            .GroupBy(x => x.SalesName)
+            .OrderByDescending(g => g.Count())
+            .ThenBy(g => g.Key)
+            .Select(g => g.Key)
+            .FirstOrDefault() ?? "未知";
+
+        var maintenancePersonName = rows
+            .Where(x => !string.IsNullOrWhiteSpace(x.MaintenancePersonName))
+            .GroupBy(x => x.MaintenancePersonName)
+            .OrderByDescending(g => g.Count())
+            .ThenBy(g => g.Key)
+            .Select(g => g.Key)
+            .FirstOrDefault() ?? "未知";
+
+        var afterSalesStartDate = rows
+            .Select(x => x.AfterSalesStartDate)
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .OrderBy(x => x, StringComparer.Ordinal)
+            .FirstOrDefault() ?? string.Empty;
+
+        var afterSalesEndDate = rows
+            .Select(x => x.AfterSalesEndDate)
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .OrderByDescending(x => x, StringComparer.Ordinal)
+            .FirstOrDefault() ?? string.Empty;
+
         var status = rows
             .Select(x => x.ContractStatus)
             .OrderByDescending(GetStatusPriority)
@@ -344,6 +481,10 @@ public static class InMemoryProjectDataStore
             ProductName = rows[0].ProductName,
             Province = province,
             GroupName = groupName,
+            SalesName = salesName,
+            MaintenancePersonName = maintenancePersonName,
+            AfterSalesStartDate = afterSalesStartDate,
+            AfterSalesEndDate = afterSalesEndDate,
             HospitalLevel = hospitalLevel,
             ContractStatus = status,
             MaintenanceAmount = rows.Max(x => x.MaintenanceAmount),
@@ -510,7 +651,11 @@ public static class InMemoryProjectDataStore
         if (string.IsNullOrWhiteSpace(status)) return "未知";
 
         var value = status.Trim();
-        if (value.Contains("超期", StringComparison.OrdinalIgnoreCase)) return "超期未签署";
+        if (value.Contains("超期", StringComparison.OrdinalIgnoreCase)
+            || value.Contains("到期", StringComparison.OrdinalIgnoreCase)
+            || value.Contains("过期", StringComparison.OrdinalIgnoreCase)
+            || value.Contains("停保", StringComparison.OrdinalIgnoreCase)
+            || value.Contains("脱保", StringComparison.OrdinalIgnoreCase)) return "超期未签署";
         if (value.Contains("停止", StringComparison.OrdinalIgnoreCase)) return "停止维护";
         if (value.Contains("免费", StringComparison.OrdinalIgnoreCase)) return "免费维护期";
         if (value.Contains("签署", StringComparison.OrdinalIgnoreCase) || value.Contains("签订", StringComparison.OrdinalIgnoreCase)) return "合同已签署";
@@ -518,11 +663,11 @@ public static class InMemoryProjectDataStore
         return "未知";
     }
 
-    private static string NormalizeProductName(string? productName)
+    private static List<string> NormalizeProductNames(string? productName)
     {
         if (string.IsNullOrWhiteSpace(productName))
         {
-            return "通用产品";
+            return ["通用产品"];
         }
 
         var normalizedRaw = productName
@@ -542,15 +687,25 @@ public static class InMemoryProjectDataStore
 
         if (tokens.Count == 0)
         {
+            return ["通用产品"];
+        }
+
+        return tokens
+            .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static string NormalizeProductName(string? productName)
+    {
+        var products = NormalizeProductNames(productName);
+        if (products.Count == 0)
+        {
             return "通用产品";
         }
 
-        if (tokens.Count == 1)
-        {
-            return tokens[0];
-        }
-
-        return string.Join("、", tokens.OrderBy(x => x, StringComparer.OrdinalIgnoreCase));
+        return products.Count == 1
+            ? products[0]
+            : string.Join("、", products);
     }
 
     private static string NormalizeProductToken(string rawToken)
@@ -700,20 +855,88 @@ public static class InMemoryProjectDataStore
         return value;
     }
 
+    private static string NormalizeSalesName(string? salesName)
+    {
+        if (string.IsNullOrWhiteSpace(salesName))
+        {
+            return "未知";
+        }
+
+        var normalized = salesName
+            .Trim()
+            .Replace("，", "、", StringComparison.Ordinal)
+            .Replace(",", "、", StringComparison.Ordinal)
+            .Replace("/", "、", StringComparison.Ordinal)
+            .Replace(" ", string.Empty, StringComparison.Ordinal);
+
+        if (string.IsNullOrWhiteSpace(normalized))
+        {
+            return "未知";
+        }
+
+        return normalized;
+    }
+
+    private static string NormalizeMaintenancePersonName(string? maintenancePersonName)
+    {
+        if (string.IsNullOrWhiteSpace(maintenancePersonName))
+        {
+            return "未知";
+        }
+
+        var normalized = maintenancePersonName
+            .Trim()
+            .Replace("，", "、", StringComparison.Ordinal)
+            .Replace(",", "、", StringComparison.Ordinal)
+            .Replace("/", "、", StringComparison.Ordinal)
+            .Replace(" ", string.Empty, StringComparison.Ordinal);
+
+        return string.IsNullOrWhiteSpace(normalized) ? "未知" : normalized;
+    }
+
+    private static string NormalizeDateText(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return string.Empty;
+        }
+
+        var text = raw.Trim();
+        var formats = new[]
+        {
+            "yyyy/M/d", "yyyy/MM/dd", "yyyy-M-d", "yyyy-MM-dd"
+        };
+
+        foreach (var format in formats)
+        {
+            if (DateTime.TryParseExact(text, format, null, System.Globalization.DateTimeStyles.None, out var dt))
+            {
+                return dt.ToString("yyyy-MM-dd");
+            }
+        }
+
+        if (DateTime.TryParse(text, out var date))
+        {
+            return date.ToString("yyyy-MM-dd");
+        }
+
+        return text;
+    }
+
     private static List<ProjectEntity> BuildSeedData()
     {
         return
         [
             new() { Id = 1, HospitalName = "北京协和医院", ProductName = "住院电子病历V6", Province = "北京", GroupName = "何道飞", HospitalLevel = "三级", ContractStatus = "合同已签署", MaintenanceAmount = 28.5m, OverdueDays = 0 },
-            new() { Id = 2, HospitalName = "南京鼓楼医院", ProductName = "临床路径V6", Province = "江苏", GroupName = "张茹", HospitalLevel = "三级", ContractStatus = "超期未签署", MaintenanceAmount = 18m, OverdueDays = 132 },
-            new() { Id = 3, HospitalName = "四川省人民医院", ProductName = "CDSS", Province = "四川", GroupName = "李贝", HospitalLevel = "三级", ContractStatus = "免费维护期", MaintenanceAmount = 12m, OverdueDays = 0 },
-            new() { Id = 4, HospitalName = "中南大学湘雅医院", ProductName = "病案归档", Province = "湖南", GroupName = "舒高成", HospitalLevel = "三级", ContractStatus = "维护合同已签署", MaintenanceAmount = 22m, OverdueDays = 0 },
-            new() { Id = 5, HospitalName = "西安交通大学第一附属医院", ProductName = "AI内涵质控", Province = "陕西", GroupName = "陈宇", HospitalLevel = "三级", ContractStatus = "维护超期未签署", MaintenanceAmount = 15m, OverdueDays = 45 },
-            new() { Id = 6, HospitalName = "复旦大学附属中山医院", ProductName = "住院电子病历V6", Province = "上海", GroupName = "王可可", HospitalLevel = "三级", ContractStatus = "合同已签署", MaintenanceAmount = 25m, OverdueDays = 0 },
-            new() { Id = 7, HospitalName = "广东省人民医院", ProductName = "临床路径V6", Province = "广东", GroupName = "唐广才", HospitalLevel = "三级", ContractStatus = "停止维护", MaintenanceAmount = 8m, OverdueDays = 0 },
-            new() { Id = 8, HospitalName = "重庆医科大学附属第一医院", ProductName = "CDSS", Province = "重庆", GroupName = "张浩阳", HospitalLevel = "三级", ContractStatus = "超期未签署", MaintenanceAmount = 16m, OverdueDays = 210 },
-            new() { Id = 9, HospitalName = "福建省立医院", ProductName = "病案归档", Province = "福建", GroupName = "姚云龙", HospitalLevel = "三级", ContractStatus = "超期未签署", MaintenanceAmount = 19m, OverdueDays = 76 },
-            new() { Id = 10, HospitalName = "河南省人民医院", ProductName = "AI内涵质控", Province = "河南", GroupName = "孙强", HospitalLevel = "二级", ContractStatus = "超期未签署", MaintenanceAmount = 14m, OverdueDays = 12 }
+            new() { Id = 2, HospitalName = "南京鼓楼医院", ProductName = "临床路径V6", Province = "江苏", GroupName = "张茹", SalesName = "未知", HospitalLevel = "三级", ContractStatus = "超期未签署", MaintenanceAmount = 18m, OverdueDays = 132 },
+            new() { Id = 3, HospitalName = "四川省人民医院", ProductName = "CDSS", Province = "四川", GroupName = "李贝", SalesName = "未知", HospitalLevel = "三级", ContractStatus = "免费维护期", MaintenanceAmount = 12m, OverdueDays = 0 },
+            new() { Id = 4, HospitalName = "中南大学湘雅医院", ProductName = "病案归档", Province = "湖南", GroupName = "舒高成", SalesName = "未知", HospitalLevel = "三级", ContractStatus = "维护合同已签署", MaintenanceAmount = 22m, OverdueDays = 0 },
+            new() { Id = 5, HospitalName = "西安交通大学第一附属医院", ProductName = "AI内涵质控", Province = "陕西", GroupName = "陈宇", SalesName = "未知", HospitalLevel = "三级", ContractStatus = "维护超期未签署", MaintenanceAmount = 15m, OverdueDays = 45 },
+            new() { Id = 6, HospitalName = "复旦大学附属中山医院", ProductName = "住院电子病历V6", Province = "上海", GroupName = "王可可", SalesName = "未知", HospitalLevel = "三级", ContractStatus = "合同已签署", MaintenanceAmount = 25m, OverdueDays = 0 },
+            new() { Id = 7, HospitalName = "广东省人民医院", ProductName = "临床路径V6", Province = "广东", GroupName = "唐广才", SalesName = "未知", HospitalLevel = "三级", ContractStatus = "停止维护", MaintenanceAmount = 8m, OverdueDays = 0 },
+            new() { Id = 8, HospitalName = "重庆医科大学附属第一医院", ProductName = "CDSS", Province = "重庆", GroupName = "张浩阳", SalesName = "未知", HospitalLevel = "三级", ContractStatus = "超期未签署", MaintenanceAmount = 16m, OverdueDays = 210 },
+            new() { Id = 9, HospitalName = "福建省立医院", ProductName = "病案归档", Province = "福建", GroupName = "姚云龙", SalesName = "未知", HospitalLevel = "三级", ContractStatus = "超期未签署", MaintenanceAmount = 19m, OverdueDays = 76 },
+            new() { Id = 10, HospitalName = "河南省人民医院", ProductName = "AI内涵质控", Province = "河南", GroupName = "孙强", SalesName = "未知", HospitalLevel = "二级", ContractStatus = "超期未签署", MaintenanceAmount = 14m, OverdueDays = 12 }
         ];
     }
 }

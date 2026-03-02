@@ -4,6 +4,10 @@ export interface ProjectItem {
   productName: string
   province: string
   groupName: string
+  salesName: string
+  maintenancePersonName: string
+  afterSalesStartDate: string
+  afterSalesEndDate: string
   hospitalLevel: string
   contractStatus: string
   maintenanceAmount: number
@@ -15,6 +19,10 @@ export interface ProjectQuery {
   productName?: string
   province?: string
   groupName?: string
+  salesName?: string
+  maintenancePersonName?: string
+  afterSalesEndDateFrom?: string
+  afterSalesEndDateTo?: string
   hospitalLevel?: string
   contractStatus?: string
   page?: number

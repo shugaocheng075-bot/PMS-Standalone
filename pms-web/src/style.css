@@ -108,8 +108,286 @@ body {
   font-weight: 600;
 }
 
+.table-card .el-table .el-table__body-wrapper {
+  max-height: min(56vh, 520px);
+  overflow: auto;
+}
+
 .pager {
   margin-top: 16px;
   display: flex;
   justify-content: flex-end;
+}
+
+.pager .el-pagination {
+  padding: 8px 10px;
+  border: 1px solid var(--el-border-color-light);
+  border-radius: 10px;
+  background: var(--el-bg-color);
+  box-shadow: 0 1px 2px rgba(24, 41, 88, 0.04);
+}
+
+.pager .el-pagination__total,
+.pager .el-pagination__jump {
+  color: var(--el-text-color-secondary);
+}
+
+.pager .el-pagination .btn-prev,
+.pager .el-pagination .btn-next,
+.pager .el-pagination .el-pager li {
+  min-width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  transition: color 0.2s ease, background-color 0.2s ease;
+}
+
+.pager .el-pagination .btn-prev,
+.pager .el-pagination .btn-next {
+  color: var(--el-text-color-regular);
+}
+
+.pager .el-pagination .el-pager li {
+  color: var(--el-text-color-regular);
+}
+
+.pager .el-pagination .el-pager li.is-active {
+  background: var(--el-color-primary-light-9);
+  color: var(--el-color-primary);
+  font-weight: 700;
+}
+
+.pager .el-pagination .el-pager li:not(.is-active):hover,
+.pager .el-pagination .btn-prev:hover,
+.pager .el-pagination .btn-next:hover {
+  background: var(--el-fill-color-light);
+  color: var(--el-color-primary);
+}
+
+.pager .el-pagination .el-pagination__sizes .el-select .el-input__wrapper {
+  border-radius: 8px;
+}
+
+.filter-card .filter-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 0;
+}
+
+.filter-card .filter-actions {
+  margin-left: auto;
+}
+
+.filter-card .filter-actions .el-form-item__content {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 1200px) {
+  .page-title {
+    font-size: 17px;
+  }
+
+  .stat-card .v {
+    font-size: 22px;
+  }
+}
+
+@media (max-width: 992px) {
+  .page-head {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .filter-card .el-card__body,
+  .table-card .el-card__body,
+  .stats-card .el-card__body {
+    padding: 12px;
+  }
+
+  .stats-row {
+    margin-bottom: 0;
+  }
+
+  .stats-row .el-col {
+    width: 50% !important;
+    max-width: 50% !important;
+    flex: 0 0 50% !important;
+  }
+
+  .filter-card .filter-actions {
+    margin-left: 0;
+  }
+
+  .pager {
+    justify-content: center;
+  }
+}
+
+@media (max-width: 768px) {
+  .page-shell {
+    gap: 10px;
+  }
+
+  .page-title {
+    font-size: 16px;
+  }
+
+  .page-subtitle {
+    margin-top: 2px;
+    font-size: 11px;
+  }
+
+  .filter-card .filter-form {
+    gap: 6px 0;
+  }
+
+  .filter-card .el-form-item {
+    width: 100%;
+    margin-right: 0;
+    margin-bottom: 8px;
+  }
+
+  .filter-card .el-form-item .el-select,
+  .filter-card .el-form-item .el-input,
+  .filter-card .el-form-item .el-date-editor,
+  .filter-card .el-form-item .el-input-number {
+    width: 100% !important;
+  }
+
+  .filter-card .filter-actions .el-form-item__content {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .table-card .el-table__inner-wrapper {
+    min-width: 760px;
+  }
+
+  .pager .el-pagination {
+    width: 100%;
+    justify-content: center;
+    flex-wrap: wrap;
+    row-gap: 8px;
+  }
+}
+
+@media (max-width: 576px) {
+  .stats-row .el-col {
+    width: 100% !important;
+    max-width: 100% !important;
+    flex: 0 0 100% !important;
+  }
+
+  .stat-card .v {
+    font-size: 20px;
+  }
+
+  .pager .el-pagination {
+    padding: 8px;
+  }
+}
+
+/* ─── Clickable stat cards ─── */
+.stat-card.clickable {
+  cursor: pointer;
+  user-select: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.15s ease;
+}
+
+.stat-card.clickable:hover {
+  box-shadow: 0 2px 8px rgba(47, 58, 150, 0.10);
+}
+
+.stat-card.clickable:active {
+  transform: scale(0.97);
+}
+
+.stat-card.clickable.active {
+  border-color: var(--el-color-primary);
+  background: var(--el-color-primary-light-9);
+}
+
+/* ─── Tabular nums for stat values ─── */
+.stat-card .v {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ─── Table row hover transition ─── */
+.table-card .el-table .el-table__row {
+  transition: background-color 0.15s ease;
+}
+
+/* ─── Dialog polish ─── */
+.el-dialog {
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.el-dialog__header {
+  border-bottom: 1px solid #eef2fb;
+  padding: 16px 20px 12px !important;
+  margin-right: 0 !important;
+}
+
+.el-dialog__body {
+  padding: 20px !important;
+}
+
+.el-dialog__footer {
+  border-top: 1px solid #eef2fb;
+  padding: 12px 20px 16px !important;
+}
+
+.el-dialog__title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #2a3767;
+}
+
+/* ─── Descriptions detail panel ─── */
+.el-descriptions {
+  --el-descriptions-item-bordered-label-background: #f5f7fc;
+}
+
+/* ─── Status text utilities ─── */
+.text-danger {
+  color: var(--el-color-danger);
+  font-weight: 700;
+}
+
+.text-warning {
+  color: var(--el-color-warning);
+  font-weight: 600;
+}
+
+.text-success {
+  color: var(--el-color-success);
+}
+
+.text-info {
+  color: var(--el-color-info);
+}
+
+/* ─── Tag refinement ─── */
+.el-tag {
+  border-radius: 4px;
+}
+
+/* ─── Improved empty state ─── */
+.el-table__empty-text {
+  padding: 40px 0 !important;
+  font-size: 13px;
+}
+
+/* ─── Sortable column header cursor ─── */
+.el-table .el-table__header th.is-sortable {
+  cursor: pointer;
+}
+
+.el-table .el-table__header th.is-sortable:hover {
+  background: #e8edf8;
 }

@@ -5,36 +5,30 @@
         <h2 class="page-title">产品管理</h2>
         <div class="page-subtitle">产品字典维护与部署统计管理</div>
       </div>
-      <el-button type="primary" @click="onOpenCreate">新增产品</el-button>
+      <el-button v-if="canManageProduct" type="primary" @click="onOpenCreate">新增产品</el-button>
     </div>
 
     <el-row :gutter="16" class="stats-row">
-      <el-col :span="6"><el-card shadow="never" class="stat-card stats-card"><div class="t">产品总数</div><div class="v">{{ summary.total }}</div></el-card></el-col>
-      <el-col :span="6"><el-card shadow="never" class="stat-card stats-card"><div class="t">运行中</div><div class="v success">{{ summary.activeCount }}</div></el-card></el-col>
-      <el-col :span="6"><el-card shadow="never" class="stat-card stats-card"><div class="t">试运行</div><div class="v warning">{{ summary.pilotCount }}</div></el-card></el-col>
-      <el-col :span="6"><el-card shadow="never" class="stat-card stats-card"><div class="t">已停用</div><div class="v danger">{{ summary.retiredCount }}</div></el-card></el-col>
+      <el-col :span="6"><el-card shadow="never" class="stat-card stats-card clickable" :class="{ active: query.status === '' }" @click="onStatClick('')"><div class="t">产品总数</div><div class="v">{{ summary.total }}</div></el-card></el-col>
+      <el-col :span="6"><el-card shadow="never" class="stat-card stats-card clickable" :class="{ active: query.status === '运行中' }" @click="onStatClick('运行中')"><div class="t">运行中</div><div class="v success">{{ summary.activeCount }}</div></el-card></el-col>
+      <el-col :span="6"><el-card shadow="never" class="stat-card stats-card clickable" :class="{ active: query.status === '试运行' }" @click="onStatClick('试运行')"><div class="t">试运行</div><div class="v warning">{{ summary.pilotCount }}</div></el-card></el-col>
+      <el-col :span="6"><el-card shadow="never" class="stat-card stats-card clickable" :class="{ active: query.status === '已停用' }" @click="onStatClick('已停用')"><div class="t">已停用</div><div class="v danger">{{ summary.retiredCount }}</div></el-card></el-col>
     </el-row>
 
     <el-card shadow="never" class="filter-card">
-      <el-form :model="query" inline>
-        <el-form-item label="产品名称"><el-input v-model="query.productName" clearable /></el-form-item>
+      <el-form :model="query" inline class="filter-form" @submit.prevent="onSearch">
+        <el-form-item label="产品名称"><el-input v-model="query.productName" clearable @keyup.enter="onSearch" /></el-form-item>
         <el-form-item label="分类">
           <el-select v-model="query.category" clearable style="width: 140px" placeholder="全部">
-            <el-option label="EMR" value="EMR" />
-            <el-option label="临床辅助" value="临床辅助" />
-            <el-option label="管理" value="管理" />
-            <el-option label="AI" value="AI" />
-            <el-option label="移动" value="移动" />
+            <el-option v-for="category in categoryOptions" :key="category" :label="category" :value="category" />
           </el-select>
         </el-form-item>
         <el-form-item label="状态">
           <el-select v-model="query.status" clearable style="width: 140px" placeholder="全部">
-            <el-option label="运行中" value="运行中" />
-            <el-option label="试运行" value="试运行" />
-            <el-option label="已停用" value="已停用" />
+            <el-option v-for="status in statusOptions" :key="status" :label="status" :value="status" />
           </el-select>
         </el-form-item>
-        <el-form-item>
+        <el-form-item class="filter-actions">
           <el-button type="primary" @click="onSearch">查询</el-button>
           <el-button @click="onReset">重置</el-button>
         </el-form-item>
@@ -42,16 +36,16 @@
     </el-card>
 
     <el-card shadow="never" class="table-card">
-      <el-table :data="tableData" v-loading="loading" stripe>
-        <el-table-column prop="productName" label="产品名称" min-width="220" show-overflow-tooltip />
-        <el-table-column prop="version" label="版本" width="100" />
-        <el-table-column prop="category" label="分类" width="120" show-overflow-tooltip />
-        <el-table-column prop="status" label="状态" width="110">
+      <el-table :data="tableData" v-loading="loading" stripe empty-text="暂无符合条件的数据">
+        <el-table-column prop="productName" label="产品名称" min-width="220" show-overflow-tooltip sortable />
+        <el-table-column prop="version" label="版本" width="100" sortable />
+        <el-table-column prop="category" label="分类" width="120" show-overflow-tooltip sortable />
+        <el-table-column prop="status" label="状态" width="110" sortable>
           <template #default="scope">
             <el-tag :type="statusTag(scope.row.status)">{{ scope.row.status }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="deployHospitalCount" label="部署医院数" width="120" align="right" />
+        <el-table-column prop="deployHospitalCount" label="部署医院数" width="120" align="right" sortable />
         <el-table-column label="操作" width="220" fixed="right">
           <template #default="scope">
             <el-button
@@ -62,12 +56,14 @@
               @click="onOpenDetail(scope.row.id)"
             >详情</el-button>
             <el-button
+              v-if="canManageProduct"
               type="primary"
               link
               :disabled="submitLoading || deletingId === scope.row.id"
               @click="onOpenEdit(scope.row)"
             >编辑</el-button>
             <el-button
+              v-if="canManageProduct"
               type="danger"
               link
               :loading="deletingId === scope.row.id"
@@ -129,9 +125,10 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
+import { useRoute } from 'vue-router'
 import {
   createProduct,
   deleteProduct,
@@ -144,6 +141,7 @@ import type { ProductItem, ProductSummary, ProductUpsert } from '../../types/pro
 import { useResilientLoad } from '../../composables/useResilientLoad'
 import { getErrorMessage } from '../../utils/error'
 import { useLinkedRealtimeRefresh } from '../../composables/useLinkedRealtimeRefresh'
+import { useAccessControl } from '../../composables/useAccessControl'
 
 const loading = ref(false)
 const total = ref(0)
@@ -157,6 +155,31 @@ const query = reactive({
   page: 1,
   size: 10,
 })
+const categoryOptions = ref<string[]>(['EMR', '临床辅助', '管理', 'AI', '移动'])
+const statusOptions = ref<string[]>(['运行中', '试运行', '已停用'])
+const route = useRoute()
+
+const readRouteQueryValue = (value: unknown): string => {
+  if (typeof value === 'string') {
+    return value
+  }
+
+  if (Array.isArray(value) && typeof value[0] === 'string') {
+    return value[0]
+  }
+
+  return ''
+}
+
+const applyDrillQuery = () => {
+  const status = readRouteQueryValue(route.query.status)
+  if (!status) {
+    return
+  }
+
+  query.status = status
+  query.page = 1
+}
 
 const editVisible = ref(false)
 const detailVisible = ref(false)
@@ -167,6 +190,9 @@ const editFormRef = ref<FormInstance>()
 const submitLoading = ref(false)
 const deletingId = ref<number | null>(null)
 const detailLoadingId = ref<number | null>(null)
+
+const access = useAccessControl()
+const canManageProduct = computed(() => access.canPermission('product.manage'))
 
 const editForm = reactive<ProductUpsert>({
   productName: '',
@@ -221,6 +247,34 @@ const loadData = async () => {
   }
 }
 
+const loadFilterOptions = async () => {
+  try {
+    const res = await fetchProducts({ page: 1, size: 5000 })
+    const items = res.data.items
+
+    if (!items.length) {
+      return
+    }
+
+    const categories = Array.from(new Set(items.map((item) => item.category).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'zh-CN'))
+    if (categories.length > 0) {
+      categoryOptions.value = Array.from(new Set([...categoryOptions.value, ...categories]))
+    }
+
+    const statuses = Array.from(new Set(items.map((item) => item.status).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'zh-CN'))
+    if (statuses.length > 0) {
+      statusOptions.value = Array.from(new Set([...statusOptions.value, ...statuses]))
+    }
+  } catch {
+  }
+}
+
+const onStatClick = (status: string) => {
+  query.status = status
+  query.page = 1
+  loadData()
+}
+
 const onSearch = () => {
   query.page = 1
   loadData()
@@ -244,6 +298,11 @@ const resetEditForm = () => {
 }
 
 const onOpenCreate = () => {
+  if (!canManageProduct.value) {
+    ElMessage.warning('当前账号无新增产品权限')
+    return
+  }
+
   editMode.value = 'create'
   activeId.value = null
   resetEditForm()
@@ -251,6 +310,11 @@ const onOpenCreate = () => {
 }
 
 const onOpenEdit = (row: ProductItem) => {
+  if (!canManageProduct.value) {
+    ElMessage.warning('当前账号无编辑产品权限')
+    return
+  }
+
   editMode.value = 'edit'
   activeId.value = row.id
   editForm.productName = row.productName
@@ -276,6 +340,11 @@ const onOpenDetail = async (id: number) => {
 }
 
 const onSaveEdit = async () => {
+  if (!canManageProduct.value) {
+    ElMessage.warning('当前账号无产品维护权限')
+    return
+  }
+
   if (submitLoading.value) return
   if (!editFormRef.value) return
   const valid = await editFormRef.value.validate().catch(() => false)
@@ -307,6 +376,11 @@ const onSaveEdit = async () => {
 }
 
 const onDelete = async (row: ProductItem) => {
+  if (!canManageProduct.value) {
+    ElMessage.warning('当前账号无删除产品权限')
+    return
+  }
+
   if (submitLoading.value || deletingId.value === row.id) return
   deletingId.value = row.id
   try {
@@ -332,8 +406,10 @@ const onDelete = async (row: ProductItem) => {
 }
 
 onMounted(async () => {
+  await access.ensureAccessProfileLoaded()
+  applyDrillQuery()
   await runInitialLoad({
-    tasks: [loadSummary, loadData],
+    tasks: [loadSummary, loadFilterOptions, loadData],
     retryChecks: [
       {
         when: () => summary.value.total > 0 && total.value === 0,

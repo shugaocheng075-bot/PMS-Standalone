@@ -42,19 +42,19 @@ public class InMemoryHandoverService : IHandoverService
         IEnumerable<HandoverItemDto> filtered = BuildSeed();
 
         if (!string.IsNullOrWhiteSpace(query.Stage))
-            filtered = filtered.Where(x => x.Stage == query.Stage);
+            filtered = filtered.Where(x => SmartTextMatcher.MatchExact(x.Stage, query.Stage));
 
         if (!string.IsNullOrWhiteSpace(query.Batch))
-            filtered = filtered.Where(x => x.Batch == query.Batch);
+            filtered = filtered.Where(x => SmartTextMatcher.MatchExact(x.Batch, query.Batch));
 
         if (!string.IsNullOrWhiteSpace(query.Type))
-            filtered = filtered.Where(x => x.Type == query.Type);
+            filtered = filtered.Where(x => SmartTextMatcher.MatchExact(x.Type, query.Type));
 
         if (!string.IsNullOrWhiteSpace(query.FromGroup))
-            filtered = filtered.Where(x => x.FromGroup.Contains(query.FromGroup, StringComparison.OrdinalIgnoreCase));
+            filtered = filtered.Where(x => SmartTextMatcher.Match(x.FromGroup, query.FromGroup));
 
         if (!string.IsNullOrWhiteSpace(query.ToOwner))
-            filtered = filtered.Where(x => x.ToOwner.Contains(query.ToOwner, StringComparison.OrdinalIgnoreCase));
+            filtered = filtered.Where(x => SmartTextMatcher.Match(x.ToOwner, query.ToOwner));
 
         var total = filtered.Count();
         var page = query.Page < 1 ? 1 : query.Page;
@@ -145,8 +145,6 @@ public class InMemoryHandoverService : IHandoverService
     private static List<HandoverItemDto> BuildSeed()
     {
         var stages = new[] { "已交接", "交接中", "已发邮件", "未发" };
-        var fromOwners = new[] { "侯海亮", "陈宇", "沈岩石", "张茹", "何道飞", "张育明", "王涛", "周宁" };
-        var toOwners = new[] { "张茹", "何道飞", "李贝", "舒高成", "唐广才", "张浩阳", "孙强", "姚云龙" };
 
         return InMemoryProjectDataStore.Projects
             .OrderBy(x => x.Id)
@@ -159,15 +157,22 @@ public class InMemoryHandoverService : IHandoverService
                     ? DateTime.Today.AddDays(-(index + 2) * 2)
                     : null;
                 var emailDate = EmailSentDateOverrides.TryGetValue(id, out var overrideDate) ? overrideDate : defaultEmailDate;
+                var fromOwner = string.IsNullOrWhiteSpace(project.SalesName)
+                    ? "未分配"
+                    : project.SalesName.Trim();
+                var toOwner = string.IsNullOrWhiteSpace(project.MaintenancePersonName)
+                    ? "未分配"
+                    : project.MaintenancePersonName.Trim();
 
                 return new HandoverItemDto
                 {
                     Id = id,
                     HandoverNo = $"HO-{DateTime.Today.Year}-{id:000}",
                     HospitalName = project.HospitalName,
+                    ProductName = project.ProductName,
                     FromGroup = project.GroupName,
-                    FromOwner = fromOwners[index % fromOwners.Length],
-                    ToOwner = toOwners[index % toOwners.Length],
+                    FromOwner = fromOwner,
+                    ToOwner = toOwner,
                     Batch = $"第{(index % 4) + 1}批",
                     Stage = stage,
                     Type = index % 2 == 0 ? "实施→运维" : "区域/组间",

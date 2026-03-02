@@ -8,12 +8,14 @@ type LinkedRefreshOptions = {
   scope?: string
   intervalMs?: number
   immediate?: boolean
+  enableAutoRefresh?: boolean
 }
 
 export function useLinkedRealtimeRefresh(options: LinkedRefreshOptions) {
   const scope = options.scope ?? 'global'
   const intervalMs = options.intervalMs ?? 10000
   const immediate = options.immediate ?? true
+  const enableAutoRefresh = options.enableAutoRefresh ?? false
   let timer: ReturnType<typeof setInterval> | null = null
   let channel: BroadcastChannel | null = null
 
@@ -72,6 +74,10 @@ export function useLinkedRealtimeRefresh(options: LinkedRefreshOptions) {
 
   onMounted(() => {
     if (typeof window === 'undefined') {
+      return
+    }
+
+    if (!enableAutoRefresh) {
       return
     }
 

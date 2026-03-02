@@ -4,4 +4,5 @@ public class ExcelImportRequest
 {
     public string FilePath { get; set; } = string.Empty;
     public List<string> FilePaths { get; set; } = [];
+    public string SheetName { get; set; } = string.Empty;
 }

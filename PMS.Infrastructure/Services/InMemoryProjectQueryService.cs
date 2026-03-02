@@ -1,6 +1,7 @@
 using PMS.Application.Contracts;
 using PMS.Application.Models;
 using PMS.Domain.Entities;
+using System.Globalization;
 
 namespace PMS.Infrastructure.Services;
 
@@ -12,12 +13,12 @@ public class InMemoryProjectQueryService : IProjectQueryService
 
         if (!string.IsNullOrWhiteSpace(query.HospitalName))
         {
-            filtered = filtered.Where(x => x.HospitalName.Contains(query.HospitalName, StringComparison.OrdinalIgnoreCase));
+            filtered = filtered.Where(x => SmartTextMatcher.Match(x.HospitalName, query.HospitalName));
         }
 
         if (!string.IsNullOrWhiteSpace(query.ProductName))
         {
-            filtered = filtered.Where(x => x.ProductName.Contains(query.ProductName, StringComparison.OrdinalIgnoreCase));
+            filtered = filtered.Where(x => SmartTextMatcher.Match(x.ProductName, query.ProductName));
         }
 
         if (!string.IsNullOrWhiteSpace(query.Province))
@@ -27,17 +28,39 @@ public class InMemoryProjectQueryService : IProjectQueryService
 
         if (!string.IsNullOrWhiteSpace(query.GroupName))
         {
-            filtered = filtered.Where(x => x.GroupName.Contains(query.GroupName, StringComparison.OrdinalIgnoreCase));
+            filtered = filtered.Where(x => SmartTextMatcher.Match(x.GroupName, query.GroupName));
+        }
+
+        if (!string.IsNullOrWhiteSpace(query.SalesName))
+        {
+            filtered = filtered.Where(x => SmartTextMatcher.Match(x.SalesName, query.SalesName));
+        }
+
+        if (!string.IsNullOrWhiteSpace(query.MaintenancePersonName))
+        {
+            filtered = filtered.Where(x => SmartTextMatcher.Match(x.MaintenancePersonName, query.MaintenancePersonName));
+        }
+
+        if (TryParseDate(query.AfterSalesEndDateFrom, out var endDateFrom))
+        {
+            filtered = filtered.Where(x => TryParseDate(x.AfterSalesEndDate, out var projectEndDate) && projectEndDate >= endDateFrom);
+        }
+
+        if (TryParseDate(query.AfterSalesEndDateTo, out var endDateTo))
+        {
+            filtered = filtered.Where(x => TryParseDate(x.AfterSalesEndDate, out var projectEndDate) && projectEndDate <= endDateTo);
         }
 
         if (!string.IsNullOrWhiteSpace(query.HospitalLevel))
         {
-            filtered = filtered.Where(x => x.HospitalLevel.Equals(query.HospitalLevel, StringComparison.OrdinalIgnoreCase));
+            filtered = filtered.Where(x => SmartTextMatcher.MatchExact(x.HospitalLevel, query.HospitalLevel));
         }
 
         if (!string.IsNullOrWhiteSpace(query.ContractStatus))
         {
-            filtered = filtered.Where(x => x.ContractStatus.Equals(query.ContractStatus, StringComparison.OrdinalIgnoreCase));
+            var expectedStatus = NormalizeContractStatus(query.ContractStatus, 0);
+            filtered = filtered.Where(x =>
+                SmartTextMatcher.MatchExact(NormalizeContractStatus(x.ContractStatus, x.OverdueDays), expectedStatus));
         }
 
         var total = filtered.Count();
@@ -58,5 +81,58 @@ public class InMemoryProjectQueryService : IProjectQueryService
             Page = page,
             Size = size
         });
+    }
+
+    private static bool TryParseDate(string? raw, out DateTime date)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            date = default;
+            return false;
+        }
+
+        var text = raw.Trim();
+        var formats = new[] { "yyyy-MM-dd", "yyyy/M/d", "yyyy/MM/dd", "yyyy-M-d" };
+        if (DateTime.TryParseExact(text, formats, CultureInfo.InvariantCulture, DateTimeStyles.None, out date))
+        {
+            return true;
+        }
+
+        return DateTime.TryParse(text, CultureInfo.InvariantCulture, DateTimeStyles.None, out date);
+    }
+
+    private static string NormalizeContractStatus(string? status, int overdueDays)
+    {
+        var value = (status ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(value) || string.Equals(value, "未知", StringComparison.OrdinalIgnoreCase))
+        {
+            return overdueDays > 0 ? "超期未签署" : "未知";
+        }
+
+        if (value.Contains("停止", StringComparison.OrdinalIgnoreCase))
+        {
+            return "停止维护";
+        }
+
+        if (value.Contains("免费", StringComparison.OrdinalIgnoreCase))
+        {
+            return "免费维护期";
+        }
+
+        if (value.Contains("超期", StringComparison.OrdinalIgnoreCase)
+            || value.Contains("到期", StringComparison.OrdinalIgnoreCase)
+            || value.Contains("停保", StringComparison.OrdinalIgnoreCase)
+            || value.Contains("脱保", StringComparison.OrdinalIgnoreCase))
+        {
+            return "超期未签署";
+        }
+
+        if (value.Contains("签署", StringComparison.OrdinalIgnoreCase)
+            || value.Contains("签订", StringComparison.OrdinalIgnoreCase))
+        {
+            return "合同已签署";
+        }
+
+        return value;
     }
 }

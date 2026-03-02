@@ -1,3 +1,6 @@
+using PMS.API.Middleware;
+using PMS.Application.Contracts.Access;
+using PMS.Application.Contracts.Auth;
 using PMS.Application.Contracts;
 using PMS.Application.Contracts.AnnualReport;
 using PMS.Application.Contracts.Contract;
@@ -10,6 +13,12 @@ using PMS.Infrastructure.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
+var urls = Environment.GetEnvironmentVariable("ASPNETCORE_URLS");
+if (string.IsNullOrWhiteSpace(urls))
+{
+    builder.WebHost.UseUrls("http://0.0.0.0:5111");
+}
+
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
@@ -21,6 +30,8 @@ builder.Services.AddSingleton<IAnnualReportService, InMemoryAnnualReportService>
 builder.Services.AddSingleton<IHospitalService, InMemoryHospitalService>();
 builder.Services.AddSingleton<IPersonnelService, InMemoryPersonnelService>();
 builder.Services.AddSingleton<IProductService, InMemoryProductService>();
+builder.Services.AddSingleton<IAccessControlService, InMemoryAccessControlService>();
+builder.Services.AddSingleton<IAuthService, InMemoryAuthService>();
 
 builder.Services.AddCors(options =>
 {
@@ -42,8 +53,18 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseCors("DevCors");
+app.UseMiddleware<AuthMiddleware>();
+app.UseMiddleware<PermissionMiddleware>();
 
-app.UseHttpsRedirection();
+var enableHttpsRedirect = string.Equals(
+    Environment.GetEnvironmentVariable("ENABLE_HTTPS_REDIRECT"),
+    "true",
+    StringComparison.OrdinalIgnoreCase);
+
+if (enableHttpsRedirect)
+{
+    app.UseHttpsRedirection();
+}
 
 app.MapControllers();
 

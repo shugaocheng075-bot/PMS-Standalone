@@ -8,22 +8,19 @@
     </div>
 
     <el-row :gutter="16" class="stats-row">
-      <el-col :span="4"><el-card shadow="never" class="stat-card stats-card"><div class="t">未开始</div><div class="v">{{ summary.notStartedCount }}</div></el-card></el-col>
-      <el-col :span="4"><el-card shadow="never" class="stat-card stats-card"><div class="t">编写中</div><div class="v warning">{{ summary.writingCount }}</div></el-card></el-col>
-      <el-col :span="4"><el-card shadow="never" class="stat-card stats-card"><div class="t">已提交</div><div class="v info">{{ summary.submittedCount }}</div></el-card></el-col>
-      <el-col :span="4"><el-card shadow="never" class="stat-card stats-card"><div class="t">已完成</div><div class="v success">{{ summary.completedCount }}</div></el-card></el-col>
+      <el-col :span="4"><el-card shadow="never" class="stat-card stats-card clickable" :class="{ active: query.status === '未开始' }" @click="onStatClick('未开始')"><div class="t">未开始</div><div class="v">{{ summary.notStartedCount }}</div></el-card></el-col>
+      <el-col :span="4"><el-card shadow="never" class="stat-card stats-card clickable" :class="{ active: query.status === '编写中' }" @click="onStatClick('编写中')"><div class="t">编写中</div><div class="v warning">{{ summary.writingCount }}</div></el-card></el-col>
+      <el-col :span="4"><el-card shadow="never" class="stat-card stats-card clickable" :class="{ active: query.status === '已提交' }" @click="onStatClick('已提交')"><div class="t">已提交</div><div class="v info">{{ summary.submittedCount }}</div></el-card></el-col>
+      <el-col :span="4"><el-card shadow="never" class="stat-card stats-card clickable" :class="{ active: query.status === '已完成' }" @click="onStatClick('已完成')"><div class="t">已完成</div><div class="v success">{{ summary.completedCount }}</div></el-card></el-col>
       <el-col :span="4"><el-card shadow="never" class="stat-card stats-card"><div class="t">本年度</div><div class="v">{{ summary.thisYearCount }}</div></el-card></el-col>
-      <el-col :span="4"><el-card shadow="never" class="stat-card stats-card"><div class="t">总数</div><div class="v">{{ summary.total }}</div></el-card></el-col>
+      <el-col :span="4"><el-card shadow="never" class="stat-card stats-card clickable" :class="{ active: query.status === '' }" @click="onStatClick('')"><div class="t">总数</div><div class="v">{{ summary.total }}</div></el-card></el-col>
     </el-row>
 
     <el-card shadow="never" class="filter-card">
-      <el-form :model="query" inline>
+      <el-form :model="query" inline class="filter-form" @submit.prevent="onSearch">
         <el-form-item label="状态">
           <el-select v-model="query.status" placeholder="全部" clearable style="width: 140px">
-            <el-option label="未开始" value="未开始" />
-            <el-option label="编写中" value="编写中" />
-            <el-option label="已提交" value="已提交" />
-            <el-option label="已完成" value="已完成" />
+            <el-option v-for="status in statusOptions" :key="status" :label="status" :value="status" />
           </el-select>
         </el-form-item>
         <el-form-item label="年度">
@@ -39,7 +36,7 @@
             <el-option v-for="person in servicePersonOptions" :key="person" :label="person" :value="person" />
           </el-select>
         </el-form-item>
-        <el-form-item>
+        <el-form-item class="filter-actions">
           <el-button type="primary" @click="onSearch">查询</el-button>
           <el-button @click="onReset">重置</el-button>
         </el-form-item>
@@ -47,13 +44,13 @@
     </el-card>
 
     <el-card shadow="never" class="table-card">
-      <el-table :data="tableData" v-loading="loading" stripe>
-        <el-table-column prop="hospitalName" label="医院" min-width="220" show-overflow-tooltip />
-        <el-table-column prop="province" label="省份" width="100" show-overflow-tooltip />
+      <el-table :data="tableData" v-loading="loading" stripe empty-text="暂无符合条件的数据">
+        <el-table-column prop="hospitalName" label="医院" min-width="220" show-overflow-tooltip sortable />
+        <el-table-column prop="province" label="省份" width="100" show-overflow-tooltip sortable />
         <el-table-column prop="groupName" label="组别" width="120" show-overflow-tooltip />
         <el-table-column prop="servicePerson" label="服务人员" width="110" show-overflow-tooltip />
-        <el-table-column prop="reportYear" label="年度" width="90" />
-        <el-table-column prop="status" label="状态" width="100">
+        <el-table-column prop="reportYear" label="年度" width="90" sortable />
+        <el-table-column prop="status" label="状态" width="100" sortable>
           <template #default="scope">
             <el-tag :type="statusTag(scope.row.status)">{{ scope.row.status }}</el-tag>
           </template>
@@ -81,11 +78,13 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
+import { useRoute } from 'vue-router'
 import { fetchAnnualReportList, fetchAnnualReportSummary } from '../../api/modules/annual-report'
 import type { AnnualReportItem, AnnualReportSummary } from '../../types/annual-report'
 import { useResilientLoad } from '../../composables/useResilientLoad'
 import { getErrorMessage } from '../../utils/error'
 import { GROUP_OPTIONS, PERSON_OPTIONS } from '../../constants/filterOptions'
+import { useFilterStatePersist } from '../../composables/useFilterStatePersist'
 import { useLinkedRealtimeRefresh } from '../../composables/useLinkedRealtimeRefresh'
 
 const loading = ref(false)
@@ -108,7 +107,40 @@ const query = reactive({
   page: 1,
   size: 10,
 })
+const route = useRoute()
 
+const readRouteQueryValue = (value: unknown): string => {
+  if (typeof value === 'string') {
+    return value
+  }
+
+  if (Array.isArray(value) && typeof value[0] === 'string') {
+    return value[0]
+  }
+
+  return ''
+}
+
+const applyDrillQuery = () => {
+  const status = readRouteQueryValue(route.query.status)
+  if (!status) {
+    return
+  }
+
+  query.status = status
+  query.page = 1
+}
+
+type AnnualReportFilterState = {
+  status: string
+  reportYear: number
+  groupName: string
+  servicePerson: string
+  page: number
+  size: number
+}
+
+const statusOptions = ref<string[]>(['未开始', '编写中', '已提交', '已完成'])
 const groupOptions = ref<string[]>([...GROUP_OPTIONS])
 const servicePersonOptions = ref<string[]>([...PERSON_OPTIONS])
 const { runInitialLoad } = useResilientLoad()
@@ -133,19 +165,24 @@ const loadSummary = async () => {
 
 const loadFilterOptions = async () => {
   try {
-    const res = await fetchAnnualReportList({ page: 1, size: 200 })
+    const res = await fetchAnnualReportList({ page: 1, size: 5000 })
     const items = res.data.items
 
     if (!items.length) {
       return
     }
 
-    const groups = Array.from(new Set(items.map((item) => item.groupName).filter(Boolean)))
+    const groups = Array.from(new Set(items.map((item) => item.groupName).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'zh-CN'))
     if (groups.length > 0) {
       groupOptions.value = groups
     }
 
-    const servicePeople = Array.from(new Set(items.map((item) => item.servicePerson).filter(Boolean)))
+    const statuses = Array.from(new Set(items.map((item) => item.status).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'zh-CN'))
+    if (statuses.length > 0) {
+      statusOptions.value = Array.from(new Set([...statusOptions.value, ...statuses]))
+    }
+
+    const servicePeople = Array.from(new Set(items.map((item) => item.servicePerson).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'zh-CN'))
     if (servicePeople.length > 0) {
       servicePersonOptions.value = servicePeople
     }
@@ -168,6 +205,12 @@ const loadData = async () => {
   }
 }
 
+const onStatClick = (status: string) => {
+  query.status = status
+  query.page = 1
+  loadData()
+}
+
 const onSearch = () => {
   query.page = 1
   loadData()
@@ -180,8 +223,29 @@ const onReset = () => {
   query.servicePerson = ''
   query.page = 1
   query.size = 10
+  clearFilterState()
   loadData()
 }
+
+const { restore: restoreFilterState, clear: clearFilterState } = useFilterStatePersist<AnnualReportFilterState>({
+  key: 'annual-report',
+  getState: () => ({
+    status: query.status,
+    reportYear: query.reportYear,
+    groupName: query.groupName,
+    servicePerson: query.servicePerson,
+    page: query.page,
+    size: query.size,
+  }),
+  applyState: (state) => {
+    query.status = state.status ?? ''
+    query.reportYear = typeof state.reportYear === 'number' ? state.reportYear : new Date().getFullYear()
+    query.groupName = state.groupName ?? ''
+    query.servicePerson = state.servicePerson ?? ''
+    query.page = typeof state.page === 'number' ? state.page : 1
+    query.size = typeof state.size === 'number' ? state.size : 10
+  },
+})
 
 const refreshLinkedData = async () => {
   await Promise.allSettled([loadSummary(), loadFilterOptions(), loadData()])
@@ -194,6 +258,8 @@ useLinkedRealtimeRefresh({
 })
 
 onMounted(async () => {
+  restoreFilterState()
+  applyDrillQuery()
   await runInitialLoad({
     tasks: [loadSummary, loadFilterOptions, loadData],
     retryChecks: [

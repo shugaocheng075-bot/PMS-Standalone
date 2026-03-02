@@ -9,8 +9,8 @@
 
     <el-card shadow="never" class="filter-card">
       <el-space wrap>
-        <el-button type="primary" :loading="loading.importing" @click="onAutoImport">自动重导入</el-button>
-        <el-button type="warning" :loading="loading.cleaning" @click="onCleanup">执行清洗</el-button>
+        <el-button v-if="canManageMaintenance" type="primary" :loading="loading.importing" @click="onAutoImport">自动重导入</el-button>
+        <el-button v-if="canManageMaintenance" type="warning" :loading="loading.cleaning" @click="onCleanup">执行清洗</el-button>
         <el-button :loading="loading.audit" @click="loadAudit">刷新审计列表</el-button>
       </el-space>
       <div v-if="lastResult" style="margin-top: 12px; color: var(--el-text-color-secondary)">
@@ -19,30 +19,30 @@
     </el-card>
 
     <el-card shadow="never" class="filter-card">
-      <el-form :model="form" inline>
+      <el-form :model="form" inline class="filter-form" @submit.prevent="onReassign">
         <el-form-item label="医院">
-          <el-input v-model="form.hospitalName" clearable style="width: 220px" />
+          <el-input v-model="form.hospitalName" clearable style="width: 220px" @keyup.enter="onReassign" />
         </el-form-item>
         <el-form-item label="产品">
-          <el-input v-model="form.productName" clearable style="width: 220px" />
+          <el-input v-model="form.productName" clearable style="width: 220px" @keyup.enter="onReassign" />
         </el-form-item>
         <el-form-item label="归属人/组别">
-          <el-input v-model="form.groupName" clearable style="width: 180px" />
+          <el-input v-model="form.groupName" clearable style="width: 180px" @keyup.enter="onReassign" />
         </el-form-item>
-        <el-form-item>
+        <el-form-item v-if="canManageMaintenance">
           <el-button type="primary" :loading="loading.reassign" @click="onReassign">调整归属</el-button>
         </el-form-item>
       </el-form>
     </el-card>
 
     <el-card shadow="never" class="table-card">
-      <el-table :data="auditRows" v-loading="loading.audit" stripe>
-        <el-table-column prop="hospitalName" label="医院" min-width="220" show-overflow-tooltip />
-        <el-table-column prop="productName" label="产品" min-width="180" show-overflow-tooltip />
-        <el-table-column prop="groupName" label="归属人/组别" width="130" show-overflow-tooltip />
-        <el-table-column prop="hospitalLevel" label="级别" width="90" />
-        <el-table-column prop="province" label="省份" width="100" />
-        <el-table-column prop="amount" label="金额" width="110" align="right" />
+      <el-table :data="auditRows" v-loading="loading.audit" stripe empty-text="暂无可审计数据">
+        <el-table-column prop="hospitalName" label="医院" min-width="220" show-overflow-tooltip sortable />
+        <el-table-column prop="productName" label="产品" min-width="180" show-overflow-tooltip sortable />
+        <el-table-column prop="groupName" label="归属人/组别" width="130" show-overflow-tooltip sortable />
+        <el-table-column prop="hospitalLevel" label="级别" width="90" sortable />
+        <el-table-column prop="province" label="省份" width="100" sortable />
+        <el-table-column prop="amount" label="金额" width="110" align="right" sortable />
       </el-table>
 
       <div class="pager" style="margin-top: 12px; color: var(--el-text-color-secondary)">
@@ -53,11 +53,12 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
-import { ElMessage } from 'element-plus'
+import { computed, onMounted, reactive, ref } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { fetchOwnershipAudit, reassignOwnership, runAutoImport, runCleanup } from '../../api/modules/maintenance'
 import { getErrorMessage } from '../../utils/error'
 import { useLinkedRealtimeRefresh } from '../../composables/useLinkedRealtimeRefresh'
+import { useAccessControl } from '../../composables/useAccessControl'
 
 const auditRows = ref<Array<{ hospitalName: string; productName: string; groupName: string; hospitalLevel: string; province: string; amount: number }>>([])
 const lastResult = ref('')
@@ -73,6 +74,9 @@ const form = reactive({
   productName: '',
   groupName: '',
 })
+
+const access = useAccessControl()
+const canManageMaintenance = computed(() => access.canPermission('maintenance.manage'))
 
 const { notifyDataChanged } = useLinkedRealtimeRefresh({
   refresh: async () => {
@@ -95,6 +99,25 @@ const loadAudit = async () => {
 }
 
 const onAutoImport = async () => {
+  if (!canManageMaintenance.value) {
+    ElMessage.warning('当前账号无数据重导入权限')
+    return
+  }
+
+  try {
+    await ElMessageBox.confirm(
+      '该操作将触发自动重导入并覆盖当前数据结果，确认继续吗？',
+      '高风险操作确认',
+      {
+        type: 'warning',
+        confirmButtonText: '确认执行',
+        cancelButtonText: '取消',
+      },
+    )
+  } catch {
+    return
+  }
+
   loading.importing = true
   try {
     const res = await runAutoImport()
@@ -110,6 +133,25 @@ const onAutoImport = async () => {
 }
 
 const onCleanup = async () => {
+  if (!canManageMaintenance.value) {
+    ElMessage.warning('当前账号无数据清洗权限')
+    return
+  }
+
+  try {
+    await ElMessageBox.confirm(
+      '该操作会对当前数据进行清洗并可能移除无效记录，确认执行吗？',
+      '高风险操作确认',
+      {
+        type: 'warning',
+        confirmButtonText: '确认清洗',
+        cancelButtonText: '取消',
+      },
+    )
+  } catch {
+    return
+  }
+
   loading.cleaning = true
   try {
     const res = await runCleanup()
@@ -125,8 +167,27 @@ const onCleanup = async () => {
 }
 
 const onReassign = async () => {
+  if (!canManageMaintenance.value) {
+    ElMessage.warning('当前账号无归属调整权限')
+    return
+  }
+
   if (!form.hospitalName || !form.productName || !form.groupName) {
     ElMessage.warning('请填写医院、产品和归属人')
+    return
+  }
+
+  try {
+    await ElMessageBox.confirm(
+      `确认将“${form.hospitalName}/${form.productName}”归属调整为“${form.groupName}”吗？`,
+      '归属调整确认',
+      {
+        type: 'warning',
+        confirmButtonText: '确认调整',
+        cancelButtonText: '取消',
+      },
+    )
+  } catch {
     return
   }
 
@@ -147,7 +208,10 @@ const onReassign = async () => {
   }
 }
 
-onMounted(loadAudit)
+onMounted(async () => {
+  await access.ensureAccessProfileLoaded()
+  await loadAudit()
+})
 </script>
 
 <style scoped>

@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using System.Text;
+using System.Text.RegularExpressions;
 using ExcelDataReader;
 using Microsoft.AspNetCore.Mvc;
 using PMS.API.Models;
@@ -13,21 +14,133 @@ namespace PMS.API.Controllers.Admin;
 [Route("api/admin/import")]
 public class DataImportController : ControllerBase
 {
+    private const string DefaultMajorDemandExcelPath = @"C:\Users\R9000P\Desktop\项目明细.xlsx";
+    private const string DefaultMajorDemandSheetName = "重大需求";
+
+    [HttpPost("text")]
+    public IActionResult ImportFromText([FromBody] TextImportRequest request)
+    {
+        if (request is null || string.IsNullOrWhiteSpace(request.RawText))
+        {
+            return BadRequest(new ApiResponse<object>
+            {
+                Code = 400,
+                Message = "请提供要导入的文本内容"
+            });
+        }
+
+        var projects = ReadProjectsFromText(request.RawText);
+        if (projects.Count == 0)
+        {
+            return BadRequest(new ApiResponse<object>
+            {
+                Code = 400,
+                Message = "未识别到有效数据行（请确认文本为制表符分隔并包含医院/产品列）"
+            });
+        }
+
+        var cleanupStats = InMemoryProjectDataStore.ReplaceAllAndNormalize(projects);
+        InMemoryHospitalService.RebuildFromProjects(InMemoryProjectDataStore.Projects);
+
+        return Ok(ApiResponse<object>.Success(new
+        {
+            importedRowCount = projects.Count,
+            keptProjectCount = cleanupStats.KeptCount,
+            removedInvalidCount = cleanupStats.RemovedInvalidCount,
+            deduplicatedCount = cleanupStats.DeduplicatedCount,
+            message = "文本数据已全量覆盖导入，旧数据已清空"
+        }));
+    }
+
+    [HttpPost("text-file")]
+    public IActionResult ImportFromTextFile([FromBody] ExcelImportRequest request)
+    {
+        if (request is null || string.IsNullOrWhiteSpace(request.FilePath))
+        {
+            return BadRequest(new ApiResponse<object>
+            {
+                Code = 400,
+                Message = "请提供文本文件路径"
+            });
+        }
+
+        var filePath = Path.GetFullPath(request.FilePath.Trim());
+        if (!System.IO.File.Exists(filePath))
+        {
+            return BadRequest(new ApiResponse<object>
+            {
+                Code = 400,
+                Message = $"文件不存在: {filePath}"
+            });
+        }
+
+        var rawText = System.IO.File.ReadAllText(filePath, Encoding.UTF8);
+        return ImportFromText(new TextImportRequest { RawText = rawText });
+    }
+
     [HttpPost("excel")]
     public IActionResult ImportFromExcel([FromBody] ExcelImportRequest request)
     {
         var filePaths = CollectFilePaths(request);
-        return ImportFromFiles(filePaths);
+        return ImportFromFiles(filePaths, request.SheetName);
     }
 
     [HttpPost("excel-auto")]
     public IActionResult ImportFromExcelAuto()
     {
         var filePaths = DiscoverExcelFiles();
-        return ImportFromFiles(filePaths);
+        return ImportFromFiles(filePaths, string.Empty);
     }
 
-    private static IActionResult ImportFromFiles(IReadOnlyList<string> filePaths)
+    [HttpPost("major-demand")]
+    public IActionResult ImportMajorDemand([FromBody] ExcelImportRequest? request)
+    {
+        var filePath = string.IsNullOrWhiteSpace(request?.FilePath)
+            ? DefaultMajorDemandExcelPath
+            : Path.GetFullPath(request.FilePath.Trim());
+
+        var sheetName = string.IsNullOrWhiteSpace(request?.SheetName)
+            ? DefaultMajorDemandSheetName
+            : request.SheetName.Trim();
+
+        if (!System.IO.File.Exists(filePath))
+        {
+            return BadRequest(new ApiResponse<object>
+            {
+                Code = 400,
+                Message = $"Excel文件不存在: {filePath}"
+            });
+        }
+
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+
+        var majorDemand = ReadMajorDemandFromWorkbook(filePath, sheetName);
+        if (majorDemand.Rows.Count == 0)
+        {
+            return BadRequest(new ApiResponse<object>
+            {
+                Code = 400,
+                Message = $"未在工作表“{sheetName}”中识别到有效数据"
+            });
+        }
+
+        InMemoryMajorDemandStore.ReplaceAll(majorDemand.Columns, majorDemand.Rows, filePath, sheetName);
+
+        return Ok(ApiResponse<object>.Success(new
+        {
+            sourceFilePath = filePath,
+            sheetName,
+            importedColumnCount = majorDemand.Columns.Count,
+            importedRowCount = majorDemand.Rows.Count,
+            linkedProjectInputCount = 0,
+            linkedProjectKeptCount = 0,
+            removedInvalidCount = 0,
+            deduplicatedCount = 0,
+            message = "重大需求已导入（仅更新重大需求模块，不联动其他页面）"
+        }));
+    }
+
+    private static IActionResult ImportFromFiles(IReadOnlyList<string> filePaths, string? targetSheetName)
     {
         if (filePaths.Count == 0)
         {
@@ -45,7 +158,7 @@ public class DataImportController : ControllerBase
 
         foreach (var path in filePaths)
         {
-            var projects = ReadProjectsFromWorkbook(path);
+            var projects = ReadProjectsFromWorkbook(path, targetSheetName);
             allProjects.AddRange(projects);
             importedFiles.Add(new
             {
@@ -160,9 +273,12 @@ public class DataImportController : ControllerBase
         }));
     }
 
-    private static List<ProjectEntity> ReadProjectsFromWorkbook(string filePath)
+    private static List<ProjectEntity> ReadProjectsFromWorkbook(string filePath, string? targetSheetName)
     {
         var result = new List<ProjectEntity>();
+        var normalizedTargetSheet = string.IsNullOrWhiteSpace(targetSheetName)
+            ? string.Empty
+            : NormalizeHeader(targetSheetName);
 
         using var stream = System.IO.File.Open(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
         using var reader = ExcelReaderFactory.CreateReader(stream);
@@ -174,6 +290,15 @@ public class DataImportController : ControllerBase
                 continue;
             }
 
+            if (!string.IsNullOrWhiteSpace(normalizedTargetSheet))
+            {
+                var currentSheet = NormalizeHeader(reader.Name ?? string.Empty);
+                if (!currentSheet.Equals(normalizedTargetSheet, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+            }
+
             var headers = BuildHeaderIndex(reader);
             var hospitalIndex = FindIndex(headers, "医院名称", "项目名称");
             if (hospitalIndex < 0)
@@ -182,11 +307,15 @@ public class DataImportController : ControllerBase
             }
 
             var provinceIndex = FindIndex(headers, "省", "省份", "项目省份", "服务区域");
-            var groupIndex = FindIndex(headers, "组别", "原组别", "服务主管", "维护员", "原实施主管");
+            var groupIndex = FindIndex(headers, "组别", "原组别");
+            var salesIndex = FindIndex(headers, "销售", "销售姓名", "销售人员", "商务");
+            var maintenancePersonIndex = FindIndex(headers, "维护员", "维护人员", "售后", "实施人员", "运维人员");
             var productIndex = FindIndex(headers, "产品", "上线产品", "产品名称", "项目类别");
             var levelIndex = FindIndex(headers, "医院等级", "级别", "医院级别", "评审级别");
             var statusIndex = FindIndex(headers, "合同状态", "项目状态", "交接现阶段", "运维阶段");
             var overdueDaysIndex = FindIndex(headers, "超期天数");
+            var startDateIndex = FindIndex(headers, "售后开始日期", "维保开始日期", "开始日期", "服务开始日期");
+            var endDateIndex = FindIndex(headers, "售后结束日期", "维保结束日期", "结束日期", "服务结束日期");
             var amountIndex = FindIndex(headers, "维护合同额", "金额", "维护金额", "销售合同额", "年度产值");
             var isOverdueIndex = FindIndex(headers, "是否超期");
 
@@ -206,10 +335,14 @@ public class DataImportController : ControllerBase
 
                 var province = ReadText(reader, provinceIndex);
                 var groupName = ReadText(reader, groupIndex);
+                var salesName = ReadText(reader, salesIndex);
+                var maintenancePersonName = ReadText(reader, maintenancePersonIndex);
                 var productName = ReadText(reader, productIndex);
                 var hospitalLevel = ReadText(reader, levelIndex);
                 var contractStatus = ReadText(reader, statusIndex);
                 var overdueDays = ReadInt(reader, overdueDaysIndex);
+                var startDateText = ReadText(reader, startDateIndex);
+                var endDateText = ReadText(reader, endDateIndex);
                 var maintenanceAmount = ReadDecimal(reader, amountIndex);
 
                 if (overdueDays <= 0)
@@ -221,12 +354,21 @@ public class DataImportController : ControllerBase
                     }
                 }
 
+                if (overdueDays <= 0)
+                {
+                    overdueDays = ComputeOverdueDays(endDateText, contractStatus);
+                }
+
                 result.Add(new ProjectEntity
                 {
                     HospitalName = hospitalName,
                     ProductName = productName,
                     Province = string.IsNullOrWhiteSpace(province) ? "未知" : province,
                     GroupName = string.IsNullOrWhiteSpace(groupName) ? "未分组" : groupName,
+                    SalesName = string.IsNullOrWhiteSpace(salesName) ? "未知" : salesName,
+                    MaintenancePersonName = string.IsNullOrWhiteSpace(maintenancePersonName) ? "未知" : maintenancePersonName,
+                    AfterSalesStartDate = NormalizeDateText(startDateText),
+                    AfterSalesEndDate = NormalizeDateText(endDateText),
                     HospitalLevel = hospitalLevel,
                     ContractStatus = string.IsNullOrWhiteSpace(contractStatus) ? "未知" : contractStatus,
                     MaintenanceAmount = maintenanceAmount,
@@ -434,5 +576,378 @@ public class DataImportController : ControllerBase
             .Replace("\t", string.Empty, StringComparison.Ordinal)
             .Replace("\r", string.Empty, StringComparison.Ordinal)
             .Replace("\n", string.Empty, StringComparison.Ordinal);
+    }
+
+    private static List<ProjectEntity> ReadProjectsFromText(string rawText)
+    {
+        var rows = new List<ProjectEntity>();
+        var lines = rawText
+            .Replace("\r\n", "\n", StringComparison.Ordinal)
+            .Replace("\r", "\n", StringComparison.Ordinal)
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Select(x => x.Trim())
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .ToList();
+
+        foreach (var line in lines)
+        {
+            if (IsHeaderLine(line))
+            {
+                continue;
+            }
+
+            var columns = SplitLineColumns(line);
+            if (columns.Count < 6)
+            {
+                continue;
+            }
+
+            var groupName = columns[0];
+            var province = columns[1];
+            var salesName = columns.Count > 2 ? columns[2] : string.Empty;
+            var maintenancePersonName = columns.Count > 3 ? columns[3] : string.Empty;
+            var hospitalName = columns[4];
+            var productName = columns[5];
+            var contractStatus = columns.Count > 6 ? columns[6] : string.Empty;
+            var startDateText = columns.Count > 7 ? columns[7] : string.Empty;
+            var endDateText = columns.Count > 8 ? columns[8] : string.Empty;
+
+            if (string.IsNullOrWhiteSpace(hospitalName) || string.IsNullOrWhiteSpace(productName))
+            {
+                continue;
+            }
+
+            rows.Add(new ProjectEntity
+            {
+                HospitalName = hospitalName,
+                ProductName = productName,
+                Province = string.IsNullOrWhiteSpace(province) ? "未知" : province,
+                GroupName = string.IsNullOrWhiteSpace(groupName) ? "未分组" : groupName,
+                SalesName = string.IsNullOrWhiteSpace(salesName) ? "未知" : salesName,
+                MaintenancePersonName = string.IsNullOrWhiteSpace(maintenancePersonName) ? "未知" : maintenancePersonName,
+                AfterSalesStartDate = NormalizeDateText(startDateText),
+                AfterSalesEndDate = NormalizeDateText(endDateText),
+                HospitalLevel = string.Empty,
+                ContractStatus = string.IsNullOrWhiteSpace(contractStatus) ? "未知" : contractStatus,
+                MaintenanceAmount = 0m,
+                OverdueDays = ComputeOverdueDays(endDateText, contractStatus)
+            });
+        }
+
+        return rows;
+    }
+
+    private static bool IsHeaderLine(string line)
+    {
+        return line.Contains("组别", StringComparison.OrdinalIgnoreCase)
+               && line.Contains("省份", StringComparison.OrdinalIgnoreCase)
+               && line.Contains("项目名称", StringComparison.OrdinalIgnoreCase)
+               && line.Contains("产品", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static List<string> SplitLineColumns(string line)
+    {
+        var byTab = line.Split('\t').Select(x => x.Trim()).ToList();
+        if (byTab.Count >= 6)
+        {
+            return byTab;
+        }
+
+        return Regex.Split(line, @"\s{2,}")
+            .Select(x => x.Trim())
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .ToList();
+    }
+
+    private static int ComputeOverdueDays(string endDateText, string contractStatus)
+    {
+        if (!string.IsNullOrWhiteSpace(endDateText)
+            && TryParseDate(endDateText, out var endDate)
+            && endDate < DateOnly.FromDateTime(DateTime.Today))
+        {
+            return (DateOnly.FromDateTime(DateTime.Today).ToDateTime(TimeOnly.MinValue) - endDate.ToDateTime(TimeOnly.MinValue)).Days;
+        }
+
+        if (string.IsNullOrWhiteSpace(contractStatus))
+        {
+            return 0;
+        }
+
+        if (contractStatus.Contains("超期", StringComparison.OrdinalIgnoreCase)
+            || contractStatus.Contains("到期", StringComparison.OrdinalIgnoreCase)
+            || contractStatus.Contains("停保", StringComparison.OrdinalIgnoreCase)
+            || contractStatus.Contains("已脱保", StringComparison.OrdinalIgnoreCase))
+        {
+            return 1;
+        }
+
+        return 0;
+    }
+
+    private static bool TryParseDate(string raw, out DateOnly date)
+    {
+        var text = raw.Trim();
+        var formats = new[]
+        {
+            "yyyy/M/d", "yyyy/MM/dd", "yyyy-M-d", "yyyy-MM-dd"
+        };
+
+        foreach (var format in formats)
+        {
+            if (DateOnly.TryParseExact(text, format, CultureInfo.InvariantCulture, DateTimeStyles.None, out date))
+            {
+                return true;
+            }
+        }
+
+        if (DateTime.TryParse(text, CultureInfo.InvariantCulture, DateTimeStyles.None, out var dateTime))
+        {
+            date = DateOnly.FromDateTime(dateTime);
+            return true;
+        }
+
+        date = default;
+        return false;
+    }
+
+    private static string NormalizeDateText(string raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return string.Empty;
+        }
+
+        return TryParseDate(raw, out var date)
+            ? date.ToString("yyyy-MM-dd")
+            : raw.Trim();
+    }
+
+    private static MajorDemandParsedResult ReadMajorDemandFromWorkbook(string filePath, string sheetName)
+    {
+        var normalizedTargetSheet = NormalizeHeader(sheetName);
+
+        using var stream = System.IO.File.Open(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+        using var reader = ExcelReaderFactory.CreateReader(stream);
+
+        do
+        {
+            if (!reader.Read())
+            {
+                continue;
+            }
+
+            var currentSheet = NormalizeHeader(reader.Name ?? string.Empty);
+            if (!currentSheet.Equals(normalizedTargetSheet, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var columns = BuildMajorDemandColumns(reader);
+            if (columns.Count == 0)
+            {
+                return new MajorDemandParsedResult();
+            }
+
+            var rows = new List<Dictionary<string, string>>();
+            while (reader.Read())
+            {
+                var row = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                var hasValue = false;
+
+                for (var i = 0; i < columns.Count; i++)
+                {
+                    var value = i >= reader.FieldCount
+                        ? string.Empty
+                        : reader.GetValue(i)?.ToString()?.Trim() ?? string.Empty;
+
+                    if (!string.IsNullOrWhiteSpace(value))
+                    {
+                        hasValue = true;
+                    }
+
+                    row[columns[i]] = value;
+                }
+
+                if (hasValue)
+                {
+                    rows.Add(row);
+                }
+            }
+
+            return new MajorDemandParsedResult
+            {
+                Columns = columns,
+                Rows = rows
+            };
+        }
+        while (reader.NextResult());
+
+        return new MajorDemandParsedResult();
+    }
+
+    private static List<string> BuildMajorDemandColumns(IExcelDataReader reader)
+    {
+        var columns = new List<string>();
+        var used = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        for (var i = 0; i < reader.FieldCount; i++)
+        {
+            var raw = reader.GetValue(i)?.ToString()?.Trim() ?? string.Empty;
+            var header = string.IsNullOrWhiteSpace(raw) ? $"列{i + 1}" : raw;
+            var uniqueHeader = header;
+            var suffix = 2;
+
+            while (!used.Add(uniqueHeader))
+            {
+                uniqueHeader = $"{header}_{suffix}";
+                suffix++;
+            }
+
+            columns.Add(uniqueHeader);
+        }
+
+        return columns;
+    }
+
+    private static List<ProjectEntity> ConvertMajorDemandToProjects(IReadOnlyList<Dictionary<string, string>> rows)
+    {
+        var projects = new List<ProjectEntity>();
+
+        foreach (var row in rows)
+        {
+            var hospitalName = GetFirstColumnValue(row, "医院名称", "项目名称", "医院", "客户名称");
+            if (string.IsNullOrWhiteSpace(hospitalName))
+            {
+                continue;
+            }
+
+            var productName = GetFirstColumnValue(row, "产品", "产品名称", "上线产品", "项目类别");
+            var province = GetFirstColumnValue(row, "省", "省份", "项目省份", "服务区域");
+            var groupName = GetFirstColumnValue(row, "组别", "原组别", "归属组", "归属人");
+            var salesName = GetFirstColumnValue(row, "销售", "销售姓名", "销售人员", "商务");
+            var maintenancePersonName = GetFirstColumnValue(row, "维护员", "维护人员", "售后", "实施人员", "运维人员");
+            var hospitalLevel = GetFirstColumnValue(row, "医院等级", "级别", "医院级别", "评审级别");
+            var contractStatus = GetFirstColumnValue(row, "合同状态", "项目状态", "交接现阶段", "运维阶段");
+            var startDateText = GetFirstColumnValue(row, "售后开始日期", "维保开始日期", "开始日期", "服务开始日期");
+            var endDateText = GetFirstColumnValue(row, "售后结束日期", "维保结束日期", "结束日期", "服务结束日期");
+            var overdueText = GetFirstColumnValue(row, "超期天数");
+            var amountText = GetFirstColumnValue(row, "维护合同额", "金额", "维护金额", "销售合同额", "年度产值");
+            var isOverdue = GetFirstColumnValue(row, "是否超期");
+
+            var overdueDays = ParseInt(overdueText);
+            if (overdueDays <= 0 && (isOverdue is "是" or "Y" or "y" or "true" or "TRUE"))
+            {
+                overdueDays = 1;
+            }
+
+            if (overdueDays <= 0)
+            {
+                overdueDays = ComputeOverdueDays(endDateText, contractStatus);
+            }
+
+            projects.Add(new ProjectEntity
+            {
+                HospitalName = hospitalName,
+                ProductName = productName,
+                Province = string.IsNullOrWhiteSpace(province) ? "未知" : province,
+                GroupName = string.IsNullOrWhiteSpace(groupName) ? "未分组" : groupName,
+                SalesName = string.IsNullOrWhiteSpace(salesName) ? "未知" : salesName,
+                MaintenancePersonName = string.IsNullOrWhiteSpace(maintenancePersonName) ? "未知" : maintenancePersonName,
+                AfterSalesStartDate = NormalizeDateText(startDateText),
+                AfterSalesEndDate = NormalizeDateText(endDateText),
+                HospitalLevel = string.IsNullOrWhiteSpace(hospitalLevel) ? "未评级" : hospitalLevel,
+                ContractStatus = string.IsNullOrWhiteSpace(contractStatus) ? "未知" : contractStatus,
+                MaintenanceAmount = ParseDecimal(amountText),
+                OverdueDays = overdueDays
+            });
+        }
+
+        return projects;
+    }
+
+    private static string GetFirstColumnValue(IReadOnlyDictionary<string, string> row, params string[] aliases)
+    {
+        foreach (var alias in aliases)
+        {
+            if (string.IsNullOrWhiteSpace(alias))
+            {
+                continue;
+            }
+
+            if (row.TryGetValue(alias, out var directValue) && !string.IsNullOrWhiteSpace(directValue))
+            {
+                return directValue.Trim();
+            }
+
+            var normalizedAlias = NormalizeHeader(alias);
+            foreach (var pair in row)
+            {
+                if (!NormalizeHeader(pair.Key).Equals(normalizedAlias, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                if (!string.IsNullOrWhiteSpace(pair.Value))
+                {
+                    return pair.Value.Trim();
+                }
+            }
+        }
+
+        return string.Empty;
+    }
+
+    private static int ParseInt(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return 0;
+        }
+
+        var normalized = text.Replace(",", string.Empty, StringComparison.OrdinalIgnoreCase)
+            .Replace("天", string.Empty, StringComparison.OrdinalIgnoreCase)
+            .Trim();
+
+        if (int.TryParse(normalized, NumberStyles.Integer, CultureInfo.InvariantCulture, out var value))
+        {
+            return value;
+        }
+
+        if (double.TryParse(normalized, NumberStyles.Any, CultureInfo.InvariantCulture, out var doubleValue))
+        {
+            return (int)Math.Round(doubleValue, MidpointRounding.AwayFromZero);
+        }
+
+        return 0;
+    }
+
+    private static decimal ParseDecimal(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return 0m;
+        }
+
+        var normalized = text.Replace(",", string.Empty, StringComparison.OrdinalIgnoreCase)
+            .Replace("元", string.Empty, StringComparison.OrdinalIgnoreCase)
+            .Trim();
+
+        if (decimal.TryParse(normalized, NumberStyles.Any, CultureInfo.InvariantCulture, out var value))
+        {
+            return value;
+        }
+
+        if (double.TryParse(normalized, NumberStyles.Any, CultureInfo.InvariantCulture, out var doubleValue))
+        {
+            return Convert.ToDecimal(doubleValue);
+        }
+
+        return 0m;
+    }
+
+    private sealed class MajorDemandParsedResult
+    {
+        public List<string> Columns { get; set; } = [];
+        public List<Dictionary<string, string>> Rows { get; set; } = [];
     }
 }

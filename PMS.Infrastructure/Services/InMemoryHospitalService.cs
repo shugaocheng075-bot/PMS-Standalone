@@ -60,22 +60,22 @@ public class InMemoryHospitalService : IHospitalService
 
         if (!string.IsNullOrWhiteSpace(query.HospitalName))
         {
-            list = list.Where(x => x.HospitalName.Contains(query.HospitalName, StringComparison.OrdinalIgnoreCase));
+            list = list.Where(x => SmartTextMatcher.Match(x.HospitalName, query.HospitalName));
         }
 
         if (!string.IsNullOrWhiteSpace(query.Tier))
         {
-            list = list.Where(x => x.Tier == query.Tier);
+            list = list.Where(x => SmartTextMatcher.MatchExact(x.Tier, query.Tier));
         }
 
         if (!string.IsNullOrWhiteSpace(query.Province))
         {
-            list = list.Where(x => x.Province.Contains(query.Province, StringComparison.OrdinalIgnoreCase));
+            list = list.Where(x => SmartTextMatcher.Match(x.Province, query.Province));
         }
 
         if (!string.IsNullOrWhiteSpace(query.City))
         {
-            list = list.Where(x => x.City.Contains(query.City, StringComparison.OrdinalIgnoreCase));
+            list = list.Where(x => SmartTextMatcher.Match(x.City, query.City));
         }
 
         var total = list.Count();

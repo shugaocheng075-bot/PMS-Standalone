@@ -22,6 +22,7 @@ public class AlertsController(IContractAlertService alertService) : ControllerBa
         [FromQuery] string? alertLevel,
         [FromQuery] string? province,
         [FromQuery] string? groupName,
+        [FromQuery] string? salesName,
         [FromQuery] int page = 1,
         [FromQuery] int size = 20,
         CancellationToken cancellationToken = default)
@@ -31,6 +32,7 @@ public class AlertsController(IContractAlertService alertService) : ControllerBa
             AlertLevel = alertLevel,
             Province = province,
             GroupName = groupName,
+            SalesName = salesName,
             Page = page,
             Size = size
         }, cancellationToken);
