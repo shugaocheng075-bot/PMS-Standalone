@@ -36,7 +36,7 @@
     </el-card>
 
     <el-card shadow="never" class="table-card">
-      <el-table :data="tableData" v-loading="loading" stripe empty-text="暂无符合条件的数据">
+      <el-table :data="tableData" v-loading="loading" stripe max-height="520" scrollbar-always-on empty-text="暂无符合条件的数据">
         <el-table-column prop="productName" label="产品名称" min-width="220" show-overflow-tooltip sortable />
         <el-table-column prop="version" label="版本" width="100" sortable />
         <el-table-column prop="category" label="分类" width="120" show-overflow-tooltip sortable />
@@ -78,11 +78,11 @@
         <el-pagination
           v-model:current-page="query.page"
           v-model:page-size="query.size"
-          :page-sizes="[10, 20, 50]"
+          :page-sizes="[15]"
           layout="total, sizes, prev, pager, next"
           :total="total"
-          @size-change="loadData"
-          @current-change="loadData"
+          @size-change="(size: number) => { query.size = size; query.page = 1; loadData() }"
+          @current-change="(page: number) => { query.page = page; loadData() }"
         />
       </div>
     </el-card>
@@ -153,7 +153,7 @@ const query = reactive({
   category: '',
   status: '',
   page: 1,
-  size: 10,
+  size: 15,
 })
 const categoryOptions = ref<string[]>(['EMR', '临床辅助', '管理', 'AI', '移动'])
 const statusOptions = ref<string[]>(['运行中', '试运行', '已停用'])
@@ -177,6 +177,8 @@ const applyDrillQuery = () => {
     return
   }
 
+  query.productName = ''
+  query.category = ''
   query.status = status
   query.page = 1
 }
@@ -207,7 +209,7 @@ const { notifyDataChanged } = useLinkedRealtimeRefresh({
     await Promise.allSettled([loadSummary(), loadData()])
   },
   scope: 'product',
-  intervalMs: 10000,
+  intervalMs: 60000,
 })
 
 const editRules: FormRules<ProductUpsert> = {
@@ -249,7 +251,7 @@ const loadData = async () => {
 
 const loadFilterOptions = async () => {
   try {
-    const res = await fetchProducts({ page: 1, size: 5000 })
+    const res = await fetchProducts({ page: 1, size: 1000 })
     const items = res.data.items
 
     if (!items.length) {
@@ -270,6 +272,8 @@ const loadFilterOptions = async () => {
 }
 
 const onStatClick = (status: string) => {
+  query.productName = ''
+  query.category = ''
   query.status = status
   query.page = 1
   loadData()
@@ -285,7 +289,7 @@ const onReset = () => {
   query.category = ''
   query.status = ''
   query.page = 1
-  query.size = 10
+  query.size = 15
   loadData()
 }
 

@@ -12,6 +12,19 @@ const request = axios.create({
   timeout: 10000,
 })
 
+const isLoginRequest = (url?: string): boolean => {
+  if (!url) {
+    return false
+  }
+
+  const normalized = (url.split('?')[0] ?? '').trim()
+  if (!normalized) {
+    return false
+  }
+
+  return /(^|\/)auth\/login\/?$/i.test(normalized)
+}
+
 const sanitizeParams = (params: unknown): unknown => {
   if (params === null || params === undefined) {
     return undefined
@@ -45,6 +58,13 @@ const sanitizeParams = (params: unknown): unknown => {
 request.interceptors.request.use((config) => {
   if (config.params) {
     config.params = sanitizeParams(config.params)
+  }
+
+  if (isLoginRequest(config.url)) {
+    config.headers = config.headers ?? {}
+    delete config.headers.Authorization
+    delete config.headers['X-PMS-User-Id']
+    return config
   }
 
   const rawPersonnelId = typeof window !== 'undefined'

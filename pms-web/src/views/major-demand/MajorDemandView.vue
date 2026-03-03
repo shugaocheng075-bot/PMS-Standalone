@@ -53,6 +53,8 @@
         :data="displayRows"
         v-loading="loading.fetching"
         stripe
+        max-height="520"
+        scrollbar-always-on
         empty-text="暂无重大需求数据"
         @selection-change="onSelectionChange"
       >
@@ -305,7 +307,7 @@ const { notifyDataChanged } = useLinkedRealtimeRefresh({
     await loadData()
   },
   scope: 'major-demand',
-  intervalMs: 10000,
+  intervalMs: 60000,
 })
 
 const loadData = async () => {

@@ -8,6 +8,8 @@ public interface IPersonnelService
     Task<PersonnelSummaryDto> GetSummaryAsync(CancellationToken cancellationToken = default);
     Task<PagedResult<PersonnelItemDto>> QueryAsync(PersonnelQuery query, CancellationToken cancellationToken = default);
     Task<PersonnelItemDto?> GetByIdAsync(int id, CancellationToken cancellationToken = default);
+    Task<PersonnelExternalSyncResultDto> SyncFromExternalAsync(bool force = false, CancellationToken cancellationToken = default);
+    Task<PersonnelExternalSyncResultDto> ImportJsonAsync(string jsonData, bool clearExisting = false, CancellationToken cancellationToken = default);
     Task<PersonnelItemDto> CreateAsync(PersonnelUpsertDto dto, CancellationToken cancellationToken = default);
     Task<PersonnelItemDto?> UpdateAsync(int id, PersonnelUpsertDto dto, CancellationToken cancellationToken = default);
     Task<bool> DeleteAsync(int id, CancellationToken cancellationToken = default);

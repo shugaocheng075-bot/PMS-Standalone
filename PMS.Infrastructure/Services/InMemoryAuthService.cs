@@ -10,6 +10,7 @@ namespace PMS.Infrastructure.Services;
 
 public class InMemoryAuthService(IPersonnelService personnelService, IAccessControlService accessControlService) : IAuthService
 {
+    private const int ProtectedAdminPersonnelId = 1;
     private const string StateKey = "auth_accounts";
     private const string DefaultPassword = "123456";
     private static readonly object SyncRoot = new();
@@ -301,7 +302,8 @@ public class InMemoryAuthService(IPersonnelService personnelService, IAccessCont
     {
         if (string.Equals(account, "admin", StringComparison.OrdinalIgnoreCase))
         {
-            return Accounts.FirstOrDefault(x => x.PersonnelId == 1);
+            return Accounts.FirstOrDefault(x => string.Equals(x.Account, "admin", StringComparison.OrdinalIgnoreCase))
+                ?? Accounts.FirstOrDefault(x => x.PersonnelId == ProtectedAdminPersonnelId);
         }
 
         return Accounts.FirstOrDefault(x => string.Equals(x.Account, account, StringComparison.OrdinalIgnoreCase));

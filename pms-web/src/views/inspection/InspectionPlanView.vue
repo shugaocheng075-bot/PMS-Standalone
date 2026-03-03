@@ -61,7 +61,7 @@
         </el-card>
 
         <el-card shadow="never" class="table-card">
-          <el-table :data="tableData" v-loading="loading" stripe empty-text="暂无符合条件的数据">
+          <el-table :data="tableData" v-loading="loading" stripe max-height="520" scrollbar-always-on empty-text="暂无符合条件的数据">
             <el-table-column prop="hospitalName" label="医院" min-width="220" show-overflow-tooltip sortable />
             <el-table-column prop="productName" label="产品" min-width="180" show-overflow-tooltip sortable />
             <el-table-column prop="province" label="省份" width="100" show-overflow-tooltip sortable />
@@ -85,11 +85,11 @@
         <el-pagination
           v-model:current-page="query.page"
           v-model:page-size="query.size"
-          :page-sizes="[10, 20, 50]"
+          :page-sizes="[15]"
           layout="total, sizes, prev, pager, next"
           :total="total"
-          @size-change="loadData"
-          @current-change="loadData"
+          @size-change="(size: number) => { query.size = size; query.page = 1; loadData() }"
+          @current-change="(page: number) => { query.page = page; loadData() }"
         />
       </div>
     </el-card>
@@ -157,7 +157,7 @@
 
         <!-- 结果表格 -->
         <el-card shadow="never" class="table-card">
-          <el-table :data="resultTableData" v-loading="resultLoading" stripe empty-text="暂无巡检结果数据（SystemAuditTool 推送后将在此显示）">
+          <el-table :data="resultTableData" v-loading="resultLoading" stripe max-height="520" scrollbar-always-on empty-text="暂无巡检结果数据（SystemAuditTool 推送后将在此显示）">
             <el-table-column prop="hospitalName" label="医院" min-width="200" show-overflow-tooltip sortable />
             <el-table-column prop="productName" label="产品" min-width="160" show-overflow-tooltip sortable />
             <el-table-column prop="inspectedAt" label="巡检时间" width="170" sortable>
@@ -201,11 +201,11 @@
             <el-pagination
               v-model:current-page="resultQuery.page"
               v-model:page-size="resultQuery.size"
-              :page-sizes="[10, 20, 50]"
+              :page-sizes="[15]"
               layout="total, sizes, prev, pager, next"
               :total="resultTotal"
-              @size-change="loadResults"
-              @current-change="loadResults"
+              @size-change="(size: number) => { resultQuery.size = size; resultQuery.page = 1; loadResults() }"
+              @current-change="(page: number) => { resultQuery.page = page; loadResults() }"
             />
           </div>
         </el-card>
@@ -239,7 +239,7 @@
 
             <div v-if="detailRow.topRisks && detailRow.topRisks.length > 0" style="margin-top: 16px;">
               <h4 style="margin-bottom: 8px;">风险项 ({{ detailRow.topRisks.length }})</h4>
-              <el-table :data="detailRow.topRisks" stripe size="small" max-height="300">
+              <el-table :data="detailRow.topRisks" stripe size="small" max-height="300" scrollbar-always-on>
                 <el-table-column prop="level" label="级别" width="80">
                   <template #default="scope">
                     <el-tag :type="riskLevelTag(scope.row.level)" size="small">{{ scope.row.level }}</el-tag>
@@ -298,7 +298,7 @@ const query = reactive({
   groupName: '',
   inspector: '',
   page: 1,
-  size: 10,
+  size: 15,
 })
 const route = useRoute()
 
@@ -320,6 +320,10 @@ const applyDrillQuery = () => {
     return
   }
 
+  query.province = ''
+  query.productName = ''
+  query.groupName = ''
+  query.inspector = ''
   query.status = status
   query.page = 1
 }
@@ -365,7 +369,7 @@ watch(
 
 const loadFilterOptions = async () => {
   try {
-    const res = await fetchInspections({ page: 1, size: 5000 })
+    const res = await fetchInspections({ page: 1, size: 1000 })
     const items = res.data.items
 
     if (!items.length) {
@@ -447,6 +451,10 @@ const loadData = async () => {
 }
 
 const onStatClick = (status: string) => {
+  query.province = ''
+  query.productName = ''
+  query.groupName = ''
+  query.inspector = ''
   query.status = status
   query.page = 1
   loadData()
@@ -464,7 +472,7 @@ const onReset = () => {
   query.groupName = ''
   query.inspector = ''
   query.page = 1
-  query.size = 10
+  query.size = 15
   clearFilterState()
   loadData()
 }
@@ -487,7 +495,7 @@ const { restore: restoreFilterState, clear: clearFilterState } = useFilterStateP
     query.groupName = state.groupName ?? ''
     query.inspector = state.inspector ?? ''
     query.page = typeof state.page === 'number' ? state.page : 1
-    query.size = typeof state.size === 'number' ? state.size : 10
+    query.size = typeof state.size === 'number' ? state.size : 15
   },
 })
 
@@ -498,7 +506,7 @@ const refreshLinkedData = async () => {
 useLinkedRealtimeRefresh({
   refresh: refreshLinkedData,
   scope: 'inspection',
-  intervalMs: 10000,
+  intervalMs: 60000,
 })
 
 // ===================== 巡检结果 Tab =====================
@@ -515,7 +523,7 @@ const resultQuery = reactive({
   inspector: '',
   healthLevel: '',
   page: 1,
-  size: 10,
+  size: 15,
 })
 
 const resultHospitalOptions = ref<string[]>([])
@@ -543,7 +551,7 @@ const loadResults = async () => {
 
 const loadResultFilterOptions = async () => {
   try {
-    const res = await fetchInspectionResults({ page: 1, size: 5000 })
+    const res = await fetchInspectionResults({ page: 1, size: 1000 })
     const items = res.data.items
     if (!items.length) return
 
@@ -570,6 +578,9 @@ const onTabChange = (tab: string) => {
 }
 
 const onResultHealthClick = (level: string) => {
+  resultQuery.hospitalName = ''
+  resultQuery.productName = ''
+  resultQuery.inspector = ''
   resultQuery.healthLevel = level
   resultQuery.page = 1
   loadResults()
@@ -586,7 +597,7 @@ const onResultReset = () => {
   resultQuery.inspector = ''
   resultQuery.healthLevel = ''
   resultQuery.page = 1
-  resultQuery.size = 10
+  resultQuery.size = 15
   loadResults()
 }
 

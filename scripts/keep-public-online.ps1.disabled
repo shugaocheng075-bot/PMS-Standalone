@@ -1,0 +1,72 @@
+$ErrorActionPreference = 'SilentlyContinue'
+
+$webRoot = 'D:\Projects\PMS-Standalone\pms-web'
+$cloudflaredExe = 'D:\Projects\_bin\cloudflared.exe'
+$runtimeDir = 'D:\Projects\_runtime'
+$previewOut = Join-Path $runtimeDir 'preview.out.log'
+$previewErr = Join-Path $runtimeDir 'preview.err.log'
+$tunnelOut = Join-Path $runtimeDir 'tunnel.out.log'
+$tunnelErr = Join-Path $runtimeDir 'tunnel.err.log'
+$publicUrlFile = Join-Path $runtimeDir 'public_url.txt'
+
+if (-not (Test-Path $runtimeDir)) {
+    New-Item -ItemType Directory -Path $runtimeDir | Out-Null
+}
+
+function Test-Listening {
+    param([int]$Port)
+    return [bool](Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue)
+}
+
+function Start-PreviewServer {
+    Start-Process -FilePath 'npm.cmd' `
+        -ArgumentList '--prefix', $webRoot, 'run', 'preview', '--', '--host', '127.0.0.1', '--port', '5173' `
+        -WindowStyle Hidden `
+        -RedirectStandardOutput $previewOut `
+        -RedirectStandardError $previewErr | Out-Null
+}
+
+function Start-Tunnel {
+    if (-not (Test-Path $cloudflaredExe)) {
+        return
+    }
+
+    Start-Process -FilePath $cloudflaredExe `
+        -ArgumentList 'tunnel', '--url', 'http://127.0.0.1:5173', '--no-autoupdate' `
+        -WindowStyle Hidden `
+        -RedirectStandardOutput $tunnelOut `
+        -RedirectStandardError $tunnelErr | Out-Null
+}
+
+function Update-PublicUrlFile {
+    $logPaths = @($tunnelOut, $tunnelErr) | Where-Object { Test-Path $_ }
+    if ($logPaths.Count -eq 0) {
+        return
+    }
+
+    $match = Select-String -Path $logPaths -Pattern 'https://[a-z0-9\-]+\.trycloudflare\.com' -AllMatches | Select-Object -Last 1
+    if (-not $match) {
+        return
+    }
+
+    $url = $match.Matches.Value | Select-Object -Last 1
+    if (-not [string]::IsNullOrWhiteSpace($url)) {
+        Set-Content -Path $publicUrlFile -Value $url -Encoding UTF8
+    }
+}
+
+while ($true) {
+    if (-not (Test-Listening -Port 5173)) {
+        Start-PreviewServer
+        Start-Sleep -Seconds 3
+    }
+
+    $tunnelRunning = Get-Process -Name cloudflared -ErrorAction SilentlyContinue
+    if (-not $tunnelRunning) {
+        Start-Tunnel
+        Start-Sleep -Seconds 3
+    }
+
+    Update-PublicUrlFile
+    Start-Sleep -Seconds 8
+}

@@ -73,7 +73,7 @@
     </el-card>
 
     <el-card shadow="never" class="table-card">
-      <el-table :data="tableData" v-loading="loading" stripe empty-text="暂无待办预警">
+      <el-table :data="tableData" v-loading="loading" stripe max-height="520" scrollbar-always-on empty-text="暂无待办预警">
         <el-table-column prop="source" label="来源" width="90" />
         <el-table-column prop="level" label="级别" width="90">
           <template #default="scope">
@@ -96,11 +96,11 @@
         <el-pagination
           v-model:current-page="query.page"
           v-model:page-size="query.size"
-          :page-sizes="[10, 20, 50]"
+          :page-sizes="[15]"
           layout="total, sizes, prev, pager, next"
           :total="total"
-          @size-change="loadData"
-          @current-change="loadData"
+          @size-change="(size: number) => { query.size = size; query.page = 1; loadData() }"
+          @current-change="(page: number) => { query.page = page; loadData() }"
         />
       </div>
     </el-card>
@@ -134,7 +134,7 @@ const query = reactive({
   level: '',
   keyword: '',
   page: 1,
-  size: 10,
+  size: 15,
 })
 
 const levelTagType = (level: string) => {
@@ -175,18 +175,22 @@ const onReset = () => {
   query.level = ''
   query.keyword = ''
   query.page = 1
-  query.size = 10
+  query.size = 15
   loadData()
 }
 
 const filterBySource = (source: string) => {
   query.source = source
+  query.level = ''
+  query.keyword = ''
   query.page = 1
   loadData()
 }
 
 const filterByLevel = (level: string) => {
+  query.source = ''
   query.level = level
+  query.keyword = ''
   query.page = 1
   loadData()
 }

@@ -36,7 +36,7 @@
     </el-card>
 
     <el-card shadow="never" class="table-card">
-      <el-table :data="auditRows" v-loading="loading.audit" stripe empty-text="暂无可审计数据">
+      <el-table :data="auditRows" v-loading="loading.audit" stripe max-height="520" scrollbar-always-on empty-text="暂无可审计数据">
         <el-table-column prop="hospitalName" label="医院" min-width="220" show-overflow-tooltip sortable />
         <el-table-column prop="productName" label="产品" min-width="180" show-overflow-tooltip sortable />
         <el-table-column prop="groupName" label="归属人/组别" width="130" show-overflow-tooltip sortable />
@@ -83,7 +83,7 @@ const { notifyDataChanged } = useLinkedRealtimeRefresh({
     await loadAudit()
   },
   scope: 'maintenance',
-  intervalMs: 10000,
+  intervalMs: 60000,
 })
 
 const loadAudit = async () => {

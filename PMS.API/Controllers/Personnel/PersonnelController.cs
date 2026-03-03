@@ -24,6 +24,27 @@ public class PersonnelController(IPersonnelService personnelService) : Controlle
         return Ok(ApiResponse<PersonnelSummaryDto>.Success(result));
     }
 
+    [HttpPost("sync-external")]
+    public async Task<IActionResult> SyncExternal([FromQuery] bool force = false, CancellationToken cancellationToken = default)
+    {
+        var result = await personnelService.SyncFromExternalAsync(force, cancellationToken);
+        return Ok(ApiResponse<PersonnelExternalSyncResultDto>.Success(result));
+    }
+
+    [HttpPost("import-json")]
+    public async Task<IActionResult> ImportJson([FromQuery] bool clear = false, CancellationToken cancellationToken = default)
+    {
+        using var reader = new StreamReader(Request.Body);
+        var jsonData = await reader.ReadToEndAsync(cancellationToken);
+        if (string.IsNullOrWhiteSpace(jsonData))
+        {
+            return BadRequest(new { code = 400, message = "请求体为空，请提供 JSON 数组数据" });
+        }
+
+        var result = await personnelService.ImportJsonAsync(jsonData, clear, cancellationToken);
+        return Ok(ApiResponse<PersonnelExternalSyncResultDto>.Success(result));
+    }
+
     [HttpGet]
     public async Task<IActionResult> Query(
         [FromQuery] string? name,

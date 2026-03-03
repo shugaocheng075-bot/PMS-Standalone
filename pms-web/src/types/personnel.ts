@@ -16,6 +16,7 @@ export interface PersonnelItem {
   projectCount: number
   overdueCount: number
   createdAt: string
+  sourceColumns?: Record<string, string>
 }
 
 export interface PersonnelQuery {
@@ -37,4 +38,16 @@ export interface PersonnelUpsert {
   isOnsite: boolean
   projectCount: number
   overdueCount: number
+}
+
+export interface ExternalSyncResult {
+  success: boolean
+  skipped: boolean
+  reason: string
+  parsedCount: number
+  addedCount: number
+  updatedCount: number
+  attemptedAt: string
+  lastSuccessAt: string | null
+  sourceUrl: string | null
 }

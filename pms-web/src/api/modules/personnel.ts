@@ -1,6 +1,6 @@
 import request from '../request'
 import type { ApiResponse, PagedResult } from '../../types/project'
-import type { PersonnelItem, PersonnelQuery, PersonnelSummary, PersonnelUpsert } from '../../types/personnel'
+import type { ExternalSyncResult, PersonnelItem, PersonnelQuery, PersonnelSummary, PersonnelUpsert } from '../../types/personnel'
 
 export function fetchPersonnelSummary() {
   return request.get<any, ApiResponse<PersonnelSummary>>('/personnel/summary')
@@ -24,4 +24,8 @@ export function updatePersonnel(id: number, data: PersonnelUpsert) {
 
 export function deletePersonnel(id: number) {
   return request.delete<any, { code: number; message: string }>(`/personnel/${id}`)
+}
+
+export function syncFromExternal(force = false) {
+  return request.post<any, ApiResponse<ExternalSyncResult>>(`/personnel/sync-external?force=${force}`)
 }

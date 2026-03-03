@@ -7,6 +7,7 @@ namespace PMS.Infrastructure.Services;
 
 public class InMemoryAccessControlService(IPersonnelService personnelService) : IAccessControlService
 {
+    private const int ProtectedAdminPersonnelId = 1;
     private const string StateKey = "personnel_access";
     private static readonly object SyncRoot = new();
     private static readonly List<PersonnelPermissionState> States = SqliteJsonStore.LoadOrSeed(StateKey, () => new List<PersonnelPermissionState>());
@@ -159,6 +160,19 @@ public class InMemoryAccessControlService(IPersonnelService personnelService) : 
                 States.Add(state);
             }
 
+            if (personnelId == ProtectedAdminPersonnelId)
+            {
+                state.IsAdmin = true;
+                state.PermissionKeys = PermissionCatalog
+                    .Select(x => x.Key)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .OrderBy(x => x, StringComparer.Ordinal)
+                    .ToList();
+                state.UpdatedAt = DateTime.UtcNow;
+                Persist();
+                return BuildProfile(person.Id, person.Name, person.RoleType, state);
+            }
+
             state.PermissionKeys = sanitized;
             if (isAdmin.HasValue)
             {
@@ -221,6 +235,11 @@ public class InMemoryAccessControlService(IPersonnelService personnelService) : 
         if (path.StartsWith("/api/alerts/center"))
         {
             return "alert-center.view";
+        }
+
+        if (path.StartsWith("/api/dashboard"))
+        {
+            return "dashboard.view";
         }
 
         if (path.StartsWith("/api/projects"))
@@ -289,6 +308,18 @@ public class InMemoryAccessControlService(IPersonnelService personnelService) : 
                     .OrderBy(x => x, StringComparer.Ordinal)
                     .ToList();
 
+                if (personnelId == 1)
+                {
+                    existing.IsAdmin = true;
+                    existing.PermissionKeys = PermissionCatalog
+                        .Select(x => x.Key)
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .OrderBy(x => x, StringComparer.Ordinal)
+                        .ToList();
+                    existing.UpdatedAt = DateTime.UtcNow;
+                    Persist();
+                }
+
                 return existing;
             }
         }
@@ -317,7 +348,7 @@ public class InMemoryAccessControlService(IPersonnelService personnelService) : 
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        var isAdmin = personnelId == 1;
+        var isAdmin = personnelId == ProtectedAdminPersonnelId;
         var permissionKeys = isAdmin
             ? PermissionCatalog.Select(x => x.Key).ToList()
             : BuildRoleDefaultPermissions(roleType);

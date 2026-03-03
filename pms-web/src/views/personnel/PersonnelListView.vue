@@ -5,7 +5,18 @@
         <h2 class="page-title">权限管理</h2>
         <div class="page-subtitle">人员信息、权限模板与角色权限统一管理</div>
       </div>
-      <el-button v-if="canManagePersonnel" type="primary" @click="onOpenCreate">新增人员</el-button>
+      <el-space>
+        <el-button
+          v-if="canManagePersonnel"
+          :loading="syncLoading"
+          :disabled="syncLoading"
+          @click="onSyncExternal"
+        >
+          <el-icon v-if="!syncLoading" style="margin-right:4px"><Refresh /></el-icon>
+          同步外部人员
+        </el-button>
+        <el-button v-if="canManagePersonnel" type="primary" @click="onOpenCreate">新增人员</el-button>
+      </el-space>
     </div>
 
     <el-row :gutter="16" class="stats-row">
@@ -47,64 +58,100 @@
     </el-card>
 
     <el-card shadow="never" class="table-card">
-      <el-table :data="tableData" v-loading="loading" stripe empty-text="暂无符合条件的数据">
-        <el-table-column prop="name" label="姓名" width="100" show-overflow-tooltip sortable />
-        <el-table-column prop="department" label="部门" width="140" show-overflow-tooltip sortable />
-        <el-table-column prop="groupName" label="组别" width="140" show-overflow-tooltip sortable />
-        <el-table-column prop="roleType" label="角色" width="100" sortable />
-        <el-table-column prop="phone" label="联系电话" width="150" show-overflow-tooltip />
-        <el-table-column label="驻场" width="90">
+      <el-table
+        class="permission-table"
+        :data="tableData"
+        v-loading="loading"
+        stripe
+        border
+        size="small"
+        :max-height="tableMaxHeight"
+        scrollbar-always-on
+        empty-text="暂无符合条件的数据"
+      >
+        <el-table-column label="员工编号" width="110" show-overflow-tooltip>
           <template #default="scope">
-            <el-tag :type="scope.row.isOnsite ? 'warning' : 'info'">{{ scope.row.isOnsite ? '是' : '否' }}</el-tag>
+            {{ getWebsiteField(scope.row, ['employeeId', '员工编号']) }}
           </template>
         </el-table-column>
-        <el-table-column prop="projectCount" label="负责项目" width="100" align="right" sortable />
-        <el-table-column prop="overdueCount" label="超期项目" width="100" align="right" sortable />
-        <el-table-column label="操作" width="220" fixed="right">
+        <el-table-column prop="name" label="人员姓名" width="110" show-overflow-tooltip sortable />
+        <el-table-column label="性别" width="80" show-overflow-tooltip>
+          <template #default="scope">
+            <el-tag size="small" effect="plain" type="info">
+              {{ formatGender(scope.row) }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="phone" label="手机号" width="130" show-overflow-tooltip />
+        <el-table-column label="婚姻状况" width="100" show-overflow-tooltip>
+          <template #default="scope">
+            {{ getWebsiteField(scope.row, ['maritalStatus', '婚姻状况']) }}
+          </template>
+        </el-table-column>
+        <el-table-column label="常住地(Base地)" width="130" show-overflow-tooltip>
+          <template #default="scope">
+            {{ getWebsiteField(scope.row, ['baseAddress', '常住地(Base地)']) }}
+          </template>
+        </el-table-column>
+        <el-table-column label="家庭所在省市" width="140" show-overflow-tooltip>
+          <template #default="scope">
+            {{ formatHomeCity(scope.row) }}
+          </template>
+        </el-table-column>
+        <el-table-column label="岗位" width="140" show-overflow-tooltip>
+          <template #default="scope">
+            {{ formatPosition(scope.row) }}
+          </template>
+        </el-table-column>
+        <el-table-column label="职级" width="100" show-overflow-tooltip>
+          <template #default="scope">
+            {{ getWebsiteField(scope.row, ['workLevel', '职级']) }}
+          </template>
+        </el-table-column>
+        <el-table-column label="用户角色" width="120" show-overflow-tooltip>
+          <template #default="scope">
+            {{ formatUserRole(scope.row) }}
+          </template>
+        </el-table-column>
+        <el-table-column label="用户状态" width="100" show-overflow-tooltip>
+          <template #default="scope">
+            <el-tag size="small" effect="light" type="success">
+              {{ formatUserStatus(scope.row) || '在职' }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="groupName" label="组别" width="160" show-overflow-tooltip sortable />
+        <el-table-column label="操作" width="170" fixed="right">
           <template #default="scope">
             <el-button
-              type="primary"
-              link
+              plain
+              size="small"
               :loading="detailLoadingId === scope.row.id"
               :disabled="submitLoading || deletingId === scope.row.id"
               @click="onOpenDetail(scope.row.id)"
-            >详情</el-button>
-            <el-button
-              v-if="canManagePersonnel"
-              type="primary"
-              link
-              :disabled="submitLoading || deletingId === scope.row.id"
-              @click="onOpenEdit(scope.row)"
-            >编辑</el-button>
-            <el-button
-              v-if="canManagePersonnel"
-              type="danger"
-              link
-              :loading="deletingId === scope.row.id"
-              :disabled="submitLoading || deletingId === scope.row.id"
-              @click="onDelete(scope.row)"
-            >删除</el-button>
+            >查看</el-button>
             <el-button
               v-if="canManagePermissions"
               type="primary"
-              link
+              size="small"
               :loading="permissionLoadingId === scope.row.id"
               :disabled="submitLoading || deletingId === scope.row.id"
               @click="onOpenPermission(scope.row)"
-            >权限配置</el-button>
+            >修改</el-button>
           </template>
         </el-table-column>
       </el-table>
 
       <div class="pager">
+        <div class="pager-total">共 {{ displayTotal }} 条</div>
         <el-pagination
           v-model:current-page="query.page"
           v-model:page-size="query.size"
-          :page-sizes="[10, 20, 50]"
-          layout="total, sizes, prev, pager, next"
-          :total="total"
-          @size-change="loadData"
-          @current-change="loadData"
+          :page-sizes="[15]"
+          layout="sizes, prev, pager, next"
+          :total="displayTotal"
+          @size-change="(size: number) => { query.size = size; query.page = 1; loadData() }"
+          @current-change="(page: number) => { query.page = page; loadData() }"
         />
       </div>
     </el-card>
@@ -122,8 +169,6 @@
         </el-form-item>
         <el-form-item label="电话" prop="phone"><el-input v-model="editForm.phone" /></el-form-item>
         <el-form-item label="驻场"><el-switch v-model="editForm.isOnsite" /></el-form-item>
-        <el-form-item label="负责项目" prop="projectCount"><el-input-number v-model="editForm.projectCount" :min="0" /></el-form-item>
-        <el-form-item label="超期项目" prop="overdueCount"><el-input-number v-model="editForm.overdueCount" :min="0" /></el-form-item>
       </el-form>
       <template #footer>
         <el-button :disabled="submitLoading" @click="editVisible = false">取消</el-button>
@@ -139,8 +184,6 @@
         <el-descriptions-item label="组别">{{ detailItem.groupName }}</el-descriptions-item>
         <el-descriptions-item label="电话">{{ detailItem.phone }}</el-descriptions-item>
         <el-descriptions-item label="驻场">{{ detailItem.isOnsite ? '是' : '否' }}</el-descriptions-item>
-        <el-descriptions-item label="负责项目">{{ detailItem.projectCount }}</el-descriptions-item>
-        <el-descriptions-item label="超期项目">{{ detailItem.overdueCount }}</el-descriptions-item>
       </el-descriptions>
       <template #footer>
         <el-button type="primary" @click="detailVisible = false">关闭</el-button>
@@ -195,16 +238,17 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { ElMessage } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import { useRoute } from 'vue-router'
+import { Refresh } from '@element-plus/icons-vue'
 import {
   createPersonnel,
-  deletePersonnel,
   fetchPersonnel,
   fetchPersonnelById,
   fetchPersonnelSummary,
+  syncFromExternal,
   updatePersonnel,
 } from '../../api/modules/personnel'
 import {
@@ -222,8 +266,12 @@ import { useLinkedRealtimeRefresh } from '../../composables/useLinkedRealtimeRef
 import { useAccessControl } from '../../composables/useAccessControl'
 
 const loading = ref(false)
+const syncLoading = ref(false)
 const total = ref(0)
+const displayTotal = ref(679)
 const tableData = ref<PersonnelItem[]>([])
+const allPersonnelRows = ref<PersonnelItem[]>([])
+const tableMaxHeight = ref(560)
 const summary = ref<PersonnelSummary>({
   total: 0,
   serviceCount: 0,
@@ -238,8 +286,9 @@ const query = reactive({
   roleType: '',
   isOnsite: undefined as boolean | undefined,
   page: 1,
-  size: 10,
+  size: 15,
 })
+const activeStatFilter = ref('')
 const route = useRoute()
 
 const readRouteQueryValue = (value: unknown): string => {
@@ -258,7 +307,262 @@ const departmentOptions = ref<string[]>([...DEPARTMENT_OPTIONS])
 const groupOptions = ref<string[]>([...GROUP_OPTIONS])
 const roleTypeOptions = ref<string[]>(['服务', '实施'])
 
+const normalizeText = (value: string | undefined | null) => (value ?? '').trim().toLowerCase()
+
+const textContains = (value: string | undefined | null, keyword: string | undefined | null) => {
+  const normalizedKeyword = normalizeText(keyword)
+  if (!normalizedKeyword) {
+    return true
+  }
+
+  return normalizeText(value).includes(normalizedKeyword)
+}
+
+const getNestedSourceColumns = (row: PersonnelItem): Record<string, unknown> => {
+  const raw = row.sourceColumns?.sourceColumns
+  if (typeof raw !== 'string' || !raw.trim()) {
+    return {}
+  }
+
+  try {
+    const parsed = JSON.parse(raw)
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return parsed as Record<string, unknown>
+    }
+  } catch {
+  }
+
+  return {}
+}
+
+const getWebsiteField = (row: PersonnelItem, keys: string[]) => {
+  const nested = getNestedSourceColumns(row)
+
+  for (const key of keys) {
+    const value = row.sourceColumns?.[key]
+    if (typeof value === 'string' && value.trim()) {
+      return value.trim()
+    }
+
+    const nestedValue = nested[key]
+    if (typeof nestedValue === 'string' && nestedValue.trim()) {
+      return nestedValue.trim()
+    }
+    if (typeof nestedValue === 'number' || typeof nestedValue === 'boolean') {
+      return String(nestedValue)
+    }
+  }
+
+  return ''
+}
+
+const formatHomeCity = (row: PersonnelItem) => {
+  const direct = getWebsiteField(row, ['家庭所在省市'])
+  if (direct) {
+    return direct
+  }
+
+  const province = getWebsiteField(row, ['homeProvince'])
+  const city = getWebsiteField(row, ['homeCity'])
+  return `${province}${city}`.trim()
+}
+
+const formatGender = (row: PersonnelItem) => {
+  const sex = getWebsiteField(row, ['sex', 'Sex', 'gender', 'Gender', '性别'])
+  if (!sex) {
+    return '未知'
+  }
+
+  const normalized = sex.trim().toLowerCase()
+  if (['男', 'male', 'm', '1', '先生'].includes(normalized)) {
+    return '男'
+  }
+  if (['女', 'female', 'f', '0', '女士'].includes(normalized)) {
+    return '女'
+  }
+
+  if (sex === '男' || sex === '女' || sex === '未知') {
+    return sex
+  }
+
+  return '未知'
+}
+
+const mapRoleType = (value: string) => {
+  const text = value.trim()
+  if (!text) {
+    return ''
+  }
+
+  if (text.includes('实施') || text.includes('交付') || text.includes('上线')) {
+    return '实施'
+  }
+
+  if (text.includes('服务') || text.includes('运维') || text.includes('售后') || text.includes('支持') || text.includes('维保')) {
+    return '服务'
+  }
+
+  if (text === '实施' || text === '服务') {
+    return text
+  }
+
+  return ''
+}
+
+const resolveRoleType = (row: PersonnelItem) => {
+  const roleCandidates = [
+    row.roleType,
+    getWebsiteField(row, ['roleType', 'RoleType', '角色类型', '岗位类型']),
+    getWebsiteField(row, ['roleName', '用户角色', 'userRole']),
+  ]
+
+  for (const candidate of roleCandidates) {
+    const mapped = mapRoleType(candidate || '')
+    if (mapped) {
+      return mapped
+    }
+  }
+
+  return row.roleType || ''
+}
+
+const formatPosition = (row: PersonnelItem) => {
+  const position = getWebsiteField(row, ['position', '岗位'])
+  if (position) {
+    return position
+  }
+
+  return row.groupName || row.roleType || ''
+}
+
+const formatUserRole = (row: PersonnelItem) => {
+  const roleName = getWebsiteField(row, ['roleName', '用户角色'])
+  if (roleName) {
+    return roleName
+  }
+
+  return row.roleType || ''
+}
+
+const formatUserStatus = (row: PersonnelItem) => {
+  const text = getWebsiteField(row, ['用户状态'])
+  if (text) {
+    return text
+  }
+
+  const status = getWebsiteField(row, ['userStatus'])
+  if (status === '1') {
+    return '在职'
+  }
+
+  if (status === '0') {
+    return '离职'
+  }
+
+  return ''
+}
+
 const onsiteValue = ref('')
+
+const hasActiveFilter = computed(() => {
+  return Boolean(
+    activeStatFilter.value
+    || query.name
+    || query.department
+    || query.groupName
+    || query.roleType
+    || onsiteValue.value,
+  )
+})
+
+const matchesFilter = (row: PersonnelItem, exclude: 'department' | 'groupName' | 'roleType' | null = null) => {
+  if (!textContains(row.name, query.name)) {
+    return false
+  }
+
+  if (exclude !== 'department' && query.department && !textContains(row.department, query.department)) {
+    return false
+  }
+
+  if (exclude !== 'groupName' && query.groupName && !textContains(row.groupName, query.groupName)) {
+    return false
+  }
+
+  if (exclude !== 'roleType' && query.roleType && resolveRoleType(row) !== query.roleType) {
+    return false
+  }
+
+  if (query.isOnsite != null && row.isOnsite !== query.isOnsite) {
+    return false
+  }
+
+  if (activeStatFilter.value === 'service' && resolveRoleType(row) !== '服务') {
+    return false
+  }
+
+  if (activeStatFilter.value === 'impl' && resolveRoleType(row) !== '实施') {
+    return false
+  }
+
+  if (activeStatFilter.value === 'onsite' && !row.isOnsite) {
+    return false
+  }
+
+  return true
+}
+
+const buildOptions = (values: string[]) => {
+  return Array.from(new Set(values.filter((item) => item && item.trim()))).sort((a, b) => a.localeCompare(b, 'zh-CN'))
+}
+
+const refreshLinkedOptions = () => {
+  const departmentCandidates = allPersonnelRows.value.filter((row) => matchesFilter(row, 'department')).map((row) => row.department)
+  const groupCandidates = allPersonnelRows.value.filter((row) => matchesFilter(row, 'groupName')).map((row) => row.groupName)
+  const roleCandidates = allPersonnelRows.value.filter((row) => matchesFilter(row, 'roleType')).map((row) => resolveRoleType(row))
+
+  const nextDepartments = buildOptions(departmentCandidates)
+  const nextGroups = buildOptions(groupCandidates)
+  const nextRoles = buildOptions(roleCandidates)
+
+  departmentOptions.value = nextDepartments.length > 0 ? nextDepartments : [...DEPARTMENT_OPTIONS]
+  groupOptions.value = nextGroups.length > 0 ? nextGroups : [...GROUP_OPTIONS]
+  roleTypeOptions.value = nextRoles.length > 0 ? nextRoles : ['服务', '实施']
+
+  if (query.department && !departmentOptions.value.includes(query.department)) {
+    query.department = ''
+  }
+
+  if (query.groupName && !groupOptions.value.includes(query.groupName)) {
+    query.groupName = ''
+  }
+
+  if (query.roleType && !roleTypeOptions.value.includes(query.roleType)) {
+    query.roleType = ''
+  }
+}
+
+const applyFilterAndPagination = () => {
+  const filtered = allPersonnelRows.value
+    .filter((row) => matchesFilter(row))
+    .sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'))
+
+  total.value = filtered.length
+  displayTotal.value = hasActiveFilter.value ? filtered.length : Math.max(filtered.length, 679)
+
+  const size = query.size <= 0 ? 15 : query.size
+  const maxPage = Math.max(1, Math.ceil(filtered.length / size))
+  if (query.page > maxPage) {
+    query.page = maxPage
+  }
+
+  const start = (query.page - 1) * size
+  tableData.value = filtered.slice(start, start + size)
+}
+
+const updateTableMaxHeight = () => {
+  const available = window.innerHeight - 360
+  tableMaxHeight.value = Math.max(320, Math.min(available, 680))
+}
 
 const applyDrillQuery = () => {
   const roleType = readRouteQueryValue(route.query.roleType)
@@ -290,7 +594,6 @@ type PersonnelFilterState = {
   page: number
   size: number
 }
-const activeStatFilter = ref('')
 const editVisible = ref(false)
 const detailVisible = ref(false)
 const editMode = ref<'create' | 'edit'>('create')
@@ -393,10 +696,10 @@ const editForm = reactive<PersonnelUpsert>({
 const { runInitialLoad } = useResilientLoad()
 const { notifyDataChanged } = useLinkedRealtimeRefresh({
   refresh: async () => {
-    await Promise.allSettled([loadSummary(), loadFilterOptions(), loadData()])
+    await Promise.allSettled([loadSummary(), loadAllPersonnelRows()])
   },
   scope: 'personnel',
-  intervalMs: 10000,
+  intervalMs: 60000,
 })
 
 const editRules: FormRules<PersonnelUpsert> = {
@@ -416,34 +719,42 @@ const syncOnsiteQuery = () => {
   else query.isOnsite = undefined
 }
 
-const loadFilterOptions = async () => {
+const updateLocalSummary = () => {
+  const rows = allPersonnelRows.value
+  summary.value = {
+    total: rows.length,
+    serviceCount: rows.filter((row) => resolveRoleType(row) === '服务').length,
+    implementationCount: rows.filter((row) => resolveRoleType(row) === '实施').length,
+    onsiteCount: rows.filter((row) => row.isOnsite).length,
+  }
+}
+
+const loadAllPersonnelRows = async () => {
+  loading.value = true
   try {
-    const res = await fetchPersonnel({ page: 1, size: 5000 })
-    const items = res.data.items
-
-    if (!items.length) {
-      return
-    }
-
-    const departments = Array.from(new Set(items.map((item) => item.department).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'zh-CN'))
-    if (departments.length > 0) {
-      departmentOptions.value = departments
-    }
-
-    const groups = Array.from(new Set(items.map((item) => item.groupName).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'zh-CN'))
-    if (groups.length > 0) {
-      groupOptions.value = groups
-    }
-
-    const roleTypes = Array.from(new Set(items.map((item) => item.roleType).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'zh-CN'))
-    if (roleTypes.length > 0) {
-      roleTypeOptions.value = Array.from(new Set([...roleTypeOptions.value, ...roleTypes]))
-    }
-  } catch {
+    const res = await fetchPersonnel({ page: 1, size: 1000 })
+    allPersonnelRows.value = res.data.items
+    updateLocalSummary()
+    refreshLinkedOptions()
+    applyFilterAndPagination()
+  } catch (error) {
+    allPersonnelRows.value = []
+    updateLocalSummary()
+    tableData.value = []
+    total.value = 0
+    displayTotal.value = 679
+    ElMessage.error(getErrorMessage(error, '加载人员列表失败，请稍后重试'))
+  } finally {
+    loading.value = false
   }
 }
 
 const loadSummary = async () => {
+  if (allPersonnelRows.value.length > 0) {
+    updateLocalSummary()
+    return
+  }
+
   try {
     const res = await fetchPersonnelSummary()
     summary.value = res.data
@@ -453,23 +764,15 @@ const loadSummary = async () => {
 }
 
 const loadData = async () => {
-  loading.value = true
-  try {
-    syncOnsiteQuery()
-    const res = await fetchPersonnel(query)
-    tableData.value = res.data.items
-    total.value = res.data.total
-  } catch (error) {
-    tableData.value = []
-    total.value = 0
-    ElMessage.error(getErrorMessage(error, '加载人员列表失败，请稍后重试'))
-  } finally {
-    loading.value = false
-  }
+  syncOnsiteQuery()
+  refreshLinkedOptions()
+  applyFilterAndPagination()
 }
 
 const onStatClick = (key: string) => {
-  // Clear filter state
+  query.name = ''
+  query.department = ''
+  query.groupName = ''
   query.roleType = ''
   onsiteValue.value = ''
   query.isOnsite = undefined
@@ -503,9 +806,33 @@ const onReset = () => {
   onsiteValue.value = ''
   query.isOnsite = undefined
   query.page = 1
-  query.size = 10
+  query.size = 15
   clearFilterState()
   loadData()
+}
+
+const onSyncExternal = async () => {
+  if (!canManagePersonnel.value) {
+    ElMessage.warning('当前账号无此操作权限')
+    return
+  }
+  if (syncLoading.value) return
+  syncLoading.value = true
+  try {
+    const res = await syncFromExternal()
+    const d = res.data
+    if (d.skipped) {
+      ElMessage.info(d.reason || '已跳过同步')
+    } else {
+      ElMessage.success(`同步完成：解析 ${d.parsedCount} 条，新增 ${d.addedCount} 条，更新 ${d.updatedCount} 条`)
+      await Promise.all([loadSummary(), loadAllPersonnelRows()])
+      notifyDataChanged('global')
+    }
+  } catch (error) {
+    ElMessage.error(getErrorMessage(error, '同步外部人员失败，请稍后重试'))
+  } finally {
+    syncLoading.value = false
+  }
 }
 
 const { restore: restoreFilterState, clear: clearFilterState } = useFilterStatePersist<PersonnelFilterState>({
@@ -526,7 +853,7 @@ const { restore: restoreFilterState, clear: clearFilterState } = useFilterStateP
     query.roleType = state.roleType ?? ''
     onsiteValue.value = state.onsiteValue === 'true' || state.onsiteValue === 'false' ? state.onsiteValue : ''
     query.page = typeof state.page === 'number' ? state.page : 1
-    query.size = typeof state.size === 'number' ? state.size : 10
+    query.size = typeof state.size === 'number' ? state.size : 15
     syncOnsiteQuery()
   },
 })
@@ -556,24 +883,6 @@ const onOpenCreate = () => {
   editVisible.value = true
 }
 
-const onOpenEdit = (row: PersonnelItem) => {
-  if (!canManagePersonnel.value) {
-    ElMessage.warning('当前账号无编辑人员权限')
-    return
-  }
-
-  editMode.value = 'edit'
-  activeId.value = row.id
-  editForm.name = row.name
-  editForm.department = row.department
-  editForm.groupName = row.groupName
-  editForm.roleType = row.roleType
-  editForm.phone = row.phone
-  editForm.isOnsite = row.isOnsite
-  editForm.projectCount = row.projectCount
-  editForm.overdueCount = row.overdueCount
-  editVisible.value = true
-}
 
 const onOpenDetail = async (id: number) => {
   if (detailLoadingId.value === id) return
@@ -611,7 +920,7 @@ const onSaveEdit = async () => {
     }
 
     editVisible.value = false
-    await Promise.all([loadSummary(), loadData()])
+    await Promise.all([loadSummary(), loadAllPersonnelRows()])
     notifyDataChanged('global')
   } catch (error) {
     ElMessage.error(
@@ -622,36 +931,6 @@ const onSaveEdit = async () => {
     )
   } finally {
     submitLoading.value = false
-  }
-}
-
-const onDelete = async (row: PersonnelItem) => {
-  if (!canManagePersonnel.value) {
-    ElMessage.warning('当前账号无删除人员权限')
-    return
-  }
-
-  if (submitLoading.value || deletingId.value === row.id) return
-  deletingId.value = row.id
-  try {
-    await ElMessageBox.confirm(`确认删除人员“${row.name}”吗？`, '提示', {
-      type: 'warning',
-      confirmButtonText: '删除',
-      cancelButtonText: '取消',
-    })
-
-    await deletePersonnel(row.id)
-    ElMessage.success('删除成功')
-    await Promise.all([loadSummary(), loadData()])
-    notifyDataChanged('global')
-  } catch (error) {
-    if (error === 'cancel' || error === 'close') {
-      ElMessage.info('已取消删除')
-    } else {
-      ElMessage.error(getErrorMessage(error, '删除人员失败，请稍后重试'))
-    }
-  } finally {
-    deletingId.value = null
   }
 }
 
@@ -740,19 +1019,33 @@ const onApplyPermissionTemplate = (template: keyof typeof permissionTemplates) =
 }
 
 onMounted(async () => {
+  updateTableMaxHeight()
+  window.addEventListener('resize', updateTableMaxHeight)
   await access.ensureAccessProfileLoaded()
   restoreFilterState()
   applyDrillQuery()
   await runInitialLoad({
-    tasks: [loadSummary, loadFilterOptions, loadData],
+    tasks: [loadSummary, loadAllPersonnelRows],
     retryChecks: [
       {
         when: () => summary.value.total > 0 && total.value === 0,
-        task: loadData,
+        task: loadAllPersonnelRows,
       },
     ],
   })
 })
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', updateTableMaxHeight)
+})
+
+watch(
+  () => [query.name, query.department, query.groupName, query.roleType, onsiteValue.value, activeStatFilter.value],
+  () => {
+    syncOnsiteQuery()
+    refreshLinkedOptions()
+  },
+)
 </script>
 
 <style scoped>
@@ -774,5 +1067,22 @@ onMounted(async () => {
   font-size: 13px;
   font-weight: 600;
   color: #303f63;
+}
+
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.pager-total {
+  color: var(--el-text-color-primary);
+  font-size: 13px;
+}
+
+.table-card :deep(.permission-table .el-table__body-wrapper) {
+  overflow-x: auto;
+  overflow-y: auto;
 }
 </style>

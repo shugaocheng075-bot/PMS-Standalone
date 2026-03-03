@@ -2,6 +2,8 @@ import { onMounted, onUnmounted } from 'vue'
 
 const EVENT_NAME = 'pms:data-changed'
 const CHANNEL_NAME = 'pms-realtime-sync'
+const DEFAULT_INTERVAL_MS = 60000
+const MIN_INTERVAL_MS = 30000
 
 type LinkedRefreshOptions = {
   refresh: () => Promise<void> | void
@@ -13,7 +15,7 @@ type LinkedRefreshOptions = {
 
 export function useLinkedRealtimeRefresh(options: LinkedRefreshOptions) {
   const scope = options.scope ?? 'global'
-  const intervalMs = options.intervalMs ?? 10000
+  const intervalMs = Math.max(options.intervalMs ?? DEFAULT_INTERVAL_MS, MIN_INTERVAL_MS)
   const immediate = options.immediate ?? true
   const enableAutoRefresh = options.enableAutoRefresh ?? false
   let timer: ReturnType<typeof setInterval> | null = null

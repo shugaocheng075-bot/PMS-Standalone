@@ -1,0 +1,79 @@
+param(
+    [string]$TunnelName = 'pms-bjgoodwill',
+    [string]$CloudflaredExe = 'D:\Projects\_bin\cloudflared.exe',
+    [string]$ConfigPath = 'D:\Projects\_runtime\cloudflared\config.yml',
+    [string]$WebRoot = 'D:\Projects\PMS-Standalone\pms-web',
+    [string]$ApiRoot = 'D:\Projects\PMS-Standalone\PMS.API',
+    [string]$RuntimeDir = 'D:\Projects\_runtime'
+)
+
+$ErrorActionPreference = 'SilentlyContinue'
+
+if (-not (Test-Path $RuntimeDir)) {
+    New-Item -ItemType Directory -Path $RuntimeDir | Out-Null
+}
+
+$previewOut = Join-Path $RuntimeDir 'preview.out.log'
+$previewErr = Join-Path $RuntimeDir 'preview.err.log'
+$apiOut = Join-Path $RuntimeDir 'api.out.log'
+$apiErr = Join-Path $RuntimeDir 'api.err.log'
+$tunnelOut = Join-Path $RuntimeDir 'tunnel.named.out.log'
+$tunnelErr = Join-Path $RuntimeDir 'tunnel.named.err.log'
+
+function Test-Listening {
+    param([int]$Port)
+    return [bool](Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue)
+}
+
+function Start-Preview {
+    Start-Process -FilePath 'npm.cmd' `
+        -ArgumentList '--prefix', $WebRoot, 'run', 'preview', '--', '--host', '127.0.0.1', '--port', '5173', '--strictPort' `
+        -WindowStyle Hidden `
+        -RedirectStandardOutput $previewOut `
+        -RedirectStandardError $previewErr | Out-Null
+}
+
+function Start-Api {
+    Start-Process -FilePath 'dotnet' `
+        -ArgumentList 'run', '--no-build', '--urls', 'http://127.0.0.1:5111', '--no-launch-profile' `
+        -WorkingDirectory $ApiRoot `
+        -WindowStyle Hidden `
+        -RedirectStandardOutput $apiOut `
+        -RedirectStandardError $apiErr | Out-Null
+}
+
+function Start-Tunnel {
+    if (-not (Test-Path $CloudflaredExe)) {
+        return
+    }
+
+    if (-not (Test-Path $ConfigPath)) {
+        return
+    }
+
+    Start-Process -FilePath $CloudflaredExe `
+        -ArgumentList 'tunnel', '--config', $ConfigPath, 'run', $TunnelName `
+        -WindowStyle Hidden `
+        -RedirectStandardOutput $tunnelOut `
+        -RedirectStandardError $tunnelErr | Out-Null
+}
+
+while ($true) {
+    if (-not (Test-Listening -Port 5173)) {
+        Start-Preview
+        Start-Sleep -Seconds 4
+    }
+
+    if (-not (Test-Listening -Port 5111)) {
+        Start-Api
+        Start-Sleep -Seconds 4
+    }
+
+    $tunnelRunning = Get-Process -Name cloudflared -ErrorAction SilentlyContinue
+    if (-not $tunnelRunning) {
+        Start-Tunnel
+        Start-Sleep -Seconds 4
+    }
+
+    Start-Sleep -Seconds 10
+}

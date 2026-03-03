@@ -28,12 +28,12 @@
         </el-form-item>
         <el-form-item label="组别">
           <el-select v-model="query.groupName" clearable placeholder="全部" style="width: 160px">
-            <el-option v-for="group in groupOptions" :key="group" :label="group" :value="group" />
+            <el-option v-for="group in filteredGroupOptions" :key="group" :label="group" :value="group" />
           </el-select>
         </el-form-item>
         <el-form-item label="服务人员">
           <el-select v-model="query.servicePerson" clearable placeholder="全部" style="width: 140px">
-            <el-option v-for="person in servicePersonOptions" :key="person" :label="person" :value="person" />
+            <el-option v-for="person in filteredServicePersonOptions" :key="person" :label="person" :value="person" />
           </el-select>
         </el-form-item>
         <el-form-item class="filter-actions">
@@ -44,7 +44,7 @@
     </el-card>
 
     <el-card shadow="never" class="table-card">
-      <el-table :data="tableData" v-loading="loading" stripe empty-text="暂无符合条件的数据">
+      <el-table :data="tableData" v-loading="loading" stripe max-height="520" scrollbar-always-on empty-text="暂无符合条件的数据">
         <el-table-column prop="hospitalName" label="医院" min-width="220" show-overflow-tooltip sortable />
         <el-table-column prop="province" label="省份" width="100" show-overflow-tooltip sortable />
         <el-table-column prop="groupName" label="组别" width="120" show-overflow-tooltip />
@@ -64,11 +64,11 @@
         <el-pagination
           v-model:current-page="query.page"
           v-model:page-size="query.size"
-          :page-sizes="[10, 20, 50]"
+          :page-sizes="[15]"
           layout="total, sizes, prev, pager, next"
           :total="total"
-          @size-change="loadData"
-          @current-change="loadData"
+          @size-change="(size: number) => { query.size = size; query.page = 1; loadData() }"
+          @current-change="(page: number) => { query.page = page; loadData() }"
         />
       </div>
     </el-card>
@@ -76,7 +76,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useRoute } from 'vue-router'
 import { fetchAnnualReportList, fetchAnnualReportSummary } from '../../api/modules/annual-report'
@@ -90,6 +90,7 @@ import { useLinkedRealtimeRefresh } from '../../composables/useLinkedRealtimeRef
 const loading = ref(false)
 const total = ref(0)
 const tableData = ref<AnnualReportItem[]>([])
+const allRows = ref<AnnualReportItem[]>([])
 const summary = ref<AnnualReportSummary>({
   notStartedCount: 0,
   writingCount: 0,
@@ -105,7 +106,7 @@ const query = reactive({
   groupName: '',
   servicePerson: '',
   page: 1,
-  size: 10,
+  size: 15,
 })
 const route = useRoute()
 
@@ -145,6 +146,54 @@ const groupOptions = ref<string[]>([...GROUP_OPTIONS])
 const servicePersonOptions = ref<string[]>([...PERSON_OPTIONS])
 const { runInitialLoad } = useResilientLoad()
 
+const filteredGroupOptions = computed(() => {
+  const groups = allRows.value
+    .filter((item) => {
+      if (query.status && item.status !== query.status) return false
+      if (query.reportYear && item.reportYear !== query.reportYear) return false
+      if (query.servicePerson && item.servicePerson !== query.servicePerson) return false
+      return true
+    })
+    .map((item) => item.groupName)
+    .filter(Boolean)
+
+  const unique = Array.from(new Set(groups)).sort((a, b) => a.localeCompare(b, 'zh-CN'))
+  return unique.length > 0 ? unique : groupOptions.value
+})
+
+const filteredServicePersonOptions = computed(() => {
+  const people = allRows.value
+    .filter((item) => {
+      if (query.status && item.status !== query.status) return false
+      if (query.reportYear && item.reportYear !== query.reportYear) return false
+      if (query.groupName && item.groupName !== query.groupName) return false
+      return true
+    })
+    .map((item) => item.servicePerson)
+    .filter(Boolean)
+
+  const unique = Array.from(new Set(people)).sort((a, b) => a.localeCompare(b, 'zh-CN'))
+  return unique.length > 0 ? unique : servicePersonOptions.value
+})
+
+watch(
+  () => query.groupName,
+  () => {
+    if (query.servicePerson && !filteredServicePersonOptions.value.includes(query.servicePerson)) {
+      query.servicePerson = ''
+    }
+  },
+)
+
+watch(
+  () => query.servicePerson,
+  () => {
+    if (query.groupName && !filteredGroupOptions.value.includes(query.groupName)) {
+      query.groupName = ''
+    }
+  },
+)
+
 const formatDate = (value: string) => value.slice(0, 10)
 
 const statusTag = (status: string) => {
@@ -165,8 +214,9 @@ const loadSummary = async () => {
 
 const loadFilterOptions = async () => {
   try {
-    const res = await fetchAnnualReportList({ page: 1, size: 5000 })
+    const res = await fetchAnnualReportList({ page: 1, size: 1000 })
     const items = res.data.items
+    allRows.value = items
 
     if (!items.length) {
       return
@@ -191,22 +241,58 @@ const loadFilterOptions = async () => {
 }
 
 const loadData = async () => {
-  loading.value = true
-  try {
-    const res = await fetchAnnualReportList(query)
-    tableData.value = res.data.items
-    total.value = res.data.total
-  } catch (error) {
-    tableData.value = []
-    total.value = 0
-    ElMessage.error(getErrorMessage(error, '加载年报列表失败，请稍后重试'))
-  } finally {
-    loading.value = false
+  if (allRows.value.length === 0) {
+    loading.value = true
+    try {
+      const res = await fetchAnnualReportList({ page: 1, size: 1000 })
+      allRows.value = res.data.items
+    } catch (error) {
+      tableData.value = []
+      total.value = 0
+      ElMessage.error(getErrorMessage(error, '加载年报列表失败，请稍后重试'))
+      loading.value = false
+      return
+    } finally {
+      loading.value = false
+    }
   }
+
+  const filtered = allRows.value.filter((item) => {
+    if (query.status && item.status !== query.status) {
+      return false
+    }
+
+    if (query.reportYear && item.reportYear !== query.reportYear) {
+      return false
+    }
+
+    if (query.groupName && item.groupName !== query.groupName) {
+      return false
+    }
+
+    if (query.servicePerson && item.servicePerson !== query.servicePerson) {
+      return false
+    }
+
+    return true
+  })
+
+  total.value = filtered.length
+  const maxPage = Math.max(1, Math.ceil(filtered.length / (query.size <= 0 ? 15 : query.size)))
+  if (query.page > maxPage) {
+    query.page = maxPage
+  }
+
+  const page = query.page < 1 ? 1 : query.page
+  const size = query.size <= 0 ? 15 : query.size
+  const start = (page - 1) * size
+  tableData.value = filtered.slice(start, start + size)
 }
 
 const onStatClick = (status: string) => {
   query.status = status
+  query.groupName = ''
+  query.servicePerson = ''
   query.page = 1
   loadData()
 }
@@ -222,7 +308,7 @@ const onReset = () => {
   query.groupName = ''
   query.servicePerson = ''
   query.page = 1
-  query.size = 10
+  query.size = 15
   clearFilterState()
   loadData()
 }
@@ -243,9 +329,21 @@ const { restore: restoreFilterState, clear: clearFilterState } = useFilterStateP
     query.groupName = state.groupName ?? ''
     query.servicePerson = state.servicePerson ?? ''
     query.page = typeof state.page === 'number' ? state.page : 1
-    query.size = typeof state.size === 'number' ? state.size : 10
+    query.size = typeof state.size === 'number' ? state.size : 15
   },
 })
+
+watch(
+  () => [query.status, query.reportYear],
+  () => {
+    if (query.groupName && !filteredGroupOptions.value.includes(query.groupName)) {
+      query.groupName = ''
+    }
+    if (query.servicePerson && !filteredServicePersonOptions.value.includes(query.servicePerson)) {
+      query.servicePerson = ''
+    }
+  },
+)
 
 const refreshLinkedData = async () => {
   await Promise.allSettled([loadSummary(), loadFilterOptions(), loadData()])
@@ -254,7 +352,7 @@ const refreshLinkedData = async () => {
 useLinkedRealtimeRefresh({
   refresh: refreshLinkedData,
   scope: 'annual-report',
-  intervalMs: 10000,
+  intervalMs: 60000,
 })
 
 onMounted(async () => {

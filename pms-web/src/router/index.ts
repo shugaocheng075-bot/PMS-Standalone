@@ -11,6 +11,7 @@ import PersonnelListView from '../views/personnel/PersonnelListView.vue'
 import ProductListView from '../views/product/ProductListView.vue'
 import DataMaintenanceView from '../views/maintenance/DataMaintenanceView.vue'
 import MajorDemandView from '../views/major-demand/MajorDemandView.vue'
+import MS010001013001View from '../views/complex-model/MS010001013001View.vue'
 import LoginView from '../views/login/LoginView.vue'
 import { clearAuthState, isAuthenticated, resolveRoutePermission } from '../constants/access'
 import { useAccessControl } from '../composables/useAccessControl'
@@ -99,6 +100,12 @@ const router = createRouter({
       name: 'major-demand-list',
       component: MajorDemandView,
       meta: { title: '重大需求', permission: 'major-demand.view' },
+    },
+    {
+      path: '/complex-model/ms010001-013-001',
+      name: 'complex-model-ms010001-013-001',
+      component: MS010001013001View,
+      meta: { title: '待办列表', permission: 'project.view' },
     },
     {
       path: '/maintenance/data',

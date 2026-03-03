@@ -20,6 +20,7 @@ public class PersonnelItemDto
     public int ProjectCount { get; set; }
     public int OverdueCount { get; set; }
     public DateTime CreatedAt { get; set; }
+    public Dictionary<string, string> SourceColumns { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 }
 
 public class PersonnelUpsertDto
@@ -32,4 +33,17 @@ public class PersonnelUpsertDto
     public bool IsOnsite { get; set; }
     public int ProjectCount { get; set; }
     public int OverdueCount { get; set; }
+}
+
+public class PersonnelExternalSyncResultDto
+{
+    public bool Success { get; set; }
+    public bool Skipped { get; set; }
+    public string Reason { get; set; } = string.Empty;
+    public int ParsedCount { get; set; }
+    public int AddedCount { get; set; }
+    public int UpdatedCount { get; set; }
+    public DateTime AttemptedAt { get; set; }
+    public DateTime? LastSuccessAt { get; set; }
+    public string SourceUrl { get; set; } = string.Empty;
 }

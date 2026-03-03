@@ -71,7 +71,7 @@
     </el-card>
 
     <el-card shadow="never" class="table-card">
-      <el-table :data="tableData" v-loading="loading" stripe empty-text="暂无符合条件的数据" @selection-change="onSelectionChange">
+      <el-table :data="tableData" v-loading="loading" stripe max-height="520" scrollbar-always-on empty-text="暂无符合条件的数据" @selection-change="onSelectionChange">
         <el-table-column v-if="canManageProjects" type="selection" width="46" />
         <el-table-column prop="hospitalName" label="医院名称" min-width="220" show-overflow-tooltip sortable />
         <el-table-column prop="productName" label="产品" min-width="180" show-overflow-tooltip sortable />
@@ -99,11 +99,11 @@
         <el-pagination
           v-model:current-page="query.page"
           v-model:page-size="query.size"
-          :page-sizes="[10, 20, 50]"
+          :page-sizes="[15]"
           layout="total, sizes, prev, pager, next"
           :total="total"
-          @size-change="loadData"
-          @current-change="loadData"
+          @size-change="(size: number) => { query.size = size; query.page = 1; loadData() }"
+          @current-change="(page: number) => { query.page = page; loadData() }"
         />
       </div>
     </el-card>
@@ -181,7 +181,7 @@ const query = reactive({
   hospitalLevel: '',
   contractStatus: '',
   page: 1,
-  size: 10,
+  size: 15,
 })
 const route = useRoute()
 
@@ -221,6 +221,16 @@ const applyDrillQuery = () => {
     return
   }
 
+  query.hospitalName = ''
+  query.productName = ''
+  query.province = ''
+  query.groupName = ''
+  query.salesName = ''
+  query.maintenancePersonName = ''
+  query.afterSalesEndDateFrom = ''
+  query.afterSalesEndDateTo = ''
+  afterSalesEndDateRange.value = []
+  query.hospitalLevel = ''
   query.contractStatus = contractStatus
   query.page = 1
 }
@@ -284,7 +294,7 @@ watch(
 
 const loadFilterOptions = async () => {
   try {
-    const res = await fetchProjectList({ page: 1, size: 5000 })
+    const res = await fetchProjectList({ page: 1, size: 1000 })
     const items = res.data.items
 
     if (!items.length) {
@@ -518,7 +528,7 @@ const onReset = () => {
   query.hospitalLevel = ''
   query.contractStatus = ''
   query.page = 1
-  query.size = 10
+  query.size = 15
   clearFilterState()
   loadData()
 }
@@ -552,7 +562,7 @@ const { restore: restoreFilterState, clear: clearFilterState } = useFilterStateP
     query.hospitalLevel = state.hospitalLevel ?? ''
     query.contractStatus = state.contractStatus ?? ''
     query.page = typeof state.page === 'number' ? state.page : 1
-    query.size = typeof state.size === 'number' ? state.size : 10
+    query.size = typeof state.size === 'number' ? state.size : 15
 
     if (Array.isArray(state.afterSalesEndDateRange)) {
       afterSalesEndDateRange.value = state.afterSalesEndDateRange.filter((item): item is string => typeof item === 'string').slice(0, 2)
@@ -569,7 +579,7 @@ const refreshLinkedData = async () => {
 useLinkedRealtimeRefresh({
   refresh: refreshLinkedData,
   scope: 'project',
-  intervalMs: 10000,
+  intervalMs: 60000,
 })
 
 onMounted(async () => {

@@ -50,7 +50,7 @@
     </el-card>
 
     <el-card shadow="never" class="table-card">
-      <el-table :data="tableData" v-loading="loading" stripe empty-text="暂无符合条件的数据">
+      <el-table :data="tableData" v-loading="loading" stripe max-height="520" scrollbar-always-on empty-text="暂无符合条件的数据">
         <el-table-column prop="hospitalName" label="医院" min-width="220" show-overflow-tooltip sortable />
         <el-table-column prop="province" label="省份" width="100" show-overflow-tooltip />
         <el-table-column prop="groupName" label="组别" width="120" show-overflow-tooltip />
@@ -73,11 +73,11 @@
         <el-pagination
           v-model:current-page="query.page"
           v-model:page-size="query.size"
-          :page-sizes="[10, 20, 50]"
+          :page-sizes="[15]"
           layout="total, sizes, prev, pager, next"
           :total="total"
-          @size-change="loadData"
-          @current-change="loadData"
+          @size-change="(size: number) => { query.size = size; query.page = 1; loadData() }"
+          @current-change="(page: number) => { query.page = page; loadData() }"
         />
       </div>
     </el-card>
@@ -107,7 +107,7 @@ const query = reactive({
   groupName: '',
   salesName: '',
   page: 1,
-  size: 10,
+  size: 15,
 })
 const route = useRoute()
 
@@ -129,6 +129,9 @@ const applyDrillQuery = () => {
     return
   }
 
+  query.province = ''
+  query.groupName = ''
+  query.salesName = ''
   query.alertLevel = alertLevel
   query.page = 1
 }
@@ -171,7 +174,7 @@ watch(
 
 const loadFilterOptions = async () => {
   try {
-    const res = await fetchContractAlerts({ page: 1, size: 5000 })
+    const res = await fetchContractAlerts({ page: 1, size: 1000 })
     const items = res.data.items
 
     if (!items.length) {
@@ -252,6 +255,9 @@ const loadData = async () => {
 }
 
 const onStatClick = (alertLevel: string) => {
+  query.province = ''
+  query.groupName = ''
+  query.salesName = ''
   query.alertLevel = alertLevel
   query.page = 1
   loadData()
@@ -268,7 +274,7 @@ const onReset = () => {
   query.groupName = ''
   query.salesName = ''
   query.page = 1
-  query.size = 10
+  query.size = 15
   clearFilterState()
   loadData()
 }
@@ -289,7 +295,7 @@ const { restore: restoreFilterState, clear: clearFilterState } = useFilterStateP
     query.groupName = state.groupName ?? ''
     query.salesName = state.salesName ?? ''
     query.page = typeof state.page === 'number' ? state.page : 1
-    query.size = typeof state.size === 'number' ? state.size : 10
+    query.size = typeof state.size === 'number' ? state.size : 15
   },
 })
 
@@ -300,7 +306,7 @@ const refreshLinkedData = async () => {
 useLinkedRealtimeRefresh({
   refresh: refreshLinkedData,
   scope: 'contract',
-  intervalMs: 10000,
+  intervalMs: 60000,
 })
 
 onMounted(async () => {

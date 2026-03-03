@@ -50,7 +50,7 @@
     </el-card>
 
     <el-card shadow="never" class="table-card">
-      <el-table :data="tableData" v-loading="loading" stripe empty-text="暂无符合条件的数据">
+      <el-table :data="tableData" v-loading="loading" stripe max-height="520" scrollbar-always-on empty-text="暂无符合条件的数据">
         <el-table-column prop="handoverNo" label="交接单号" width="130" sortable />
         <el-table-column prop="hospitalName" label="医院" min-width="220" show-overflow-tooltip sortable />
         <el-table-column prop="productName" label="产品" min-width="140" show-overflow-tooltip sortable />
@@ -90,11 +90,11 @@
         <el-pagination
           v-model:current-page="query.page"
           v-model:page-size="query.size"
-          :page-sizes="[10, 20, 50]"
+          :page-sizes="[15]"
           layout="total, sizes, prev, pager, next"
           :total="total"
-          @size-change="loadData"
-          @current-change="loadData"
+          @size-change="(size: number) => { query.size = size; query.page = 1; loadData() }"
+          @current-change="(page: number) => { query.page = page; loadData() }"
         />
       </div>
     </el-card>
@@ -159,7 +159,7 @@ const query = reactive({
   fromGroup: '',
   toOwner: '',
   page: 1,
-  size: 10,
+  size: 15,
 })
 const route = useRoute()
 
@@ -181,6 +181,10 @@ const applyDrillQuery = () => {
     return
   }
 
+  query.batch = ''
+  query.type = ''
+  query.fromGroup = ''
+  query.toOwner = ''
   query.stage = stage
   query.page = 1
 }
@@ -209,7 +213,7 @@ const { notifyDataChanged } = useLinkedRealtimeRefresh({
     await Promise.allSettled([loadSummary(), loadFilterOptions(), loadData(), loadKanban()])
   },
   scope: 'handover',
-  intervalMs: 10000,
+  intervalMs: 60000,
 })
 
 const stageTag = (stage: string) => {
@@ -249,7 +253,7 @@ const loadKanban = async () => {
 
 const loadFilterOptions = async () => {
   try {
-    const res = await fetchHandovers({ page: 1, size: 5000 })
+    const res = await fetchHandovers({ page: 1, size: 1000 })
     const items = res.data.items
 
     if (!items.length) {
@@ -300,6 +304,10 @@ const loadData = async () => {
 }
 
 const onStatClick = (stage: string) => {
+  query.batch = ''
+  query.type = ''
+  query.fromGroup = ''
+  query.toOwner = ''
   query.stage = stage
   query.page = 1
   loadData()
@@ -317,7 +325,7 @@ const onReset = () => {
   query.fromGroup = ''
   query.toOwner = ''
   query.page = 1
-  query.size = 10
+  query.size = 15
   clearFilterState()
   loadData()
 }
@@ -340,7 +348,7 @@ const { restore: restoreFilterState, clear: clearFilterState } = useFilterStateP
     query.fromGroup = state.fromGroup ?? ''
     query.toOwner = state.toOwner ?? ''
     query.page = typeof state.page === 'number' ? state.page : 1
-    query.size = typeof state.size === 'number' ? state.size : 10
+    query.size = typeof state.size === 'number' ? state.size : 15
   },
 })
 

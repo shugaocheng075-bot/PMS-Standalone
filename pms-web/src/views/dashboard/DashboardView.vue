@@ -1,10 +1,11 @@
 <template>
-  <div class="page-shell">
+  <div class="page-shell dashboard-page">
     <div class="page-head">
       <div>
         <h2 class="page-title">首页</h2>
-        <div class="page-subtitle">平台总览与关键指标入口</div>
+        <div class="page-subtitle">项目台账、重大需求、告警比例分析与下钻</div>
       </div>
+      <el-button size="small" :loading="loading" @click="loadDashboard">刷新数据</el-button>
     </div>
 
     <el-row :gutter="16" class="stats-row">
@@ -16,550 +17,460 @@
       </el-col>
     </el-row>
 
-    <el-card shadow="never" class="table-card share-card">
+    <div class="chart-grid">
+      <el-card shadow="never" class="table-card chart-card">
+        <template #header>
+          <div class="panel-head">
+            <span class="panel-title">项目台账状态占比</span>
+            <el-tag type="info">点击扇区下钻</el-tag>
+          </div>
+        </template>
+        <div ref="projectChartRef" class="chart-box"></div>
+      </el-card>
+
+      <el-card shadow="never" class="table-card chart-card">
+        <template #header>
+          <div class="panel-head">
+            <span class="panel-title">重大需求状态占比</span>
+            <el-tag type="warning">点击扇区下钻</el-tag>
+          </div>
+        </template>
+        <div ref="demandChartRef" class="chart-box"></div>
+      </el-card>
+
+      <el-card shadow="never" class="table-card chart-card">
+        <template #header>
+          <div class="panel-head">
+            <span class="panel-title">告警等级占比</span>
+            <el-tag type="danger">点击扇区下钻</el-tag>
+          </div>
+        </template>
+        <div ref="alertChartRef" class="chart-box"></div>
+      </el-card>
+    </div>
+
+    <el-card shadow="never" class="table-card">
       <template #header>
-        <div class="panel-title">页面占比（细分）</div>
-      </template>
-      <div class="share-grid">
-        <div v-for="item in pageShareItems" :key="item.key" class="share-item">
-          <div class="share-main">
-            <div class="share-left">
-              <div class="share-icon">{{ item.icon }}</div>
-              <div>
-                <div class="share-name share-link" @click="navigateByItem(item.key)">{{ item.title }}</div>
-                <div class="share-detail">总量 {{ item.count }}，占总盘子 {{ item.rateText }}</div>
-              </div>
-            </div>
-            <div class="share-right">
-              <div class="share-count">{{ item.count }}</div>
-              <div class="share-rate">{{ item.rateText }}</div>
-            </div>
-          </div>
-          <div class="share-bar">
-            <span :style="{ width: `${item.ratePercent}%` }"></span>
-          </div>
-          <div class="share-sub-grid">
-            <div
-              v-for="segment in item.segments"
-              :key="`${item.key}-${segment.label}`"
-              class="share-sub-item share-link"
-              @click="navigateBySegment(item.key, segment.label)"
-            >
-              <span class="sub-name">{{ segment.label }}</span>
-              <span class="sub-value">{{ segment.count }}</span>
-              <span class="sub-rate" :class="`tone-${segment.tone}`">{{ segment.percentText }}</span>
-            </div>
-          </div>
+        <div class="panel-head">
+          <span class="panel-title">下钻明细</span>
+          <el-button link type="primary" @click="resetDrill">重置筛选</el-button>
         </div>
-      </div>
+      </template>
+
+      <el-tabs v-model="activeTab">
+        <el-tab-pane label="项目台账" name="project">
+          <div class="drill-tip">当前筛选：{{ selectedProjectStatus }}</div>
+          <el-table :data="projectDrillRows" stripe border max-height="320" scrollbar-always-on empty-text="暂无项目明细">
+            <el-table-column prop="hospitalName" label="医院" min-width="180" show-overflow-tooltip />
+            <el-table-column prop="productName" label="产品" min-width="160" show-overflow-tooltip />
+            <el-table-column prop="province" label="省份" width="110" />
+            <el-table-column prop="contractStatus" label="状态" width="140" />
+            <el-table-column prop="overdueDays" label="超期天数" width="110" align="right" />
+          </el-table>
+        </el-tab-pane>
+
+        <el-tab-pane label="重大需求" name="demand">
+          <div class="drill-tip">当前筛选：{{ selectedDemandStatus }}</div>
+          <el-table :data="demandDrillRows" stripe border max-height="320" scrollbar-always-on empty-text="暂无重大需求明细">
+            <el-table-column prop="title" label="需求" min-width="220" show-overflow-tooltip />
+            <el-table-column prop="hospital" label="医院/客户" min-width="180" show-overflow-tooltip />
+            <el-table-column prop="owner" label="负责人" width="120" show-overflow-tooltip />
+            <el-table-column prop="status" label="状态" width="120" />
+            <el-table-column prop="dueDate" label="计划完成" width="140" />
+          </el-table>
+        </el-tab-pane>
+
+        <el-tab-pane label="告警" name="alert">
+          <div class="drill-tip">当前筛选：{{ selectedAlertLevel }}</div>
+          <el-table :data="alertDrillRows" stripe border max-height="320" scrollbar-always-on empty-text="暂无告警明细">
+            <el-table-column prop="source" label="来源" width="90" />
+            <el-table-column prop="level" label="等级" width="90" />
+            <el-table-column prop="hospitalName" label="医院" min-width="180" show-overflow-tooltip />
+            <el-table-column prop="title" label="标题" min-width="220" show-overflow-tooltip />
+            <el-table-column prop="owner" label="责任人" width="110" show-overflow-tooltip />
+            <el-table-column prop="overdueDays" label="超期天数" width="110" align="right" />
+          </el-table>
+        </el-tab-pane>
+      </el-tabs>
     </el-card>
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import * as echarts from 'echarts'
 import { ElMessage } from 'element-plus'
-import { useRouter } from 'vue-router'
 import { fetchProjectList } from '../../api/modules/project'
-import { fetchContractAlertSummary } from '../../api/modules/contract'
-import { fetchHandoverSummary } from '../../api/modules/handover'
-import { fetchInspectionSummary } from '../../api/modules/inspection'
-import { fetchAnnualReportSummary } from '../../api/modules/annual-report'
-import { fetchHospitalSummary } from '../../api/modules/hospital'
-import { fetchPersonnelSummary } from '../../api/modules/personnel'
-import { fetchProductSummary } from '../../api/modules/product'
+import { fetchMajorDemands, type MajorDemandSnapshot } from '../../api/modules/majorDemand'
+import { fetchAlertCenter, type AlertCenterItem } from '../../api/modules/alertCenter'
 import { getErrorMessage } from '../../utils/error'
 import { useLinkedRealtimeRefresh } from '../../composables/useLinkedRealtimeRefresh'
 
-const cards = ref([
-  { title: '项目总数', value: '0' },
-  { title: '超期合同', value: '0' },
-  { title: '进行中交接', value: '0' },
-  { title: '本月巡检', value: '0' },
-])
+type ChartDatum = { name: string; value: number }
+type ChartInstance = any
 
-type PageShareItem = {
-  key: string
+type DemandDrillItem = {
+  rowId: string
   title: string
-  icon: string
-  count: number
-  ratePercent: number
-  rateText: string
-  segments: Array<{
-    label: string
-    count: number
-    percentText: string
-    tone: 'danger' | 'warning' | 'success' | 'info'
-  }>
+  hospital: string
+  owner: string
+  status: string
+  dueDate: string
 }
 
-const pageShareItems = ref<PageShareItem[]>([])
-const router = useRouter()
+const loading = ref(false)
+const demandLoading = ref(false)
+const activeTab = ref<'project' | 'demand' | 'alert'>('project')
+const demandLastLoadedAt = ref(0)
+const DEMAND_REFRESH_INTERVAL = 5 * 60 * 1000
 
-const navigateByItem = async (key: string) => {
-  const routeNameMap: Record<string, string> = {
-    project: 'project-list',
-    contract: 'contract-alerts',
-    handover: 'handover-list',
-    inspection: 'inspection-plan',
-    annual: 'annual-report-list',
-    hospital: 'hospital-list',
-    personnel: 'personnel-list',
-    product: 'product-list',
+const selectedProjectStatus = ref('全部')
+const selectedDemandStatus = ref('全部')
+const selectedAlertLevel = ref('全部')
+
+const projectItems = ref<any[]>([])
+const majorSnapshot = ref<MajorDemandSnapshot | null>(null)
+const alertItems = ref<AlertCenterItem[]>([])
+
+const projectChartRef = ref<HTMLDivElement | null>(null)
+const demandChartRef = ref<HTMLDivElement | null>(null)
+const alertChartRef = ref<HTMLDivElement | null>(null)
+
+const projectChart = ref<ChartInstance | null>(null)
+const demandChart = ref<ChartInstance | null>(null)
+const alertChart = ref<ChartInstance | null>(null)
+
+const cards = computed(() => {
+  const totalAlerts = alertItems.value.length
+  const severeCount = alertItems.value.filter((item) => item.level === '严重').length
+  const severeRatio = totalAlerts > 0 ? `${((severeCount / totalAlerts) * 100).toFixed(1)}%` : '0%'
+  const overdueProjects = projectItems.value.filter((item) => Number(item.overdueDays || 0) > 0).length
+
+  return [
+    { title: '项目总数', value: String(projectItems.value.length) },
+    { title: '重大需求', value: String((majorSnapshot.value?.workflows ?? []).length) },
+    { title: '告警总数', value: String(totalAlerts) },
+    { title: '严重告警占比', value: severeRatio },
+    { title: '超期项目', value: String(overdueProjects) },
+  ]
+})
+
+const demandDrillSource = computed<DemandDrillItem[]>(() => {
+  const snapshot = majorSnapshot.value
+  if (!snapshot) {
+    return []
   }
 
-  const name = routeNameMap[key]
-  if (!name) return
-  await router.push({ name })
+  const rowById = new Map(snapshot.rows.map((row) => [String(row['行ID'] ?? row['rowId'] ?? row['ID'] ?? ''), row]))
+
+  const pickByKeyword = (row: Record<string, string>, keywords: string[]) => {
+    for (const [key, value] of Object.entries(row)) {
+      if (!value) {
+        continue
+      }
+
+      if (keywords.some((keyword) => key.toLowerCase().includes(keyword))) {
+        return value
+      }
+    }
+    return ''
+  }
+
+  return snapshot.workflows.map((workflow) => {
+    const row = rowById.get(String(workflow.rowId)) ?? {}
+    const title = pickByKeyword(row, ['需求', '标题', '事项']) || `需求-${workflow.rowId}`
+    const hospital = pickByKeyword(row, ['医院', '客户']) || '--'
+    const owner = workflow.owner || pickByKeyword(row, ['负责人', 'owner']) || '--'
+
+    return {
+      rowId: workflow.rowId,
+      title,
+      hospital,
+      owner,
+      status: workflow.status || pickByKeyword(row, ['状态']) || '未知',
+      dueDate: workflow.dueDate || pickByKeyword(row, ['计划', '截止']) || '--',
+    }
+  })
+})
+
+const projectStatusData = computed<ChartDatum[]>(() => {
+  const counter = new Map<string, number>()
+  for (const item of projectItems.value) {
+    const status = String(item.contractStatus || '未知').trim() || '未知'
+    counter.set(status, (counter.get(status) ?? 0) + 1)
+  }
+  return Array.from(counter.entries()).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value)
+})
+
+const demandStatusData = computed<ChartDatum[]>(() => {
+  const counter = new Map<string, number>()
+  for (const item of demandDrillSource.value) {
+    const status = String(item.status || '未知').trim() || '未知'
+    counter.set(status, (counter.get(status) ?? 0) + 1)
+  }
+  return Array.from(counter.entries()).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value)
+})
+
+const alertLevelData = computed<ChartDatum[]>(() => {
+  const counter = new Map<string, number>()
+  for (const item of alertItems.value) {
+    const level = String(item.level || '未知').trim() || '未知'
+    counter.set(level, (counter.get(level) ?? 0) + 1)
+  }
+  return Array.from(counter.entries()).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value)
+})
+
+const projectDrillRows = computed(() => {
+  if (selectedProjectStatus.value === '全部') {
+    return projectItems.value.slice(0, 200)
+  }
+  return projectItems.value.filter((item) => (item.contractStatus || '未知') === selectedProjectStatus.value).slice(0, 200)
+})
+
+const demandDrillRows = computed(() => {
+  if (selectedDemandStatus.value === '全部') {
+    return demandDrillSource.value.slice(0, 200)
+  }
+  return demandDrillSource.value.filter((item) => item.status === selectedDemandStatus.value).slice(0, 200)
+})
+
+const alertDrillRows = computed(() => {
+  if (selectedAlertLevel.value === '全部') {
+    return alertItems.value.slice(0, 200)
+  }
+  return alertItems.value.filter((item) => item.level === selectedAlertLevel.value).slice(0, 200)
+})
+
+const renderDonut = (
+  chart: ChartInstance | null,
+  title: string,
+  data: ChartDatum[],
+  colors: string[],
+) => {
+  if (!chart) {
+    return
+  }
+
+  const total = data.reduce((sum, item) => sum + item.value, 0)
+  chart.setOption({
+    color: colors,
+    tooltip: {
+      trigger: 'item',
+      formatter: (params: any) => {
+        const percent = total > 0 ? ((params.value / total) * 100).toFixed(1) : '0.0'
+        return `${params.name}<br/>数量：${params.value}<br/>占比：${percent}%`
+      },
+    },
+    legend: {
+      bottom: 0,
+      type: 'scroll',
+    },
+    series: [
+      {
+        name: title,
+        type: 'pie',
+        radius: ['45%', '70%'],
+        center: ['50%', '44%'],
+        itemStyle: {
+          borderRadius: 8,
+          borderColor: '#fff',
+          borderWidth: 2,
+        },
+        label: {
+          formatter: '{b}\n{d}%',
+          fontSize: 12,
+        },
+        data,
+      },
+    ],
+  })
 }
 
-const navigateBySegment = async (key: string, label: string) => {
-  const drillQueryMap: Record<string, Record<string, Record<string, string>>> = {
-    project: {
-      签署: { contractStatus: '合同已签署' },
-      超期: { contractStatus: '超期未签署' },
-      免费: { contractStatus: '免费维护期' },
-      停止维护: { contractStatus: '停止维护' },
-      未知: { contractStatus: '未知' },
-    },
-    contract: {
-      提醒: { alertLevel: '提醒' },
-      警告: { alertLevel: '警告' },
-      严重: { alertLevel: '严重' },
-    },
-    handover: {
-      待交接: { stage: '未发' },
-      已发邮件: { stage: '已发邮件' },
-      进行中: { stage: '交接中' },
-      已完成: { stage: '已交接' },
-    },
-    inspection: {
-      已计划: { status: '已计划' },
-      执行中: { status: '执行中' },
-      已完成: { status: '已完成' },
-      已取消: { status: '已取消' },
-    },
-    annual: {
-      未开始: { status: '未开始' },
-      编写中: { status: '编写中' },
-      已提交: { status: '已提交' },
-      已完成: { status: '已完成' },
-    },
-    hospital: {
-      三级: { tier: '三级' },
-      二级: { tier: '二级' },
-      一级: { tier: '一级' },
-    },
-    personnel: {
-      服务: { roleType: '服务' },
-      实施: { roleType: '实施' },
-      驻场: { isOnsite: 'true' },
-    },
-    product: {
-      在用: { status: '运行中' },
-      试点: { status: '试运行' },
-      退役: { status: '已停用' },
-    },
-  }
-
-  const routeNameMap: Record<string, string> = {
-    project: 'project-list',
-    contract: 'contract-alerts',
-    handover: 'handover-list',
-    inspection: 'inspection-plan',
-    annual: 'annual-report-list',
-    hospital: 'hospital-list',
-    personnel: 'personnel-list',
-    product: 'product-list',
-  }
-
-  const name = routeNameMap[key]
-  if (!name) return
-
-  const query = drillQueryMap[key]?.[label]
-  await router.push({ name, query })
+const updateCharts = () => {
+  renderDonut(projectChart.value, '项目台账', projectStatusData.value, ['#3b82f6', '#14b8a6', '#f59e0b', '#ef4444', '#8b5cf6'])
+  renderDonut(demandChart.value, '重大需求', demandStatusData.value, ['#0ea5e9', '#22c55e', '#f97316', '#6366f1', '#ec4899'])
+  renderDonut(alertChart.value, '告警等级', alertLevelData.value, ['#ef4444', '#f59e0b', '#3b82f6', '#6b7280'])
 }
 
-const toPercentText = (count: number, total: number): string => {
-  if (total <= 0) {
-    return '0.0%'
-  }
+const bindChartEvents = () => {
+  projectChart.value?.off('click')
+  demandChart.value?.off('click')
+  alertChart.value?.off('click')
 
-  return `${((count / total) * 100).toFixed(1)}%`
+  projectChart.value?.on('click', (params: any) => {
+    selectedProjectStatus.value = params?.name || '全部'
+    activeTab.value = 'project'
+  })
+
+  demandChart.value?.on('click', (params: any) => {
+    selectedDemandStatus.value = params?.name || '全部'
+    activeTab.value = 'demand'
+  })
+
+  alertChart.value?.on('click', (params: any) => {
+    selectedAlertLevel.value = params?.name || '全部'
+    activeTab.value = 'alert'
+  })
 }
 
-const parseDateText = (text?: string): Date | null => {
-  if (!text) {
-    return null
-  }
-
-  const matched = text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/)
-  if (!matched) {
-    return null
-  }
-
-  const year = Number(matched[1])
-  const month = Number(matched[2])
-  const day = Number(matched[3])
-  const date = new Date(year, month - 1, day)
-  return Number.isNaN(date.getTime()) ? null : date
+const resetDrill = () => {
+  selectedProjectStatus.value = '全部'
+  selectedDemandStatus.value = '全部'
+  selectedAlertLevel.value = '全部'
 }
 
-const isProjectOverdue = (item: { overdueDays: number; afterSalesEndDate?: string }) => {
-  if (item.overdueDays > 0) {
+const resizeCharts = () => {
+  projectChart.value?.resize()
+  demandChart.value?.resize()
+  alertChart.value?.resize()
+}
+
+const shouldLoadDemand = (force = false) => {
+  if (force) {
     return true
   }
 
-  const target = parseDateText(item.afterSalesEndDate)
-  if (!target) {
-    return false
+  if (!majorSnapshot.value) {
+    return true
   }
 
-  const now = new Date()
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-  return target.getTime() < today.getTime()
+  return Date.now() - demandLastLoadedAt.value >= DEMAND_REFRESH_INTERVAL
 }
 
-const buildSegments = (
-  total: number,
-  rows: Array<{ label: string; count: number; tone: 'danger' | 'warning' | 'success' | 'info' }>,
-) => {
-  return rows.map((row) => ({
-    ...row,
-    percentText: toPercentText(row.count, total),
-  }))
+const loadDemandSnapshot = async (force = false) => {
+  if (demandLoading.value || !shouldLoadDemand(force)) {
+    return
+  }
+
+  demandLoading.value = true
+  try {
+    const demandRes = await fetchMajorDemands()
+    majorSnapshot.value = demandRes.data
+    demandLastLoadedAt.value = Date.now()
+
+    await nextTick()
+    updateCharts()
+    bindChartEvents()
+  } catch (error) {
+    ElMessage.error(getErrorMessage(error, '加载重大需求图表失败，请稍后重试'))
+  } finally {
+    demandLoading.value = false
+  }
 }
 
 const loadDashboard = async () => {
+  if (loading.value) {
+    return
+  }
+
+  loading.value = true
   try {
-    const [projectRes, contractRes, handoverRes, inspectionRes, annualRes, hospitalRes, personnelRes, productRes] = await Promise.all([
-      fetchProjectList({ page: 1, size: 5000 }),
-      fetchContractAlertSummary(),
-      fetchHandoverSummary(),
-      fetchInspectionSummary(),
-      fetchAnnualReportSummary(),
-      fetchHospitalSummary(),
-      fetchPersonnelSummary(),
-      fetchProductSummary(),
+    const [projectRes, alertRes] = await Promise.all([
+      fetchProjectList({ page: 1, size: 1000 }),
+      fetchAlertCenter({ page: 1, size: 1000 }),
     ])
 
-    cards.value = [
-      { title: '项目总数', value: String(projectRes.data.total) },
-      { title: '超期合同', value: String(contractRes.data.total) },
-      { title: '进行中交接', value: String(handoverRes.data.inProgressCount) },
-      { title: '本月巡检', value: String(inspectionRes.data.thisMonthCount) },
-    ]
+    projectItems.value = projectRes.data.items
+    alertItems.value = alertRes.data.items
 
-    const projectItems = projectRes.data.items
-    const projectStatus = {
-      signed: 0,
-      overdue: 0,
-      free: 0,
-      stopped: 0,
-      unknown: 0,
-    }
+    await nextTick()
+    updateCharts()
+    bindChartEvents()
 
-    for (const item of projectItems) {
-      const status = item.contractStatus ?? ''
-      if (status.includes('超期')) {
-        projectStatus.overdue++
-      } else if (status.includes('免费')) {
-        projectStatus.free++
-      } else if (status.includes('停止')) {
-        projectStatus.stopped++
-      } else if (status.includes('签署')) {
-        projectStatus.signed++
-      } else {
-        if (isProjectOverdue(item)) {
-          projectStatus.overdue++
-        } else {
-          projectStatus.unknown++
-        }
-      }
-    }
-
-    const rawItems = [
-      {
-        key: 'project',
-        title: '项目台账',
-        icon: '📒',
-        count: projectRes.data.total,
-        segments: buildSegments(projectRes.data.total, [
-          { label: '签署', count: projectStatus.signed, tone: 'success' },
-          { label: '超期', count: projectStatus.overdue, tone: 'danger' },
-          { label: '免费', count: projectStatus.free, tone: 'info' },
-          { label: '停止维护', count: projectStatus.stopped, tone: 'warning' },
-          { label: '未知', count: projectStatus.unknown, tone: 'info' },
-        ]),
-      },
-      {
-        key: 'contract',
-        title: '合同预警',
-        icon: '⚠️',
-        count: contractRes.data.total,
-        segments: buildSegments(contractRes.data.total, [
-          { label: '提醒', count: contractRes.data.reminderCount, tone: 'info' },
-          { label: '警告', count: contractRes.data.warningCount, tone: 'warning' },
-          { label: '严重', count: contractRes.data.criticalCount, tone: 'danger' },
-        ]),
-      },
-      {
-        key: 'handover',
-        title: '交接管理',
-        icon: '🔁',
-        count: handoverRes.data.total,
-        segments: buildSegments(handoverRes.data.total, [
-          { label: '待交接', count: handoverRes.data.pendingCount, tone: 'warning' },
-          { label: '已发邮件', count: handoverRes.data.emailSentCount, tone: 'info' },
-          { label: '进行中', count: handoverRes.data.inProgressCount, tone: 'warning' },
-          { label: '已完成', count: handoverRes.data.completedCount, tone: 'success' },
-        ]),
-      },
-      {
-        key: 'inspection',
-        title: '巡检计划',
-        icon: '🗓️',
-        count: inspectionRes.data.total,
-        segments: buildSegments(inspectionRes.data.total, [
-          { label: '已计划', count: inspectionRes.data.plannedCount, tone: 'info' },
-          { label: '执行中', count: inspectionRes.data.inProgressCount, tone: 'warning' },
-          { label: '已完成', count: inspectionRes.data.completedCount, tone: 'success' },
-          { label: '已取消', count: inspectionRes.data.cancelledCount, tone: 'danger' },
-        ]),
-      },
-      {
-        key: 'annual',
-        title: '年度报告',
-        icon: '📝',
-        count: annualRes.data.total,
-        segments: buildSegments(annualRes.data.total, [
-          { label: '未开始', count: annualRes.data.notStartedCount, tone: 'warning' },
-          { label: '编写中', count: annualRes.data.writingCount, tone: 'info' },
-          { label: '已提交', count: annualRes.data.submittedCount, tone: 'success' },
-          { label: '已完成', count: annualRes.data.completedCount, tone: 'success' },
-        ]),
-      },
-      {
-        key: 'hospital',
-        title: '医院管理',
-        icon: '🏥',
-        count: hospitalRes.data.total,
-        segments: buildSegments(hospitalRes.data.total, [
-          { label: '三级', count: hospitalRes.data.threeTierCount, tone: 'success' },
-          { label: '二级', count: hospitalRes.data.twoTierCount, tone: 'info' },
-          { label: '一级', count: hospitalRes.data.oneTierCount, tone: 'warning' },
-        ]),
-      },
-      {
-        key: 'personnel',
-        title: '人员管理',
-        icon: '👥',
-        count: personnelRes.data.total,
-        segments: buildSegments(personnelRes.data.total, [
-          { label: '服务', count: personnelRes.data.serviceCount, tone: 'info' },
-          { label: '实施', count: personnelRes.data.implementationCount, tone: 'info' },
-          { label: '驻场', count: personnelRes.data.onsiteCount, tone: 'success' },
-        ]),
-      },
-      {
-        key: 'product',
-        title: '产品管理',
-        icon: '📦',
-        count: productRes.data.total,
-        segments: buildSegments(productRes.data.total, [
-          { label: '在用', count: productRes.data.activeCount, tone: 'success' },
-          { label: '试点', count: productRes.data.pilotCount, tone: 'warning' },
-          { label: '退役', count: productRes.data.retiredCount, tone: 'danger' },
-        ]),
-      },
-    ]
-
-    const total = rawItems.reduce((sum, item) => sum + item.count, 0)
-    pageShareItems.value = rawItems.map((item) => {
-      const rate = total > 0 ? (item.count / total) * 100 : 0
-      return {
-        ...item,
-        ratePercent: Number(rate.toFixed(1)),
-        rateText: `${rate.toFixed(1)}%`,
-      }
-    })
+    void loadDemandSnapshot()
   } catch (error) {
-    pageShareItems.value = []
-    ElMessage.error(getErrorMessage(error, '加载首页数据失败，请稍后重试'))
+    ElMessage.error(getErrorMessage(error, '加载首页图表失败，请稍后重试'))
+  } finally {
+    loading.value = false
   }
 }
 
 useLinkedRealtimeRefresh({
   refresh: loadDashboard,
   scope: 'global',
-  intervalMs: 10000,
+  intervalMs: 60000,
+  enableAutoRefresh: true,
 })
 
-onMounted(() => {
-  void loadDashboard()
+onMounted(async () => {
+  await nextTick()
+
+  if (projectChartRef.value) {
+    projectChart.value = echarts.init(projectChartRef.value)
+  }
+  if (demandChartRef.value) {
+    demandChart.value = echarts.init(demandChartRef.value)
+  }
+  if (alertChartRef.value) {
+    alertChart.value = echarts.init(alertChartRef.value)
+  }
+
+  window.addEventListener('resize', resizeCharts)
+  await loadDashboard()
+  setTimeout(() => {
+    void loadDemandSnapshot()
+  }, 0)
+})
+
+watch(activeTab, (tab) => {
+  if (tab === 'demand') {
+    void loadDemandSnapshot(true)
+  }
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', resizeCharts)
+  projectChart.value?.dispose()
+  demandChart.value?.dispose()
+  alertChart.value?.dispose()
 })
 </script>
 
 <style scoped>
-.panel-title {
-  font-weight: 600;
-}
-
-.share-card {
-  margin-top: 0;
-}
-
-.share-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+.dashboard-page {
+  display: flex;
+  flex-direction: column;
   gap: 12px;
 }
 
-.share-item {
-  border: 1px solid var(--el-border-color-lighter);
-  border-radius: 8px;
-  padding: 10px 12px;
-  background: var(--el-bg-color);
+.chart-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
 }
 
-.share-main {
+.chart-card {
+  min-height: 360px;
+}
+
+.chart-box {
+  height: 280px;
+}
+
+.panel-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
-}
-
-.share-left {
-  display: flex;
-  align-items: center;
   gap: 8px;
-  min-width: 0;
 }
 
-.share-icon {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  background: var(--el-fill-color-light);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 14px;
-}
-
-.share-name {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--el-text-color-primary);
-}
-
-.share-detail {
-  margin-top: 2px;
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 280px;
-}
-
-.share-right {
-  text-align: right;
-  flex-shrink: 0;
-}
-
-.share-count {
-  font-size: 16px;
+.panel-title {
   font-weight: 700;
-  color: var(--el-text-color-primary);
+  color: #1f3f70;
 }
 
-.share-rate {
-  font-size: 12px;
-  color: var(--el-color-primary);
+.drill-tip {
+  margin-bottom: 8px;
+  color: #4d6b90;
 }
 
-.share-bar {
-  margin-top: 8px;
-  height: 6px;
-  border-radius: 999px;
-  background: var(--el-fill-color-lighter);
-  overflow: hidden;
-}
-
-.share-bar > span {
-  display: block;
-  height: 100%;
-  border-radius: 999px;
-  background: var(--el-color-primary);
-}
-
-.share-sub-grid {
-  margin-top: 8px;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 6px 10px;
-}
-
-.share-sub-item {
-  display: grid;
-  grid-template-columns: 1fr auto auto;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-}
-
-.share-link {
-  cursor: pointer;
-}
-
-.share-link:hover {
-  opacity: 0.85;
-}
-
-.sub-name {
-  color: var(--el-text-color-secondary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.sub-value {
-  color: var(--el-text-color-regular);
-  font-weight: 600;
-}
-
-.sub-rate {
-  font-variant-numeric: tabular-nums;
-}
-
-.sub-rate.tone-danger {
-  color: var(--el-color-danger);
-}
-
-.sub-rate.tone-warning {
-  color: var(--el-color-warning);
-}
-
-.sub-rate.tone-success {
-  color: var(--el-color-success);
-}
-
-.sub-rate.tone-info {
-  color: var(--el-color-primary);
-}
-
-@media (max-width: 1200px) {
-  .share-grid {
+@media (max-width: 1280px) {
+  .chart-grid {
     grid-template-columns: 1fr;
   }
 
-  .share-detail {
-    max-width: 100%;
-  }
-
-  .share-sub-grid {
-    grid-template-columns: 1fr;
+  .chart-box {
+    height: 300px;
   }
 }
 </style>
