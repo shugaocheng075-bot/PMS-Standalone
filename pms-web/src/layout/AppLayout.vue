@@ -5,8 +5,10 @@
         <el-button v-if="isMobileViewport" link class="mobile-menu-btn" @click="mobileMenuVisible = true">
           <el-icon><Menu /></el-icon>
         </el-button>
-        <div class="company-main">北京嘉和美康信息技术有限公司</div>
-        <div class="company-sub">Goodwill Information Technology Co., Ltd.</div>
+        <div class="company-block">
+          <div class="company-main">北京嘉和美康信息技术有限公司</div>
+          <div class="company-sub">Goodwill Information Technology Co., Ltd.</div>
+        </div>
       </div>
 
       <div class="nav-right">
@@ -129,6 +131,9 @@ const sideMenuGroups: Array<{ title: string; items: Array<{ label: string; path:
     { label: '权限管理', path: '/permission/manage', permission: 'permission.manage' },
     { label: '产品管理', path: '/product/list', permission: 'product.view' },
     { label: '重大需求', path: '/major-demand/list', permission: 'major-demand.view' },
+    { label: '报修记录', path: '/repair/list', permission: 'repair.view' },
+    { label: '工时管理', path: '/workhours/list', permission: 'workhours.view' },
+    { label: '月度报告', path: '/monthly-report/list', permission: 'monthly-report.view' },
     { label: '数据维护中心', path: '/maintenance/data', permission: 'maintenance.manage' },
     ],
   },
@@ -195,12 +200,15 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .app-shell {
-  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
   background: #f4f8fd;
 }
 
 .top-nav {
-  position: relative;
+  position: sticky;
+  top: 0;
+  z-index: 1000;
   min-height: 48px;
   background: linear-gradient(90deg, #0066b2 0%, #0a79be 100%);
   color: #fff;
@@ -239,7 +247,7 @@ onBeforeUnmount(() => {
   min-width: 0;
 }
 
-.nav-left > div {
+.company-block {
   display: flex;
   flex-direction: column;
   line-height: 1.05;
@@ -323,7 +331,8 @@ onBeforeUnmount(() => {
 
 .workspace {
   display: flex;
-  min-height: calc(100vh - 48px);
+  height: calc(100vh - 48px);
+  overflow: hidden;
 }
 
 .left-pane {
@@ -420,12 +429,13 @@ onBeforeUnmount(() => {
 .main-pane {
   flex: 1;
   padding: 14px;
-  overflow: auto;
+  height: calc(100vh - 48px);
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .content-wrap {
   width: 100%;
-  min-height: calc(100vh - 72px);
 }
 
 .mobile-menu-btn {
@@ -460,16 +470,13 @@ onBeforeUnmount(() => {
   }
 
   .workspace {
-    min-height: calc(100vh - 52px);
+    height: calc(100vh - 52px);
   }
 
   .main-pane {
     width: 100%;
     padding: 10px;
-  }
-
-  .content-wrap {
-    min-height: calc(100vh - 62px);
+    height: calc(100vh - 52px);
   }
 }
 

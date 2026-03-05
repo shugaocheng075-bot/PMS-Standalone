@@ -17,9 +17,9 @@ public class InMemoryProductService : IProductService
         var summary = new ProductSummaryDto
         {
             Total = products.Count,
-            ActiveCount = products.Count(x => x.Status == "运行中"),
-            PilotCount = products.Count(x => x.Status == "试运行"),
-            RetiredCount = products.Count(x => x.Status == "已停用")
+            ImplementationCount = products.Count(x => x.Status == "实施"),
+            MaintenanceCount = products.Count(x => x.Status == "维护"),
+            StoppedCount = products.Count(x => x.Status == "停保")
         };
 
         return Task.FromResult(summary);
@@ -80,7 +80,7 @@ public class InMemoryProductService : IProductService
                 ProductName = dto.ProductName,
                 Version = dto.Version,
                 Category = dto.Category,
-                Status = dto.Status,
+                Status = NormalizeStatus(dto.Status),
                 DeployHospitalCount = dto.DeployHospitalCount,
                 CreatedAt = DateTime.Now
             });
@@ -89,7 +89,7 @@ public class InMemoryProductService : IProductService
         {
             existing.Version = dto.Version;
             existing.Category = dto.Category;
-            existing.Status = dto.Status;
+            existing.Status = NormalizeStatus(dto.Status);
             existing.DeployHospitalCount = dto.DeployHospitalCount;
             existing.CreatedAt = DateTime.Now;
         }
@@ -127,7 +127,7 @@ public class InMemoryProductService : IProductService
         custom.ProductName = dto.ProductName;
         custom.Version = dto.Version;
         custom.Category = dto.Category;
-        custom.Status = dto.Status;
+        custom.Status = NormalizeStatus(dto.Status);
         custom.DeployHospitalCount = dto.DeployHospitalCount;
         custom.CreatedAt = DateTime.Now;
 
@@ -172,7 +172,7 @@ public class InMemoryProductService : IProductService
             {
                 existing.Version = string.IsNullOrWhiteSpace(custom.Version) ? existing.Version : custom.Version;
                 existing.Category = string.IsNullOrWhiteSpace(custom.Category) ? existing.Category : custom.Category;
-                existing.Status = string.IsNullOrWhiteSpace(custom.Status) ? existing.Status : custom.Status;
+                existing.Status = string.IsNullOrWhiteSpace(custom.Status) ? existing.Status : NormalizeStatus(custom.Status);
                 existing.DeployHospitalCount = custom.DeployHospitalCount > 0 ? custom.DeployHospitalCount : existing.DeployHospitalCount;
                 existing.CreatedAt = custom.CreatedAt;
             }
@@ -183,7 +183,7 @@ public class InMemoryProductService : IProductService
                     ProductName = custom.ProductName,
                     Version = custom.Version,
                     Category = custom.Category,
-                    Status = custom.Status,
+                    Status = NormalizeStatus(custom.Status),
                     DeployHospitalCount = custom.DeployHospitalCount,
                     CreatedAt = custom.CreatedAt
                 };
@@ -421,31 +421,65 @@ public class InMemoryProductService : IProductService
     private static string InferStatus(IEnumerable<string> statuses)
     {
         var statusList = statuses.ToList();
-        if (statusList.Any(x => x.Contains("合同已签署", StringComparison.OrdinalIgnoreCase)
-                             || x.Contains("免费维护期", StringComparison.OrdinalIgnoreCase)
-                             || x.Contains("有偿维护", StringComparison.OrdinalIgnoreCase)
-                             || x.Contains("维保期内", StringComparison.OrdinalIgnoreCase)
-                             || x.Contains("质保期内", StringComparison.OrdinalIgnoreCase)
-                             || x.Contains("签署中", StringComparison.OrdinalIgnoreCase)))
-        {
-            return "运行中";
-        }
-
-        if (statusList.Any(x => x.Contains("未终验", StringComparison.OrdinalIgnoreCase)
-                             || x.Contains("未验收", StringComparison.OrdinalIgnoreCase)
-                             || x.Contains("试运行", StringComparison.OrdinalIgnoreCase)))
-        {
-            return "试运行";
-        }
-
         if (statusList.Any(x => x.Contains("停止", StringComparison.OrdinalIgnoreCase)
                              || x.Contains("停保", StringComparison.OrdinalIgnoreCase)
                              || x.Contains("脱保", StringComparison.OrdinalIgnoreCase)
                              || x.Contains("超期", StringComparison.OrdinalIgnoreCase)))
         {
-            return "已停用";
+            return NormalizeStatus("停保");
         }
 
-        return "试运行";
+        if (statusList.Any(x => x.Contains("免费维护期", StringComparison.OrdinalIgnoreCase)
+                             || x.Contains("有偿维护", StringComparison.OrdinalIgnoreCase)
+                             || x.Contains("维保期内", StringComparison.OrdinalIgnoreCase)
+                             || x.Contains("质保期内", StringComparison.OrdinalIgnoreCase)
+                             || x.Contains("签署", StringComparison.OrdinalIgnoreCase)))
+        {
+            return NormalizeStatus("维护");
+        }
+
+        if (statusList.Any(x => x.Contains("未终验", StringComparison.OrdinalIgnoreCase)
+                             || x.Contains("未验收", StringComparison.OrdinalIgnoreCase)
+                             || x.Contains("试运行", StringComparison.OrdinalIgnoreCase)
+                             || x.Contains("实施", StringComparison.OrdinalIgnoreCase)))
+        {
+            return NormalizeStatus("实施");
+        }
+
+        return NormalizeStatus("维护");
+    }
+
+    private static string NormalizeStatus(string? status)
+    {
+        var value = status?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return "维护";
+        }
+
+        if (value.Contains("停", StringComparison.OrdinalIgnoreCase)
+            || value.Contains("超期", StringComparison.OrdinalIgnoreCase)
+            || value.Contains("脱保", StringComparison.OrdinalIgnoreCase))
+        {
+            return "停保";
+        }
+
+        if (value.Contains("维护", StringComparison.OrdinalIgnoreCase)
+            || value.Contains("运行", StringComparison.OrdinalIgnoreCase)
+            || value.Contains("签署", StringComparison.OrdinalIgnoreCase)
+            || value.Contains("维保", StringComparison.OrdinalIgnoreCase)
+            || value.Contains("质保", StringComparison.OrdinalIgnoreCase))
+        {
+            return "维护";
+        }
+
+        if (value.Contains("实施", StringComparison.OrdinalIgnoreCase)
+            || value.Contains("试运行", StringComparison.OrdinalIgnoreCase)
+            || value.Contains("验收", StringComparison.OrdinalIgnoreCase))
+        {
+            return "实施";
+        }
+
+        return "维护";
     }
 }

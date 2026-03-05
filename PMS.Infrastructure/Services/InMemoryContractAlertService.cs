@@ -30,6 +30,16 @@ public class InMemoryContractAlertService : IContractAlertService
             alerts = alerts.Where(x => SmartTextMatcher.MatchExact(x.AlertLevel, query.AlertLevel));
         }
 
+        if (!string.IsNullOrWhiteSpace(query.ContractType))
+        {
+            alerts = alerts.Where(x => SmartTextMatcher.MatchExact(x.ContractType, query.ContractType));
+        }
+
+        if (!string.IsNullOrWhiteSpace(query.ContractValidityStatus))
+        {
+            alerts = alerts.Where(x => SmartTextMatcher.MatchExact(x.ContractValidityStatus, query.ContractValidityStatus));
+        }
+
         if (!string.IsNullOrWhiteSpace(query.Province))
         {
             alerts = alerts.Where(x => x.Province.Equals(query.Province, StringComparison.OrdinalIgnoreCase));
@@ -72,16 +82,58 @@ public class InMemoryContractAlertService : IContractAlertService
             .Select(x => new ContractAlertItemDto
             {
                 ProjectId = x.Id,
+                ContractType = InferContractType(x.ProductName),
                 HospitalName = x.HospitalName,
                 Province = x.Province,
                 GroupName = x.GroupName,
                 SalesName = x.SalesName,
                 ContractStatus = x.ContractStatus,
+                ContractValidityStatus = GetContractValidityStatus(x),
                 MaintenanceAmount = x.MaintenanceAmount,
                 OverdueDays = x.OverdueDays,
                 AlertLevel = GetAlertLevel(x.OverdueDays)
             })
             .ToList();
+    }
+
+    private static string InferContractType(string? productName)
+    {
+        if (string.IsNullOrWhiteSpace(productName))
+        {
+            return "产品实施合同";
+        }
+
+        var value = productName.Trim();
+        if (value.Contains("需求", StringComparison.OrdinalIgnoreCase)
+            || value.Contains("改造", StringComparison.OrdinalIgnoreCase)
+            || value.Contains("升级", StringComparison.OrdinalIgnoreCase)
+            || value.Contains("接口", StringComparison.OrdinalIgnoreCase)
+            || value.Contains("对接", StringComparison.OrdinalIgnoreCase))
+        {
+            return "重大需求合同";
+        }
+
+        return "产品实施合同";
+    }
+
+    private static string GetContractValidityStatus(ProjectEntity item)
+    {
+        var displayOverdueDays = item.OverdueDays > 0 ? item.OverdueDays : 0;
+        if (displayOverdueDays > 0)
+        {
+            return "已过期";
+        }
+
+        if (DateTime.TryParse(item.AfterSalesEndDate, out var endDate))
+        {
+            var dayDiff = (int)(endDate.Date - DateTime.Today).TotalDays;
+            if (dayDiff <= 30)
+            {
+                return "待续签";
+            }
+        }
+
+        return "有效";
     }
 
     private static string GetAlertLevel(int overdueDays)

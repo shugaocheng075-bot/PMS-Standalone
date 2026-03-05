@@ -16,6 +16,8 @@ export const ROUTE_PERMISSION_ENTRIES: Array<{ path: string; permission: string 
   { path: '/product/list', permission: 'product.view' },
   { path: '/major-demand/list', permission: 'major-demand.view' },
   { path: '/maintenance/data', permission: 'maintenance.manage' },
+  { path: '/repair/list', permission: 'repair.view' },
+  { path: '/workhours/list', permission: 'workhours.view' },
 ]
 
 export const ROUTE_PERMISSION_MAP = ROUTE_PERMISSION_ENTRIES.reduce<Record<string, string>>((acc, current) => {

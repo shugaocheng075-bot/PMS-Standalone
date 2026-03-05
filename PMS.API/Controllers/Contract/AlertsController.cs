@@ -20,6 +20,8 @@ public class AlertsController(IContractAlertService alertService) : ControllerBa
     [HttpGet]
     public async Task<IActionResult> GetAlerts(
         [FromQuery] string? alertLevel,
+        [FromQuery] string? contractType,
+        [FromQuery] string? contractValidityStatus,
         [FromQuery] string? province,
         [FromQuery] string? groupName,
         [FromQuery] string? salesName,
@@ -30,6 +32,8 @@ public class AlertsController(IContractAlertService alertService) : ControllerBa
         var result = await alertService.QueryAlertsAsync(new ContractAlertQuery
         {
             AlertLevel = alertLevel,
+            ContractType = contractType,
+            ContractValidityStatus = contractValidityStatus,
             Province = province,
             GroupName = groupName,
             SalesName = salesName,

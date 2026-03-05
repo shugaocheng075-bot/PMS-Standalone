@@ -29,6 +29,8 @@ public class InMemoryHospitalService : IHospitalService
                 ContactPerson = string.Empty,
                 ContactPhone = string.Empty,
                 DepartmentCount = "-",
+                ProductCount = group.Select(x => x.ProductName).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).Count(),
+                ContractCount = group.Count(),
                 CreatedAt = now
             })
             .OrderBy(x => x.HospitalName)
@@ -56,7 +58,8 @@ public class InMemoryHospitalService : IHospitalService
 
     public Task<PagedResult<HospitalItemDto>> QueryHospitalsAsync(HospitalQuery query, CancellationToken cancellationToken = default)
     {
-        var list = Hospitals.AsEnumerable();
+        var linkedHospitals = ApplyLinkedMetrics(Hospitals).AsEnumerable();
+        var list = linkedHospitals;
 
         if (!string.IsNullOrWhiteSpace(query.HospitalName))
         {
@@ -100,7 +103,7 @@ public class InMemoryHospitalService : IHospitalService
 
     public Task<HospitalItemDto?> GetByIdAsync(int id, CancellationToken cancellationToken = default)
     {
-        var item = Hospitals.FirstOrDefault(x => x.Id == id);
+        var item = ApplyLinkedMetrics(Hospitals).FirstOrDefault(x => x.Id == id);
         return Task.FromResult(item);
     }
 
@@ -118,6 +121,8 @@ public class InMemoryHospitalService : IHospitalService
             ContactPerson = dto.ContactPerson,
             ContactPhone = dto.ContactPhone,
             DepartmentCount = dto.DepartmentCount,
+            ProductCount = 0,
+            ContractCount = 0,
             CreatedAt = DateTime.Now
         };
 
@@ -183,6 +188,48 @@ public class InMemoryHospitalService : IHospitalService
     private static void Persist()
     {
         SqliteJsonStore.Save(StateKey, Hospitals);
+    }
+
+    private static List<HospitalItemDto> ApplyLinkedMetrics(IEnumerable<HospitalItemDto> hospitals)
+    {
+        var projects = InMemoryProjectDataStore.Projects;
+        var linkedByHospital = projects
+            .Where(x => !string.IsNullOrWhiteSpace(x.HospitalName))
+            .GroupBy(x => x.HospitalName, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                g => g.Key,
+                g => new
+                {
+                    ProductCount = g.Select(x => x.ProductName).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).Count(),
+                    ContractCount = g.Count()
+                },
+                StringComparer.OrdinalIgnoreCase);
+
+        return hospitals.Select(x =>
+        {
+            if (!linkedByHospital.TryGetValue(x.HospitalName, out var metric))
+            {
+                metric = new { ProductCount = 0, ContractCount = 0 };
+            }
+
+            return new HospitalItemDto
+            {
+                Id = x.Id,
+                HospitalName = x.HospitalName,
+                Tier = x.Tier,
+                Province = x.Province,
+                City = x.City,
+                Address = x.Address,
+                ContactPerson = x.ContactPerson,
+                ContactPhone = x.ContactPhone,
+                DepartmentCount = x.DepartmentCount,
+                ProductCount = metric.ProductCount,
+                ContractCount = metric.ContractCount,
+                EmrRatingLevel = x.EmrRatingLevel,
+                InteropRatingLevel = x.InteropRatingLevel,
+                CreatedAt = x.CreatedAt
+            };
+        }).ToList();
     }
 
     private static List<HospitalItemDto> BuildSeedData()

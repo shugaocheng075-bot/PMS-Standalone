@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
+using PMS.API.Middleware;
 using PMS.API.Models;
+using PMS.Application.Contracts.Access;
 using PMS.Application.Contracts.AnnualReport;
 using PMS.Application.Models;
 using PMS.Application.Models.AnnualReport;
@@ -8,7 +10,9 @@ namespace PMS.API.Controllers.AnnualReport;
 
 [ApiController]
 [Route("api/annual-reports")]
-public class AnnualReportsController(IAnnualReportService annualReportService) : ControllerBase
+public class AnnualReportsController(
+    IAnnualReportService annualReportService,
+    IAccessControlService accessControlService) : ControllerBase
 {
     [HttpGet("summary")]
     public async Task<IActionResult> GetSummary(CancellationToken cancellationToken = default)
@@ -36,6 +40,23 @@ public class AnnualReportsController(IAnnualReportService annualReportService) :
             Page = page,
             Size = size
         }, cancellationToken);
+
+        // 医院范围过滤
+        var personnelId = HttpContext.GetCurrentPersonnelId();
+        var dataScope = await accessControlService.GetDataScopeAsync(personnelId);
+        if (!string.Equals(dataScope.ScopeType, "all", StringComparison.OrdinalIgnoreCase)
+            && dataScope.AccessibleHospitalNames is { Count: > 0 })
+        {
+            var filtered = HospitalScopeHelper.FilterByHospitalScope(
+                dataScope, result.Items, x => x.HospitalName).ToList();
+            result = new PagedResult<AnnualReportItemDto>
+            {
+                Items = filtered,
+                Total = filtered.Count,
+                Page = result.Page,
+                Size = result.Size
+            };
+        }
 
         return Ok(ApiResponse<PagedResult<AnnualReportItemDto>>.Success(result));
     }

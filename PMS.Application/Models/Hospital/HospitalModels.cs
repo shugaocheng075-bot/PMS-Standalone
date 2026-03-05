@@ -20,6 +20,8 @@ public class HospitalItemDto
     public string ContactPerson { get; set; } = string.Empty;
     public string ContactPhone { get; set; } = string.Empty;
     public string DepartmentCount { get; set; } = string.Empty;
+    public int ProductCount { get; set; }
+    public int ContractCount { get; set; }
     public string? EmrRatingLevel { get; set; }
     public string? InteropRatingLevel { get; set; }
     public DateTime CreatedAt { get; set; }

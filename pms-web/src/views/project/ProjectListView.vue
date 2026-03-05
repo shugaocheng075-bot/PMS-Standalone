@@ -167,7 +167,13 @@ const batchEditForm = reactive({
 })
 
 const access = useAccessControl()
-const canManageProjects = computed(() => access.canPermission('project.manage'))
+const canManageProjects = computed(() => {
+  if (!access.canPermission('project.manage')) {
+    return false
+  }
+
+  return access.isManager() || access.isSupervisor()
+})
 
 const query = reactive({
   hospitalName: '',

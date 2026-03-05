@@ -11,6 +11,13 @@ public class InMemoryProjectQueryService : IProjectQueryService
     {
         IEnumerable<ProjectEntity> filtered = InMemoryProjectDataStore.Projects;
 
+        // 数据范围过滤
+        if (query.AccessiblePersonnelNames is { Count: > 0 })
+        {
+            var nameSet = new HashSet<string>(query.AccessiblePersonnelNames, StringComparer.Ordinal);
+            filtered = filtered.Where(x => nameSet.Contains(x.MaintenancePersonName));
+        }
+
         if (!string.IsNullOrWhiteSpace(query.HospitalName))
         {
             filtered = filtered.Where(x => SmartTextMatcher.Match(x.HospitalName, query.HospitalName));
@@ -63,6 +70,12 @@ public class InMemoryProjectQueryService : IProjectQueryService
                 SmartTextMatcher.MatchExact(NormalizeContractStatus(x.ContractStatus, x.OverdueDays), expectedStatus));
         }
 
+        if (!string.IsNullOrWhiteSpace(query.ContractValidityStatus))
+        {
+            filtered = filtered.Where(x =>
+                SmartTextMatcher.MatchExact(GetContractValidityStatus(x), query.ContractValidityStatus));
+        }
+
         var total = filtered.Count();
         var page = query.Page < 1 ? 1 : query.Page;
         var size = query.Size <= 0 ? 20 : query.Size;
@@ -72,6 +85,11 @@ public class InMemoryProjectQueryService : IProjectQueryService
             .ThenBy(x => x.HospitalName)
             .Skip((page - 1) * size)
             .Take(size)
+            .Select(x =>
+            {
+                x.ContractValidityStatus = GetContractValidityStatus(x);
+                return x;
+            })
             .ToList();
 
         return Task.FromResult(new PagedResult<ProjectEntity>
@@ -134,5 +152,54 @@ public class InMemoryProjectQueryService : IProjectQueryService
         }
 
         return value;
+    }
+
+    private static string GetContractValidityStatus(ProjectEntity item)
+    {
+        var displayOverdueDays = GetDisplayOverdueDays(item);
+        if (displayOverdueDays > 0)
+        {
+            return "已过期";
+        }
+
+        var dayDiff = GetDayDiffFromToday(item.AfterSalesEndDate);
+        if (dayDiff is null)
+        {
+            return "有效";
+        }
+
+        if (dayDiff <= 30)
+        {
+            return "待续签";
+        }
+
+        return "有效";
+    }
+
+    private static int GetDisplayOverdueDays(ProjectEntity item)
+    {
+        if (item.OverdueDays > 0)
+        {
+            return item.OverdueDays;
+        }
+
+        var dayDiff = GetDayDiffFromToday(item.AfterSalesEndDate);
+        if (dayDiff is null || dayDiff >= 0)
+        {
+            return 0;
+        }
+
+        return Math.Abs(dayDiff.Value);
+    }
+
+    private static int? GetDayDiffFromToday(string dateText)
+    {
+        if (!TryParseDate(dateText, out var target))
+        {
+            return null;
+        }
+
+        var today = DateTime.Today;
+        return (int)(target.Date - today).TotalDays;
     }
 }

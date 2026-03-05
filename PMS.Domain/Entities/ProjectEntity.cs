@@ -13,6 +13,7 @@ public class ProjectEntity
     public string AfterSalesEndDate { get; set; } = string.Empty;
     public string HospitalLevel { get; set; } = string.Empty;
     public string ContractStatus { get; set; } = string.Empty;
+    public string ContractValidityStatus { get; set; } = string.Empty;
     public decimal MaintenanceAmount { get; set; }
     public int OverdueDays { get; set; }
 }

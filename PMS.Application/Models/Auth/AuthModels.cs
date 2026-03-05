@@ -13,6 +13,7 @@ public class LoginResultDto
     public int PersonnelId { get; set; }
     public string PersonnelName { get; set; } = string.Empty;
     public string RoleType { get; set; } = string.Empty;
+    public string SystemRole { get; set; } = string.Empty;
     public bool IsAdmin { get; set; }
 }
 

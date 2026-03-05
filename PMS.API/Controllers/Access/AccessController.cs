@@ -73,6 +73,11 @@ public class AccessController(IAccessControlService accessControlService) : Cont
         [FromBody] UpdateUserPermissionRequest request,
         CancellationToken cancellationToken = default)
     {
+        if (!await IsManagerAsync(cancellationToken))
+        {
+            return Forbid();
+        }
+
         var updated = await accessControlService.SaveUserPermissionsAsync(
             personnelId,
             request.PermissionKeys ?? [],
@@ -91,5 +96,112 @@ public class AccessController(IAccessControlService accessControlService) : Cont
     {
         public List<string>? PermissionKeys { get; set; }
         public bool? IsAdmin { get; set; }
+    }
+
+    // ── 新增: 设置系统角色 ──
+
+    [HttpPut("users/{personnelId:int}/role")]
+    public async Task<IActionResult> SetSystemRole(
+        int personnelId,
+        [FromBody] SetSystemRoleRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (!await IsManagerAsync(cancellationToken))
+        {
+            return Forbid();
+        }
+
+        var updated = await accessControlService.SetSystemRoleAsync(
+            personnelId,
+            request.SystemRole,
+            cancellationToken);
+
+        if (updated is null)
+        {
+            return NotFound(new { code = 404, message = "personnel not found" });
+        }
+
+        return Ok(ApiResponse<PersonnelAccessProfileDto>.Success(updated));
+    }
+
+    // ── 新增: 设置上级主管 ──
+
+    [HttpPut("users/{personnelId:int}/supervisor")]
+    public async Task<IActionResult> SetSupervisor(
+        int personnelId,
+        [FromBody] SetSupervisorRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (!await IsManagerAsync(cancellationToken))
+        {
+            return Forbid();
+        }
+
+        var updated = await accessControlService.SetSupervisorAsync(
+            personnelId,
+            request.SupervisorId,
+            cancellationToken);
+
+        if (updated is null)
+        {
+            return NotFound(new { code = 404, message = "personnel not found or invalid supervisor" });
+        }
+
+        return Ok(ApiResponse<PersonnelAccessProfileDto>.Success(updated));
+    }
+
+    // ── 新增: 获取当前用户数据范围 ──
+
+    [HttpGet("data-scope")]
+    public async Task<IActionResult> GetDataScope(CancellationToken cancellationToken = default)
+    {
+        var personnelId = HttpContext.GetCurrentPersonnelId();
+        var scope = await accessControlService.GetDataScopeAsync(personnelId, cancellationToken);
+        return Ok(ApiResponse<DataScopeDto>.Success(scope));
+    }
+
+    // ── 新增: 医院范围分配 ──
+
+    [HttpGet("users/{personnelId:int}/hospital-scope")]
+    public async Task<IActionResult> GetHospitalScope(int personnelId, CancellationToken cancellationToken = default)
+    {
+        var hospitals = await accessControlService.GetHospitalScopeAsync(personnelId, cancellationToken);
+        return Ok(ApiResponse<List<string>>.Success(hospitals));
+    }
+
+    [HttpPut("users/{personnelId:int}/hospital-scope")]
+    public async Task<IActionResult> SetHospitalScope(
+        int personnelId,
+        [FromBody] SetHospitalScopeRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (!await IsManagerAsync(cancellationToken))
+        {
+            return Forbid();
+        }
+
+        var updated = await accessControlService.SetHospitalScopeAsync(
+            personnelId,
+            request.HospitalNames,
+            cancellationToken);
+
+        if (updated is null)
+        {
+            return NotFound(new { code = 404, message = "personnel not found" });
+        }
+
+        return Ok(ApiResponse<PersonnelAccessProfileDto>.Success(updated));
+    }
+
+    private async Task<bool> IsManagerAsync(CancellationToken cancellationToken)
+    {
+        var personnelId = HttpContext.GetCurrentPersonnelId();
+        var profile = await accessControlService.GetUserProfileAsync(personnelId, cancellationToken);
+        if (profile is null)
+        {
+            return false;
+        }
+
+        return profile.IsAdmin || string.Equals(profile.SystemRole, "manager", StringComparison.OrdinalIgnoreCase);
     }
 }

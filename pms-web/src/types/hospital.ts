@@ -16,6 +16,8 @@ export interface HospitalItem {
   contactPerson: string
   contactPhone: string
   departmentCount: string
+  productCount: number
+  contractCount: number
   emrRatingLevel?: string
   interopRatingLevel?: string
   createdAt: string

@@ -48,11 +48,42 @@ public static class InMemoryProjectDataStore
                         AfterSalesEndDate = x.AfterSalesEndDate,
                         HospitalLevel = x.HospitalLevel,
                         ContractStatus = x.ContractStatus,
+                        ContractValidityStatus = x.ContractValidityStatus,
                         MaintenanceAmount = x.MaintenanceAmount,
                         OverdueDays = x.OverdueDays
                     })
                     .ToList();
             }
+        }
+    }
+
+    public static ProjectEntity? GetById(long id)
+    {
+        lock (SyncRoot)
+        {
+            var found = ProjectsInternal.FirstOrDefault(x => x.Id == id);
+            if (found is null)
+            {
+                return null;
+            }
+
+            return new ProjectEntity
+            {
+                Id = found.Id,
+                HospitalName = found.HospitalName,
+                ProductName = found.ProductName,
+                Province = found.Province,
+                GroupName = found.GroupName,
+                SalesName = found.SalesName,
+                MaintenancePersonName = found.MaintenancePersonName,
+                AfterSalesStartDate = found.AfterSalesStartDate,
+                AfterSalesEndDate = found.AfterSalesEndDate,
+                HospitalLevel = found.HospitalLevel,
+                ContractStatus = found.ContractStatus,
+                ContractValidityStatus = found.ContractValidityStatus,
+                MaintenanceAmount = found.MaintenanceAmount,
+                OverdueDays = found.OverdueDays
+            };
         }
     }
 
@@ -238,6 +269,26 @@ public static class InMemoryProjectDataStore
         }
     }
 
+    public static int DeleteProjects(IReadOnlyCollection<long> projectIds)
+    {
+        if (projectIds.Count == 0)
+        {
+            return 0;
+        }
+
+        lock (SyncRoot)
+        {
+            var idSet = projectIds.ToHashSet();
+            var removed = ProjectsInternal.RemoveAll(x => idSet.Contains(x.Id));
+            if (removed > 0)
+            {
+                Persist();
+            }
+
+            return removed;
+        }
+    }
+
     public static int ReassignHospitalProductOwner(string hospitalName, string productName, string groupName)
     {
         if (string.IsNullOrWhiteSpace(hospitalName) || string.IsNullOrWhiteSpace(productName) || string.IsNullOrWhiteSpace(groupName))
@@ -318,6 +369,7 @@ public static class InMemoryProjectDataStore
                 AfterSalesEndDate = project.AfterSalesEndDate,
                     HospitalLevel = project.HospitalLevel,
                 ContractStatus = project.ContractStatus,
+                ContractValidityStatus = project.ContractValidityStatus,
                 MaintenanceAmount = project.MaintenanceAmount,
                 OverdueDays = project.OverdueDays
             });

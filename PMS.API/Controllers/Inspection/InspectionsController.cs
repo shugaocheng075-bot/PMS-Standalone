@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
+using PMS.API.Middleware;
 using PMS.API.Models;
+using PMS.Application.Contracts.Access;
 using PMS.Application.Contracts.Inspection;
 using PMS.Application.Models;
 using PMS.Application.Models.Inspection;
@@ -8,7 +10,9 @@ namespace PMS.API.Controllers.Inspection;
 
 [ApiController]
 [Route("api/inspections")]
-public class InspectionsController(IInspectionService inspectionService) : ControllerBase
+public class InspectionsController(
+    IInspectionService inspectionService,
+    IAccessControlService accessControlService) : ControllerBase
 {
     // ─── 巡检计划 ───
 
@@ -41,6 +45,23 @@ public class InspectionsController(IInspectionService inspectionService) : Contr
             Size = size
         }, cancellationToken);
 
+        // 医院范围过滤
+        var personnelId = HttpContext.GetCurrentPersonnelId();
+        var dataScope = await accessControlService.GetDataScopeAsync(personnelId);
+        if (!string.Equals(dataScope.ScopeType, "all", StringComparison.OrdinalIgnoreCase)
+            && dataScope.AccessibleHospitalNames is { Count: > 0 })
+        {
+            var filtered = HospitalScopeHelper.FilterByHospitalScope(
+                dataScope, result.Items, x => x.HospitalName).ToList();
+            result = new PagedResult<InspectionPlanItemDto>
+            {
+                Items = filtered,
+                Total = filtered.Count,
+                Page = result.Page,
+                Size = result.Size
+            };
+        }
+
         return Ok(ApiResponse<PagedResult<InspectionPlanItemDto>>.Success(result));
     }
 
@@ -58,6 +79,14 @@ public class InspectionsController(IInspectionService inspectionService) : Contr
         if (string.IsNullOrWhiteSpace(result.HospitalName) || string.IsNullOrWhiteSpace(result.ProductName))
         {
             return BadRequest(new ApiResponse<object> { Code = 400, Message = "hospitalName 和 productName 不能为空" });
+        }
+
+        // 医院范围验证
+        var personnelId = HttpContext.GetCurrentPersonnelId();
+        var dataScope = await accessControlService.GetDataScopeAsync(personnelId);
+        if (!HospitalScopeHelper.IsHospitalAccessible(dataScope, result.HospitalName))
+        {
+            return StatusCode(403, new { code = 403, message = "无权在该医院下提交巡检结果" });
         }
 
         await inspectionService.SubmitResultAsync(result, cancellationToken);
@@ -78,8 +107,19 @@ public class InspectionsController(IInspectionService inspectionService) : Contr
             return BadRequest(new ApiResponse<object> { Code = 400, Message = "结果列表不能为空" });
         }
 
-        await inspectionService.SubmitResultsAsync(results, cancellationToken);
-        return Ok(ApiResponse<object>.Success(new { message = $"已接收 {results.Count} 条巡检结果" }));
+        // 医院范围验证 - 过滤掉无权操作的医院
+        var personnelId = HttpContext.GetCurrentPersonnelId();
+        var dataScope = await accessControlService.GetDataScopeAsync(personnelId);
+        var allowed = results
+            .Where(r => HospitalScopeHelper.IsHospitalAccessible(dataScope, r.HospitalName))
+            .ToList();
+        if (allowed.Count == 0)
+        {
+            return StatusCode(403, new { code = 403, message = "无权提交所选医院的巡检结果" });
+        }
+
+        await inspectionService.SubmitResultsAsync(allowed, cancellationToken);
+        return Ok(ApiResponse<object>.Success(new { message = $"已接收 {allowed.Count} 条巡检结果" }));
     }
 
     /// <summary>
@@ -109,6 +149,23 @@ public class InspectionsController(IInspectionService inspectionService) : Contr
             Page = page,
             Size = size
         }, cancellationToken);
+
+        // 医院范围过滤
+        var personnelId = HttpContext.GetCurrentPersonnelId();
+        var dataScope = await accessControlService.GetDataScopeAsync(personnelId);
+        if (!string.Equals(dataScope.ScopeType, "all", StringComparison.OrdinalIgnoreCase)
+            && dataScope.AccessibleHospitalNames is { Count: > 0 })
+        {
+            var filtered = HospitalScopeHelper.FilterByHospitalScope(
+                dataScope, result.Items, x => x.HospitalName).ToList();
+            result = new PagedResult<InspectionResultDto>
+            {
+                Items = filtered,
+                Total = filtered.Count,
+                Page = result.Page,
+                Size = result.Size
+            };
+        }
 
         return Ok(ApiResponse<PagedResult<InspectionResultDto>>.Success(result));
     }

@@ -9,6 +9,9 @@ using PMS.Application.Contracts.Hospital;
 using PMS.Application.Contracts.Inspection;
 using PMS.Application.Contracts.Personnel;
 using PMS.Application.Contracts.Product;
+using PMS.Application.Contracts.RepairRecord;
+using PMS.Application.Contracts.WorkHours;
+using PMS.Application.Contracts.MonthlyReport;
 using PMS.Infrastructure.Services;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -32,6 +35,9 @@ builder.Services.AddSingleton<IPersonnelService, InMemoryPersonnelService>();
 builder.Services.AddSingleton<IProductService, InMemoryProductService>();
 builder.Services.AddSingleton<IAccessControlService, InMemoryAccessControlService>();
 builder.Services.AddSingleton<IAuthService, InMemoryAuthService>();
+builder.Services.AddSingleton<IRepairRecordService, InMemoryRepairRecordService>();
+builder.Services.AddSingleton<IWorkHoursService, InMemoryWorkHoursService>();
+builder.Services.AddSingleton<IMonthlyReportService, InMemoryMonthlyReportService>();
 
 builder.Services.AddCors(options =>
 {

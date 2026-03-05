@@ -1,8 +1,8 @@
 export interface ProductSummary {
   total: number
-  activeCount: number
-  pilotCount: number
-  retiredCount: number
+  implementationCount: number
+  maintenanceCount: number
+  stoppedCount: number
 }
 
 export interface ProductItem {

@@ -3,9 +3,9 @@ namespace PMS.Application.Models.Product;
 public class ProductSummaryDto
 {
     public int Total { get; set; }
-    public int ActiveCount { get; set; }
-    public int PilotCount { get; set; }
-    public int RetiredCount { get; set; }
+    public int ImplementationCount { get; set; }
+    public int MaintenanceCount { get; set; }
+    public int StoppedCount { get; set; }
 }
 
 public class ProductItemDto

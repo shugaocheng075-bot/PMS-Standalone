@@ -815,13 +815,13 @@ public class DataImportController : ControllerBase
 
         foreach (var row in rows)
         {
-            var hospitalName = GetFirstColumnValue(row, "医院名称", "项目名称", "医院", "客户名称");
+            var hospitalName = GetFirstColumnValue(row, "医院名称", "最终用户", "最终客户", "项目名称", "医院", "客户名称");
             if (string.IsNullOrWhiteSpace(hospitalName))
             {
                 continue;
             }
 
-            var productName = GetFirstColumnValue(row, "产品", "产品名称", "上线产品", "项目类别");
+            var productName = GetFirstColumnValue(row, "产品名称", "产品", "软件名称", "产品线", "上线产品", "项目类别");
             var province = GetFirstColumnValue(row, "省", "省份", "项目省份", "服务区域");
             var groupName = GetFirstColumnValue(row, "组别", "原组别", "归属组", "归属人");
             var salesName = GetFirstColumnValue(row, "销售", "销售姓名", "销售人员", "商务");

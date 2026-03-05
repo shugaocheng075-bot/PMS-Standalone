@@ -92,7 +92,7 @@
               <el-button
                 link
                 type="primary"
-                :disabled="!canManageMajorDemand"
+                :disabled="!canCommentMajorDemand"
                 @click="openComment(scope.row)"
               >评论</el-button>
             </el-space>
@@ -204,7 +204,20 @@ const loading = reactive({
 
 const access = useAccessControl()
 const canManageMaintenance = computed(() => access.canPermission('maintenance.manage'))
-const canManageMajorDemand = computed(() => access.canPermission('major-demand.manage') || access.canPermission('maintenance.manage'))
+const canManageMajorDemand = computed(() => {
+  if (!access.isManager()) {
+    return false
+  }
+
+  return access.canPermission('major-demand.manage') || access.canPermission('maintenance.manage')
+})
+const canCommentMajorDemand = computed(() => {
+  if (!access.canPermission('major-demand.manage')) {
+    return false
+  }
+
+  return access.isManager() || access.isOperator()
+})
 
 const statusOptions = ['待评估', '处理中', '待验证', '已完成', '已关闭']
 
@@ -341,6 +354,11 @@ const onSelectionChange = (selection: Array<Record<string, string>>) => {
 }
 
 const onBatchStatus = async () => {
+  if (!canManageMajorDemand.value) {
+    ElMessage.warning('当前账号无重大需求批量管理权限')
+    return
+  }
+
   if (!selectedRowIds.value.length || !batchForm.status) {
     return
   }
@@ -356,6 +374,11 @@ const onBatchStatus = async () => {
 }
 
 const onBatchOwner = async () => {
+  if (!canManageMajorDemand.value) {
+    ElMessage.warning('当前账号无重大需求批量管理权限')
+    return
+  }
+
   if (!selectedRowIds.value.length) {
     return
   }
@@ -371,6 +394,11 @@ const onBatchOwner = async () => {
 }
 
 const onBatchDueDate = async () => {
+  if (!canManageMajorDemand.value) {
+    ElMessage.warning('当前账号无重大需求批量管理权限')
+    return
+  }
+
   if (!selectedRowIds.value.length) {
     return
   }
@@ -391,12 +419,22 @@ const openDetail = (row: Record<string, string>) => {
 }
 
 const openComment = (row: Record<string, string>) => {
+  if (!canCommentMajorDemand.value) {
+    ElMessage.warning('当前账号无重大需求进度维护权限')
+    return
+  }
+
   commentTargetRowId.value = row._rowId ?? ''
   commentContent.value = ''
   commentVisible.value = true
 }
 
 const submitComment = async () => {
+  if (!canCommentMajorDemand.value) {
+    ElMessage.warning('当前账号无重大需求进度维护权限')
+    return
+  }
+
   if (!commentTargetRowId.value || !commentContent.value.trim()) {
     ElMessage.warning('请输入评论内容')
     return

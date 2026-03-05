@@ -4,8 +4,11 @@ import type {
   AccessProfile,
   AccessUserItem,
   AccessUserQuery,
+  DataScope,
   PermissionDefinition,
   PersonnelActor,
+  SetSupervisorPayload,
+  SetSystemRolePayload,
   UpdateUserPermissionPayload,
 } from '../../types/access'
 
@@ -31,4 +34,26 @@ export function fetchUserAccessProfile(personnelId: number) {
 
 export function updateUserPermissions(personnelId: number, data: UpdateUserPermissionPayload) {
   return request.put<any, ApiResponse<AccessProfile>>(`/access/users/${personnelId}/permissions`, data)
+}
+
+export function setUserSystemRole(personnelId: number, data: SetSystemRolePayload) {
+  return request.put<any, ApiResponse<AccessProfile>>(`/access/users/${personnelId}/role`, data)
+}
+
+export function setUserSupervisor(personnelId: number, data: SetSupervisorPayload) {
+  return request.put<any, ApiResponse<AccessProfile>>(`/access/users/${personnelId}/supervisor`, data)
+}
+
+export function fetchDataScope() {
+  return request.get<any, ApiResponse<DataScope>>('/access/data-scope')
+}
+
+export function fetchHospitalScope(personnelId: number) {
+  return request.get<any, ApiResponse<string[]>>(`/access/users/${personnelId}/hospital-scope`)
+}
+
+export function updateHospitalScope(personnelId: number, hospitalNames: string[]) {
+  return request.put<any, ApiResponse<AccessProfile>>(`/access/users/${personnelId}/hospital-scope`, {
+    hospitalNames,
+  })
 }

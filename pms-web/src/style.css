@@ -19,7 +19,8 @@ body,
 #app {
   margin: 0;
   width: 100%;
-  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
 }
 
 body {
@@ -270,8 +271,47 @@ body {
 }
 
 .table-card .el-table .el-table__body-wrapper {
-  max-height: min(56vh, 520px);
-  overflow: auto;
+  max-height: none !important;
+  height: auto !important;
+  overflow-x: auto;
+  overflow-y: hidden !important;
+}
+
+.table-card .el-table .el-table__fixed-body-wrapper,
+.table-card .el-table .el-table__fixed-right .el-table__fixed-body-wrapper {
+  max-height: none !important;
+  height: auto !important;
+  overflow-y: hidden !important;
+  scrollbar-width: none;
+}
+
+.table-card .el-table .el-table__fixed-body-wrapper::-webkit-scrollbar,
+.table-card .el-table .el-table__fixed-right .el-table__fixed-body-wrapper::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+.table-card .el-table .el-table__fixed .el-scrollbar__wrap,
+.table-card .el-table .el-table__fixed-right .el-scrollbar__wrap {
+  max-height: none !important;
+  height: auto !important;
+  overflow-y: hidden !important;
+}
+
+.table-card .el-table .el-table__body-wrapper .el-scrollbar__wrap,
+.table-card .el-table .el-table__body-wrapper .el-scrollbar__view {
+  max-height: none !important;
+  height: auto !important;
+}
+
+.table-card .el-table .el-table__body-wrapper .el-scrollbar__wrap {
+  overflow-y: visible !important;
+}
+
+.table-card .el-table .el-table__fixed .el-scrollbar__bar.is-vertical,
+.table-card .el-table .el-table__fixed-right .el-scrollbar__bar.is-vertical,
+.table-card .el-table .el-scrollbar__bar.is-vertical {
+  display: none !important;
 }
 
 .table-card .el-table .el-table__header-wrapper,

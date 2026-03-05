@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="page-shell">
     <div class="page-head">
       <div>
@@ -205,11 +205,55 @@
               <el-form-item label="系统管理员">
                 <el-switch v-model="permissionForm.isAdmin" />
               </el-form-item>
+              <el-form-item label="系统角色">
+                <el-select v-model="permissionForm.systemRole" style="width: 220px">
+                  <el-option label="普通运维" value="operator" />
+                  <el-option label="运维主管" value="supervisor" />
+                  <el-option label="经理" value="manager" />
+                </el-select>
+              </el-form-item>
+              <el-form-item label="上级主管">
+                <el-select
+                  v-model="permissionForm.supervisorId"
+                  clearable
+                  filterable
+                  :disabled="permissionForm.systemRole === 'manager'"
+                  style="width: 280px"
+                  placeholder="可选，经理可不设置"
+                >
+                  <el-option
+                    v-for="actor in supervisorActorOptions"
+                    :key="`sup-${actor.personnelId}`"
+                    :label="`${actor.personnelName}（${formatSystemRoleLabel(actor.systemRole)}）`"
+                    :value="actor.personnelId"
+                  />
+                </el-select>
+              </el-form-item>
+              <el-form-item label="医院范围">
+                <el-select
+                  v-model="permissionForm.hospitalNames"
+                  multiple
+                  collapse-tags
+                  collapse-tags-tooltip
+                  filterable
+                  clearable
+                  :disabled="permissionForm.systemRole === 'manager'"
+                  style="width: 100%"
+                  placeholder="非经理角色建议配置可访问医院"
+                >
+                  <el-option
+                    v-for="hospitalName in hospitalNameOptions"
+                    :key="`hospital-${hospitalName}`"
+                    :label="hospitalName"
+                    :value="hospitalName"
+                  />
+                </el-select>
+              </el-form-item>
               <el-form-item label="快捷模板">
                 <el-space wrap>
-                  <el-button size="small" @click="onApplyPermissionTemplate('service')">服务模板</el-button>
-                  <el-button size="small" @click="onApplyPermissionTemplate('implementation')">实施模板</el-button>
-                  <el-button size="small" type="primary" @click="onApplyPermissionTemplate('admin')">管理员模板</el-button>
+                  <el-button size="small" @click="onApplyPermissionTemplate('operator')">运维模板</el-button>
+                  <el-button size="small" @click="onApplyPermissionTemplate('supervisor')">主管模板</el-button>
+                  <el-button size="small" type="primary" @click="onApplyPermissionTemplate('manager')">经理模板</el-button>
                 </el-space>
               </el-form-item>
               <el-form-item label="权限清单">
@@ -252,12 +296,18 @@ import {
   updatePersonnel,
 } from '../../api/modules/personnel'
 import {
+  fetchAccessActors,
+  fetchHospitalScope,
   fetchPermissionCatalog,
   fetchUserAccessProfile,
+  setUserSupervisor,
+  setUserSystemRole,
+  updateHospitalScope,
   updateUserPermissions,
 } from '../../api/modules/access'
+import { fetchHospitals } from '../../api/modules/hospital'
 import type { PersonnelItem, PersonnelSummary, PersonnelUpsert } from '../../types/personnel'
-import type { PermissionDefinition } from '../../types/access'
+import type { PermissionDefinition, PersonnelActor } from '../../types/access'
 import { useResilientLoad } from '../../composables/useResilientLoad'
 import { getErrorMessage } from '../../utils/error'
 import { DEPARTMENT_OPTIONS, GROUP_OPTIONS } from '../../constants/filterOptions'
@@ -368,9 +418,58 @@ const formatHomeCity = (row: PersonnelItem) => {
 }
 
 const formatGender = (row: PersonnelItem) => {
+  const inferGenderByName = (name: string): '男' | '女' | '' => {
+    const trimmedName = (name || '').trim()
+    if (!trimmedName) {
+      return ''
+    }
+
+    if (trimmedName.includes('女士') || trimmedName.includes('小姐')) {
+      return '女'
+    }
+    if (trimmedName.includes('先生')) {
+      return '男'
+    }
+
+    const femaleIndicators = new Set([
+      '娜', '娟', '敏', '静', '丽', '艳', '芳', '玲', '丹', '萍', '婷', '雪', '梅', '琳',
+      '英', '倩', '洁', '颖', '晶', '燕', '红', '兰', '月', '琴', '霞', '姣', '璐', '薇',
+      '珊', '茜', '婕', '妍', '雯', '璇', '蓉', '婉', '菲', '蕾', '姝',
+    ])
+
+    const maleIndicators = new Set([
+      '伟', '强', '磊', '军', '勇', '杰', '涛', '超', '斌', '鹏', '飞', '刚', '峰', '健',
+      '辉', '鑫', '龙', '虎', '博', '豪', '宇', '晨', '凯', '宁', '坤', '波', '松',
+    ])
+
+    const normalized = trimmedName.replace(/[\s·•\-.]/g, '')
+    const probableGivenName = normalized.length >= 2 ? normalized.slice(-2) : normalized
+
+    let femaleScore = 0
+    let maleScore = 0
+
+    for (const char of probableGivenName) {
+      if (femaleIndicators.has(char)) {
+        femaleScore += 1
+      }
+      if (maleIndicators.has(char)) {
+        maleScore += 1
+      }
+    }
+
+    if (femaleScore > maleScore) {
+      return '女'
+    }
+    if (maleScore > femaleScore) {
+      return '男'
+    }
+
+    return ''
+  }
+
   const sex = getWebsiteField(row, ['sex', 'Sex', 'gender', 'Gender', '性别'])
   if (!sex) {
-    return '未知'
+    return inferGenderByName(row.name) || '未填写'
   }
 
   const normalized = sex.trim().toLowerCase()
@@ -381,11 +480,11 @@ const formatGender = (row: PersonnelItem) => {
     return '女'
   }
 
-  if (sex === '男' || sex === '女' || sex === '未知') {
+  if (sex === '男' || sex === '女') {
     return sex
   }
 
-  return '未知'
+  return inferGenderByName(row.name) || '未填写'
 }
 
 const mapRoleType = (value: string) => {
@@ -612,11 +711,26 @@ const permissionTarget = ref<PersonnelItem | null>(null)
 const permissionCatalog = ref<PermissionDefinition[]>([])
 const permissionForm = reactive({
   isAdmin: false,
+  systemRole: 'operator',
+  supervisorId: null as number | null,
+  hospitalNames: [] as string[],
   permissionKeys: [] as string[],
 })
+const accessActors = ref<PersonnelActor[]>([])
+const hospitalNameOptions = ref<string[]>([])
 
 const permissionTemplates = {
-  service: [
+  operator: [
+    'dashboard.view',
+    'project.view',
+    'major-demand.view',
+    'major-demand.manage',
+    'repair.view',
+    'repair.manage',
+    'monthly-report.view',
+    'monthly-report.manage',
+  ],
+  supervisor: [
     'dashboard.view',
     'alert-center.view',
     'project.view',
@@ -628,22 +742,17 @@ const permissionTemplates = {
     'hospital.view',
     'personnel.view',
     'product.view',
+    'major-demand.view',
+    'major-demand.manage',
+    'repair.view',
+    'monthly-report.view',
+    'monthly-report.manage',
   ],
-  implementation: [
+  manager: [
     'dashboard.view',
     'alert-center.view',
     'project.view',
-    'handover.view',
-    'inspection.view',
-    'annual-report.view',
-    'hospital.view',
-    'personnel.view',
-    'product.view',
-  ],
-  admin: [
-    'dashboard.view',
-    'alert-center.view',
-    'project.view',
+    'project.manage',
     'contract.view',
     'handover.view',
     'handover.manage',
@@ -664,7 +773,28 @@ const permissionTemplates = {
 
 const access = useAccessControl()
 const canManagePersonnel = computed(() => access.canPermission('personnel.manage'))
-const canManagePermissions = computed(() => access.canPermission('permission.manage'))
+const canManagePermissions = computed(() => access.isManager() && access.canPermission('permission.manage'))
+
+const supervisorActorOptions = computed(() => {
+  if (!permissionTarget.value) {
+    return []
+  }
+
+  return accessActors.value.filter((actor) => {
+    if (actor.personnelId === permissionTarget.value?.id) {
+      return false
+    }
+
+    const role = (actor.systemRole ?? '').toLowerCase()
+    return role === 'supervisor' || role === 'manager'
+  })
+})
+
+const formatSystemRoleLabel = (role: string) => {
+  if (role === 'manager') return '经理'
+  if (role === 'supervisor') return '运维主管'
+  return '普通运维'
+}
 
 const permissionGroups = computed(() => {
   const grouped = permissionCatalog.value.reduce<Record<string, PermissionDefinition[]>>((acc, item) => {
@@ -943,6 +1073,25 @@ const ensurePermissionCatalog = async () => {
   permissionCatalog.value = res.data
 }
 
+const ensureAccessActors = async () => {
+  if (accessActors.value.length > 0) {
+    return
+  }
+
+  const res = await fetchAccessActors()
+  accessActors.value = res.data
+}
+
+const ensureHospitalNameOptions = async () => {
+  if (hospitalNameOptions.value.length > 0) {
+    return
+  }
+
+  const res = await fetchHospitals({ page: 1, size: 5000 })
+  hospitalNameOptions.value = Array.from(new Set(res.data.items.map((item) => item.hospitalName).filter(Boolean)))
+    .sort((a, b) => a.localeCompare(b, 'zh-CN'))
+}
+
 const onOpenPermission = async (row: PersonnelItem) => {
   if (!canManagePermissions.value) {
     ElMessage.warning('当前账号无权限管理能力')
@@ -960,9 +1109,15 @@ const onOpenPermission = async (row: PersonnelItem) => {
 
   try {
     await ensurePermissionCatalog()
+    await ensureAccessActors()
+    await ensureHospitalNameOptions()
     const res = await fetchUserAccessProfile(row.id)
     permissionForm.isAdmin = res.data.isAdmin
+    permissionForm.systemRole = res.data.systemRole || 'operator'
+    permissionForm.supervisorId = res.data.supervisorId ?? null
     permissionForm.permissionKeys = [...res.data.permissions]
+    const hospitalRes = await fetchHospitalScope(row.id)
+    permissionForm.hospitalNames = [...(hospitalRes.data ?? [])]
   } catch (error) {
     permissionVisible.value = false
     permissionTarget.value = null
@@ -985,6 +1140,19 @@ const onSavePermission = async () => {
 
   permissionSubmitLoading.value = true
   try {
+    await setUserSystemRole(permissionTarget.value.id, {
+      systemRole: permissionForm.systemRole,
+    })
+
+    await setUserSupervisor(permissionTarget.value.id, {
+      supervisorId: permissionForm.systemRole === 'manager' ? null : permissionForm.supervisorId,
+    })
+
+    await updateHospitalScope(
+      permissionTarget.value.id,
+      permissionForm.systemRole === 'manager' ? [] : permissionForm.hospitalNames,
+    )
+
     await updateUserPermissions(permissionTarget.value.id, {
       isAdmin: permissionForm.isAdmin,
       permissionKeys: permissionForm.permissionKeys,
@@ -1006,16 +1174,20 @@ const onSavePermission = async () => {
 const onApplyPermissionTemplate = (template: keyof typeof permissionTemplates) => {
   const validPermissionKeys = new Set(permissionCatalog.value.map((item) => item.key))
 
-  if (template === 'admin') {
+  if (template === 'manager') {
     permissionForm.isAdmin = true
-    permissionForm.permissionKeys = permissionTemplates.admin.filter((key) => validPermissionKeys.has(key))
-    ElMessage.success('已应用管理员模板')
+    permissionForm.systemRole = 'manager'
+    permissionForm.supervisorId = null
+    permissionForm.hospitalNames = []
+    permissionForm.permissionKeys = permissionTemplates.manager.filter((key) => validPermissionKeys.has(key))
+    ElMessage.success('已应用经理模板')
     return
   }
 
   permissionForm.isAdmin = false
+  permissionForm.systemRole = template
   permissionForm.permissionKeys = permissionTemplates[template].filter((key) => validPermissionKeys.has(key))
-  ElMessage.success(template === 'service' ? '已应用服务模板' : '已应用实施模板')
+  ElMessage.success(template === 'operator' ? '已应用运维模板' : '已应用主管模板')
 }
 
 onMounted(async () => {

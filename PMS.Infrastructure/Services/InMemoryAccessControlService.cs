@@ -12,6 +12,16 @@ public class InMemoryAccessControlService(IPersonnelService personnelService) : 
     private static readonly object SyncRoot = new();
     private static readonly List<PersonnelPermissionState> States = SqliteJsonStore.LoadOrSeed(StateKey, () => new List<PersonnelPermissionState>());
 
+    // ── 系统角色常量 ──
+    public const string RoleOperator = "operator";     // 普通运维人员
+    public const string RoleSupervisor = "supervisor"; // 运维主管
+    public const string RoleManager = "manager";       // 经理
+
+    private static readonly HashSet<string> ValidSystemRoles = new(StringComparer.OrdinalIgnoreCase)
+    {
+        RoleOperator, RoleSupervisor, RoleManager
+    };
+
     private static readonly List<PermissionDefinitionDto> PermissionCatalog =
     [
         new() { Key = "dashboard.view", Name = "查看首页", Module = "首页", Description = "可访问首页看板" },
@@ -31,6 +41,12 @@ public class InMemoryAccessControlService(IPersonnelService personnelService) : 
         new() { Key = "product.manage", Name = "维护产品管理", Module = "运营管理", Description = "可新增/编辑/删除产品" },
         new() { Key = "major-demand.view", Name = "查看重大需求", Module = "运营管理", Description = "可查看重大需求数据" },
         new() { Key = "major-demand.manage", Name = "维护重大需求", Module = "运营管理", Description = "可更新重大需求状态、负责人、评论与导出" },
+        new() { Key = "repair.view", Name = "查看报修记录", Module = "运营管理", Description = "可查看报修记录" },
+        new() { Key = "repair.manage", Name = "维护报修记录", Module = "运营管理", Description = "可新增/编辑报修记录" },
+        new() { Key = "workhours.view", Name = "查看工时", Module = "运营管理", Description = "可查看工时记录" },
+        new() { Key = "workhours.manage", Name = "维护工时", Module = "运营管理", Description = "可新增/编辑/删除工时记录" },
+        new() { Key = "monthly-report.view", Name = "查看月报", Module = "运营管理", Description = "可查看月报列表" },
+        new() { Key = "monthly-report.manage", Name = "维护月报", Module = "运营管理", Description = "可新增/编辑/删除月报" },
         new() { Key = "maintenance.manage", Name = "数据维护", Module = "运维", Description = "可使用数据维护中心导入能力" },
         new() { Key = "permission.manage", Name = "权限管理", Module = "系统", Description = "可配置人员权限" },
     ];
@@ -54,11 +70,16 @@ public class InMemoryAccessControlService(IPersonnelService personnelService) : 
 
         return result.Items
             .OrderBy(x => x.Name, StringComparer.Ordinal)
-            .Select(x => new PersonnelActorDto
+            .Select(x =>
             {
-                PersonnelId = x.Id,
-                PersonnelName = x.Name,
-                RoleType = x.RoleType
+                var state = GetStateSnapshot(x.Id);
+                return new PersonnelActorDto
+                {
+                    PersonnelId = x.Id,
+                    PersonnelName = x.Name,
+                    RoleType = x.RoleType,
+                    SystemRole = state?.SystemRole ?? RoleOperator
+                };
             })
             .ToList();
     }
@@ -77,6 +98,10 @@ public class InMemoryAccessControlService(IPersonnelService personnelService) : 
             Size = query.Size
         }, cancellationToken);
 
+        // 预加载所有人员用于 SupervisorName 解析
+        var allPersonnel = await personnelService.QueryAsync(new PersonnelQuery { Page = 1, Size = 5000 }, cancellationToken);
+        var personnelNameMap = allPersonnel.Items.ToDictionary(x => x.Id, x => x.Name);
+
         var items = new List<PersonnelAccessItemDto>();
         foreach (var person in personnelResult.Items)
         {
@@ -93,6 +118,9 @@ public class InMemoryAccessControlService(IPersonnelService personnelService) : 
                 Department = person.Department,
                 GroupName = person.GroupName,
                 RoleType = person.RoleType,
+                SystemRole = state.SystemRole ?? RoleOperator,
+                SupervisorId = state.SupervisorId,
+                SupervisorName = state.SupervisorId.HasValue && personnelNameMap.TryGetValue(state.SupervisorId.Value, out var sn) ? sn : null,
                 IsAdmin = state.IsAdmin,
                 PermissionCount = state.PermissionKeys.Count,
                 UpdatedAt = state.UpdatedAt
@@ -122,7 +150,8 @@ public class InMemoryAccessControlService(IPersonnelService personnelService) : 
             return null;
         }
 
-        return BuildProfile(person.Id, person.Name, person.RoleType, state);
+        var dataScope = await BuildDataScopeAsync(personnelId, person.Name, state, cancellationToken);
+        return BuildProfile(person.Id, person.Name, person.RoleType, state, dataScope);
     }
 
     public async Task<PersonnelAccessProfileDto?> SaveUserPermissionsAsync(
@@ -145,15 +174,17 @@ public class InMemoryAccessControlService(IPersonnelService personnelService) : 
             .OrderBy(x => x, StringComparer.Ordinal)
             .ToList();
 
+        PersonnelPermissionState state;
         lock (SyncRoot)
         {
-            var state = States.FirstOrDefault(x => x.PersonnelId == personnelId);
+            state = States.FirstOrDefault(x => x.PersonnelId == personnelId)!;
             if (state is null)
             {
                 state = new PersonnelPermissionState
                 {
                     PersonnelId = personnelId,
                     IsAdmin = false,
+                    SystemRole = RoleOperator,
                     PermissionKeys = [],
                     UpdatedAt = DateTime.UtcNow
                 };
@@ -163,6 +194,7 @@ public class InMemoryAccessControlService(IPersonnelService personnelService) : 
             if (personnelId == ProtectedAdminPersonnelId)
             {
                 state.IsAdmin = true;
+                state.SystemRole = RoleManager;
                 state.PermissionKeys = PermissionCatalog
                     .Select(x => x.Key)
                     .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -170,7 +202,8 @@ public class InMemoryAccessControlService(IPersonnelService personnelService) : 
                     .ToList();
                 state.UpdatedAt = DateTime.UtcNow;
                 Persist();
-                return BuildProfile(person.Id, person.Name, person.RoleType, state);
+                var ds = BuildDataScopeAsync(person.Id, person.Name, state, cancellationToken).GetAwaiter().GetResult();
+                return BuildProfile(person.Id, person.Name, person.RoleType, state, ds);
             }
 
             state.PermissionKeys = sanitized;
@@ -181,9 +214,10 @@ public class InMemoryAccessControlService(IPersonnelService personnelService) : 
 
             state.UpdatedAt = DateTime.UtcNow;
             Persist();
-
-            return BuildProfile(person.Id, person.Name, person.RoleType, state);
         }
+
+        var dataScope = await BuildDataScopeAsync(person.Id, person.Name, state, cancellationToken);
+        return BuildProfile(person.Id, person.Name, person.RoleType, state, dataScope);
     }
 
     public async Task<bool> HasPermissionAsync(int personnelId, string permissionKey, CancellationToken cancellationToken = default)
@@ -292,7 +326,198 @@ public class InMemoryAccessControlService(IPersonnelService personnelService) : 
             return "maintenance.manage";
         }
 
+        if (path.StartsWith("/api/repair-records"))
+        {
+            return httpMethod == "GET" ? "repair.view" : "repair.manage";
+        }
+
+        if (path.StartsWith("/api/workhours"))
+        {
+            return httpMethod == "GET" ? "workhours.view" : "workhours.manage";
+        }
+
         return null;
+    }
+
+    // ── 新增接口方法: GetDataScopeAsync ──
+
+    public async Task<DataScopeDto> GetDataScopeAsync(int personnelId, CancellationToken cancellationToken = default)
+    {
+        var person = await personnelService.GetByIdAsync(personnelId, cancellationToken);
+        if (person is null)
+        {
+            return new DataScopeDto { ScopeType = "own", AccessiblePersonnelNames = [] };
+        }
+
+        var state = await EnsureStateAsync(personnelId, person.RoleType, cancellationToken);
+        if (state is null)
+        {
+            return new DataScopeDto { ScopeType = "own", AccessiblePersonnelNames = [person.Name] };
+        }
+
+        return await BuildDataScopeAsync(personnelId, person.Name, state, cancellationToken);
+    }
+
+    // ── 新增接口方法: SetSystemRoleAsync ──
+
+    public async Task<PersonnelAccessProfileDto?> SetSystemRoleAsync(int personnelId, string systemRole, CancellationToken cancellationToken = default)
+    {
+        var normalizedRole = (systemRole ?? string.Empty).Trim().ToLowerInvariant();
+        if (!ValidSystemRoles.Contains(normalizedRole))
+        {
+            normalizedRole = RoleOperator;
+        }
+
+        var person = await personnelService.GetByIdAsync(personnelId, cancellationToken);
+        if (person is null)
+        {
+            return null;
+        }
+
+        var state = await EnsureStateAsync(personnelId, person.RoleType, cancellationToken);
+        if (state is null)
+        {
+            return null;
+        }
+
+        lock (SyncRoot)
+        {
+            state.SystemRole = normalizedRole;
+            // 更新角色时自动重新分配默认权限
+            state.PermissionKeys = BuildRoleDefaultPermissions(normalizedRole);
+            if (personnelId == ProtectedAdminPersonnelId)
+            {
+                state.IsAdmin = true;
+                state.SystemRole = RoleManager;
+                state.PermissionKeys = PermissionCatalog.Select(x => x.Key).ToList();
+            }
+            state.UpdatedAt = DateTime.UtcNow;
+            Persist();
+        }
+
+        var dataScope = await BuildDataScopeAsync(personnelId, person.Name, state, cancellationToken);
+        return BuildProfile(person.Id, person.Name, person.RoleType, state, dataScope);
+    }
+
+    // ── 新增接口方法: SetSupervisorAsync ──
+
+    public async Task<PersonnelAccessProfileDto?> SetSupervisorAsync(int personnelId, int? supervisorId, CancellationToken cancellationToken = default)
+    {
+        var person = await personnelService.GetByIdAsync(personnelId, cancellationToken);
+        if (person is null)
+        {
+            return null;
+        }
+
+        // 不允许自己指派自己为上级
+        if (supervisorId.HasValue && supervisorId.Value == personnelId)
+        {
+            return null;
+        }
+
+        // 验证上级存在
+        if (supervisorId.HasValue)
+        {
+            var supervisor = await personnelService.GetByIdAsync(supervisorId.Value, cancellationToken);
+            if (supervisor is null)
+            {
+                return null;
+            }
+        }
+
+        var state = await EnsureStateAsync(personnelId, person.RoleType, cancellationToken);
+        if (state is null)
+        {
+            return null;
+        }
+
+        lock (SyncRoot)
+        {
+            state.SupervisorId = supervisorId;
+            state.UpdatedAt = DateTime.UtcNow;
+            Persist();
+        }
+
+        var dataScope = await BuildDataScopeAsync(personnelId, person.Name, state, cancellationToken);
+        return BuildProfile(person.Id, person.Name, person.RoleType, state, dataScope);
+    }
+
+    // ── 数据范围构建 ──
+
+    private async Task<DataScopeDto> BuildDataScopeAsync(int personnelId, string personnelName, PersonnelPermissionState state, CancellationToken cancellationToken)
+    {
+        var role = state.SystemRole ?? RoleOperator;
+
+        // admin 或 manager: 全部（不限医院）
+        if (state.IsAdmin || string.Equals(role, RoleManager, StringComparison.OrdinalIgnoreCase))
+        {
+            return new DataScopeDto { ScopeType = "all", AccessiblePersonnelNames = [], AccessibleHospitalNames = [] };
+        }
+
+        // supervisor: 本人 + 所有 SupervisorId 指向自己的下属
+        if (string.Equals(role, RoleSupervisor, StringComparison.OrdinalIgnoreCase))
+        {
+            var names = new List<string> { personnelName };
+
+            // 查找所有 subordinates
+            var allPersonnel = await personnelService.QueryAsync(new PersonnelQuery { Page = 1, Size = 5000 }, cancellationToken);
+            lock (SyncRoot)
+            {
+                var subordinateIds = States
+                    .Where(s => s.SupervisorId == personnelId)
+                    .Select(s => s.PersonnelId)
+                    .ToHashSet();
+
+                foreach (var p in allPersonnel.Items)
+                {
+                    if (subordinateIds.Contains(p.Id) && !names.Contains(p.Name, StringComparer.Ordinal))
+                    {
+                        names.Add(p.Name);
+                    }
+                }
+            }
+
+            // supervisor: 合并自身 + 所有下属的医院范围
+            var hospitalNames = new HashSet<string>(state.HospitalNames, StringComparer.OrdinalIgnoreCase);
+            lock (SyncRoot)
+            {
+                var subordinateIds2 = States
+                    .Where(s => s.SupervisorId == personnelId)
+                    .ToList();
+                foreach (var sub in subordinateIds2)
+                {
+                    foreach (var h in sub.HospitalNames)
+                    {
+                        hospitalNames.Add(h);
+                    }
+                }
+            }
+
+            return new DataScopeDto
+            {
+                ScopeType = "subordinates",
+                AccessiblePersonnelNames = names,
+                AccessibleHospitalNames = hospitalNames.OrderBy(x => x).ToList()
+            };
+        }
+
+        // operator: 仅本人
+        return new DataScopeDto
+        {
+            ScopeType = "own",
+            AccessiblePersonnelNames = [personnelName],
+            AccessibleHospitalNames = state.HospitalNames.ToList()
+        };
+    }
+
+    // ── 内部辅助方法 ──
+
+    private static PersonnelPermissionState? GetStateSnapshot(int personnelId)
+    {
+        lock (SyncRoot)
+        {
+            return States.FirstOrDefault(x => x.PersonnelId == personnelId);
+        }
     }
 
     private async Task<PersonnelPermissionState?> EnsureStateAsync(int personnelId, string roleType, CancellationToken cancellationToken)
@@ -349,14 +574,16 @@ public class InMemoryAccessControlService(IPersonnelService personnelService) : 
         cancellationToken.ThrowIfCancellationRequested();
 
         var isAdmin = personnelId == ProtectedAdminPersonnelId;
+        var systemRole = isAdmin ? RoleManager : RoleOperator;
         var permissionKeys = isAdmin
             ? PermissionCatalog.Select(x => x.Key).ToList()
-            : BuildRoleDefaultPermissions(roleType);
+            : BuildRoleDefaultPermissions(systemRole);
 
         PersonnelPermissionState state = new()
         {
             PersonnelId = personnelId,
             IsAdmin = isAdmin,
+            SystemRole = systemRole,
             PermissionKeys = permissionKeys,
             UpdatedAt = DateTime.UtcNow
         };
@@ -364,16 +591,26 @@ public class InMemoryAccessControlService(IPersonnelService personnelService) : 
         return Task.FromResult<PersonnelPermissionState?>(state);
     }
 
-    private static List<string> BuildRoleDefaultPermissions(string roleType)
+    private static List<string> BuildRoleDefaultPermissions(string systemRole)
     {
-        var normalized = roleType.Trim();
-        if (string.Equals(normalized, "实施", StringComparison.Ordinal))
+        var role = (systemRole ?? RoleOperator).Trim().ToLowerInvariant();
+
+        // ── 经理: 全部权限 ──
+        if (string.Equals(role, RoleManager, StringComparison.OrdinalIgnoreCase))
+        {
+            return PermissionCatalog.Select(x => x.Key).ToList();
+        }
+
+        // ── 运维主管: 管理下属项目 + 查看合同/项目 ──
+        if (string.Equals(role, RoleSupervisor, StringComparison.OrdinalIgnoreCase))
         {
             return
             [
                 "dashboard.view",
                 "alert-center.view",
                 "project.view",
+                "project.manage",
+                "contract.view",
                 "handover.view",
                 "inspection.view",
                 "annual-report.view",
@@ -381,24 +618,24 @@ public class InMemoryAccessControlService(IPersonnelService personnelService) : 
                 "personnel.view",
                 "product.view",
                 "major-demand.view",
-                "major-demand.manage"
+                "major-demand.manage",
+                "repair.view",
+                "monthly-report.view",
+                "monthly-report.manage",
             ];
         }
 
+        // ── 普通运维人员: 仅自己项目相关 ──
         return
         [
             "dashboard.view",
-            "alert-center.view",
             "project.view",
-                "project.manage",
-            "contract.view",
-            "handover.view",
-            "inspection.view",
-            "annual-report.view",
-            "hospital.view",
-            "personnel.view",
-            "product.view",
-            "major-demand.view"
+            "major-demand.view",
+            "major-demand.manage",
+            "repair.view",
+            "repair.manage",
+            "monthly-report.view",
+            "monthly-report.manage",
         ];
     }
 
@@ -406,19 +643,76 @@ public class InMemoryAccessControlService(IPersonnelService personnelService) : 
         int personnelId,
         string personnelName,
         string roleType,
-        PersonnelPermissionState state)
+        PersonnelPermissionState state,
+        DataScopeDto? dataScope = null)
     {
         return new PersonnelAccessProfileDto
         {
             PersonnelId = personnelId,
             PersonnelName = personnelName,
             RoleType = roleType,
+            SystemRole = state.SystemRole ?? RoleOperator,
+            SupervisorId = state.SupervisorId,
             IsAdmin = state.IsAdmin,
             Permissions = state.PermissionKeys
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .OrderBy(x => x, StringComparer.Ordinal)
-                .ToList()
+                .ToList(),
+            DataScope = dataScope ?? new DataScopeDto()
         };
+    }
+
+    // ── 新增接口方法: GetHospitalScopeAsync ──
+
+    public async Task<List<string>> GetHospitalScopeAsync(int personnelId, CancellationToken cancellationToken = default)
+    {
+        var person = await personnelService.GetByIdAsync(personnelId, cancellationToken);
+        if (person is null)
+        {
+            return [];
+        }
+
+        var state = await EnsureStateAsync(personnelId, person.RoleType, cancellationToken);
+        if (state is null)
+        {
+            return [];
+        }
+
+        return state.HospitalNames.ToList();
+    }
+
+    // ── 新增接口方法: SetHospitalScopeAsync ──
+
+    public async Task<PersonnelAccessProfileDto?> SetHospitalScopeAsync(int personnelId, List<string> hospitalNames, CancellationToken cancellationToken = default)
+    {
+        var person = await personnelService.GetByIdAsync(personnelId, cancellationToken);
+        if (person is null)
+        {
+            return null;
+        }
+
+        var state = await EnsureStateAsync(personnelId, person.RoleType, cancellationToken);
+        if (state is null)
+        {
+            return null;
+        }
+
+        var sanitized = (hospitalNames ?? [])
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Select(x => x.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(x => x, StringComparer.Ordinal)
+            .ToList();
+
+        lock (SyncRoot)
+        {
+            state.HospitalNames = sanitized;
+            state.UpdatedAt = DateTime.UtcNow;
+            Persist();
+        }
+
+        var dataScope = await BuildDataScopeAsync(personnelId, person.Name, state, cancellationToken);
+        return BuildProfile(person.Id, person.Name, person.RoleType, state, dataScope);
     }
 
     private static void Persist()
@@ -430,7 +724,11 @@ public class InMemoryAccessControlService(IPersonnelService personnelService) : 
     {
         public int PersonnelId { get; set; }
         public bool IsAdmin { get; set; }
+        public string SystemRole { get; set; } = RoleOperator;
+        public int? SupervisorId { get; set; }
         public List<string> PermissionKeys { get; set; } = [];
+        /// <summary>显式分配的可访问医院名称列表（空 = 未分配，需按角色决定）</summary>
+        public List<string> HospitalNames { get; set; } = [];
         public DateTime UpdatedAt { get; set; }
     }
 }

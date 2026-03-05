@@ -10,6 +10,7 @@ export interface ProjectItem {
   afterSalesEndDate: string
   hospitalLevel: string
   contractStatus: string
+  contractValidityStatus: string
   maintenanceAmount: number
   overdueDays: number
 }
@@ -25,6 +26,7 @@ export interface ProjectQuery {
   afterSalesEndDateTo?: string
   hospitalLevel?: string
   contractStatus?: string
+  contractValidityStatus?: string
   page?: number
   size?: number
 }

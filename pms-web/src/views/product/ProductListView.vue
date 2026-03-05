@@ -10,9 +10,9 @@
 
     <el-row :gutter="16" class="stats-row">
       <el-col :span="6"><el-card shadow="never" class="stat-card stats-card clickable" :class="{ active: query.status === '' }" @click="onStatClick('')"><div class="t">产品总数</div><div class="v">{{ summary.total }}</div></el-card></el-col>
-      <el-col :span="6"><el-card shadow="never" class="stat-card stats-card clickable" :class="{ active: query.status === '运行中' }" @click="onStatClick('运行中')"><div class="t">运行中</div><div class="v success">{{ summary.activeCount }}</div></el-card></el-col>
-      <el-col :span="6"><el-card shadow="never" class="stat-card stats-card clickable" :class="{ active: query.status === '试运行' }" @click="onStatClick('试运行')"><div class="t">试运行</div><div class="v warning">{{ summary.pilotCount }}</div></el-card></el-col>
-      <el-col :span="6"><el-card shadow="never" class="stat-card stats-card clickable" :class="{ active: query.status === '已停用' }" @click="onStatClick('已停用')"><div class="t">已停用</div><div class="v danger">{{ summary.retiredCount }}</div></el-card></el-col>
+      <el-col :span="6"><el-card shadow="never" class="stat-card stats-card clickable" :class="{ active: query.status === '运行中' }" @click="onStatClick('运行中')"><div class="t">运行中</div><div class="v success">{{ summary.implementationCount }}</div></el-card></el-col>
+      <el-col :span="6"><el-card shadow="never" class="stat-card stats-card clickable" :class="{ active: query.status === '试运行' }" @click="onStatClick('试运行')"><div class="t">试运行</div><div class="v warning">{{ summary.maintenanceCount }}</div></el-card></el-col>
+      <el-col :span="6"><el-card shadow="never" class="stat-card stats-card clickable" :class="{ active: query.status === '已停用' }" @click="onStatClick('已停用')"><div class="t">已停用</div><div class="v danger">{{ summary.stoppedCount }}</div></el-card></el-col>
     </el-row>
 
     <el-card shadow="never" class="filter-card">
@@ -146,7 +146,7 @@ import { useAccessControl } from '../../composables/useAccessControl'
 const loading = ref(false)
 const total = ref(0)
 const tableData = ref<ProductItem[]>([])
-const summary = ref<ProductSummary>({ total: 0, activeCount: 0, pilotCount: 0, retiredCount: 0 })
+const summary = ref<ProductSummary>({ total: 0, implementationCount: 0, maintenanceCount: 0, stoppedCount: 0 })
 
 const query = reactive({
   productName: '',

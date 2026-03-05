@@ -75,6 +75,7 @@ public class InMemoryAuthService(IPersonnelService personnelService, IAccessCont
             PersonnelId = profile.PersonnelId,
             PersonnelName = profile.PersonnelName,
             RoleType = profile.RoleType,
+            SystemRole = profile.SystemRole,
             IsAdmin = profile.IsAdmin
         };
     }

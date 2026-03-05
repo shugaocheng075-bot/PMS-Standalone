@@ -16,6 +16,10 @@ let pendingLoad: Promise<void> | null = null
 
 const permissionSet = computed(() => new Set(accessProfile.value?.permissions ?? []))
 
+const getSystemRole = (): string => {
+  return (accessProfile.value?.systemRole ?? '').trim().toLowerCase()
+}
+
 const canPermission = (permission?: string): boolean => {
   if (!permission) {
     return true
@@ -68,6 +72,18 @@ const canAccessPath = (path: string): boolean => {
   return canPermission(permission)
 }
 
+const isManager = (): boolean => {
+  if (accessProfile.value?.isAdmin) {
+    return true
+  }
+
+  return getSystemRole() === 'manager'
+}
+
+const isSupervisor = (): boolean => getSystemRole() === 'supervisor'
+
+const isOperator = (): boolean => getSystemRole() === 'operator'
+
 const getFirstAccessiblePath = (): string => {
   const first = ROUTE_PERMISSION_ENTRIES.find((entry) => canPermission(entry.permission))
   return first?.path ?? '/dashboard'
@@ -83,5 +99,9 @@ export const useAccessControl = () => {
     canPermission,
     canAccessPath,
     getFirstAccessiblePath,
+    getSystemRole,
+    isManager,
+    isSupervisor,
+    isOperator,
   }
 }

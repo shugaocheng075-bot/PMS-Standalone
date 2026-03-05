@@ -48,12 +48,15 @@ public static class InMemoryMajorDemandStore
     {
         lock (SyncRoot)
         {
+            var normalizedRows = Snapshot.Rows
+                .Select(NormalizeRow)
+                .ToList();
+            var normalizedColumns = NormalizeColumns(Snapshot.Columns, normalizedRows);
+
             return new MajorDemandSnapshot
             {
-                Columns = Snapshot.Columns.ToList(),
-                Rows = Snapshot.Rows
-                    .Select(CloneRow)
-                    .ToList(),
+                Columns = normalizedColumns,
+                Rows = normalizedRows,
                 SourceFilePath = Snapshot.SourceFilePath,
                 SheetName = Snapshot.SheetName,
                 ImportedAt = Snapshot.ImportedAt,
@@ -72,17 +75,18 @@ public static class InMemoryMajorDemandStore
     {
         lock (SyncRoot)
         {
-            Snapshot.Columns = columns
-                .Where(x => !string.IsNullOrWhiteSpace(x))
-                .Select(x => x.Trim())
+            var normalizedRows = rows
+                .Select(NormalizeRow)
                 .ToList();
+
+            Snapshot.Columns = NormalizeColumns(columns, normalizedRows);
 
             var workflowById = Snapshot.WorkflowItems.ToDictionary(x => x.RowId, StringComparer.OrdinalIgnoreCase);
             var nextWorkflowItems = new List<MajorDemandWorkflowItem>();
             var nextRows = new List<Dictionary<string, string>>();
 
             var index = 1;
-            foreach (var row in rows)
+            foreach (var row in normalizedRows)
             {
                 var cloned = CloneRow(row);
                 var rowId = ResolveRowId(cloned, index++);
@@ -288,6 +292,118 @@ public static class InMemoryMajorDemandStore
             kv => kv.Key,
             kv => kv.Value,
             StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static string NormalizeColumnName(string columnName)
+    {
+        if (string.IsNullOrWhiteSpace(columnName))
+        {
+            return string.Empty;
+        }
+
+        var normalized = columnName.Trim();
+        if (string.Equals(normalized, "最终用户", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(normalized, "最终客户", StringComparison.OrdinalIgnoreCase))
+        {
+            return "医院名称";
+        }
+
+        return normalized;
+    }
+
+    private static List<string> NormalizeColumns(IEnumerable<string> columns, IReadOnlyList<Dictionary<string, string>> rows)
+    {
+        var normalizedColumns = columns
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Select(NormalizeColumnName)
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (!normalizedColumns.Contains("医院名称", StringComparer.OrdinalIgnoreCase)
+            && rows.Any(x => x.TryGetValue("医院名称", out var value) && !string.IsNullOrWhiteSpace(value)))
+        {
+            normalizedColumns.Insert(0, "医院名称");
+        }
+
+        if (!normalizedColumns.Contains("产品名称", StringComparer.OrdinalIgnoreCase)
+            && rows.Any(x => x.TryGetValue("产品名称", out var value) && !string.IsNullOrWhiteSpace(value)))
+        {
+            normalizedColumns.Add("产品名称");
+        }
+
+        return normalizedColumns;
+    }
+
+    private static Dictionary<string, string> NormalizeRow(IReadOnlyDictionary<string, string> row)
+    {
+        var normalized = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var pair in row)
+        {
+            var key = NormalizeColumnName(pair.Key);
+            if (string.IsNullOrWhiteSpace(key))
+            {
+                continue;
+            }
+
+            var value = pair.Value?.Trim() ?? string.Empty;
+            if (!normalized.TryGetValue(key, out var existing)
+                || string.IsNullOrWhiteSpace(existing))
+            {
+                normalized[key] = value;
+            }
+        }
+
+        var hospitalName = GetFirstColumnValue(normalized,
+            "医院名称", "医院", "客户医院", "客户名称", "最终用户", "最终客户", "项目名称");
+        if (!string.IsNullOrWhiteSpace(hospitalName))
+        {
+            normalized["医院名称"] = hospitalName;
+        }
+
+        var productName = GetFirstColumnValue(normalized,
+            "产品名称", "产品", "软件名称", "产品线", "上线产品", "项目类别");
+        if (!string.IsNullOrWhiteSpace(productName))
+        {
+            normalized["产品名称"] = productName;
+        }
+
+        return normalized;
+    }
+
+    private static string GetFirstColumnValue(IReadOnlyDictionary<string, string> row, params string[] aliases)
+    {
+        foreach (var alias in aliases)
+        {
+            if (string.IsNullOrWhiteSpace(alias))
+            {
+                continue;
+            }
+
+            if (row.TryGetValue(alias, out var value) && !string.IsNullOrWhiteSpace(value))
+            {
+                return value.Trim();
+            }
+        }
+
+        foreach (var alias in aliases)
+        {
+            if (string.IsNullOrWhiteSpace(alias))
+            {
+                continue;
+            }
+
+            foreach (var pair in row)
+            {
+                if (pair.Key.Contains(alias, StringComparison.OrdinalIgnoreCase)
+                    && !string.IsNullOrWhiteSpace(pair.Value))
+                {
+                    return pair.Value.Trim();
+                }
+            }
+        }
+
+        return string.Empty;
     }
 
     private static MajorDemandWorkflowItem CloneWorkflowItem(MajorDemandWorkflowItem item)

@@ -320,7 +320,7 @@ const deletingId = ref<number | null>(null)
 const detailLoadingId = ref<number | null>(null)
 
 const access = useAccessControl()
-const canManageHospital = computed(() => access.canPermission('hospital.manage'))
+const canManageHospital = computed(() => access.isManager() && access.canPermission('hospital.manage'))
 
 const editForm = reactive<HospitalUpsert>({
   hospitalName: '',

@@ -11,6 +11,9 @@ import PersonnelListView from '../views/personnel/PersonnelListView.vue'
 import ProductListView from '../views/product/ProductListView.vue'
 import DataMaintenanceView from '../views/maintenance/DataMaintenanceView.vue'
 import MajorDemandView from '../views/major-demand/MajorDemandView.vue'
+import RepairRecordView from '../views/repair/RepairRecordView.vue'
+import WorkHoursView from '../views/workhours/WorkHoursView.vue'
+import MonthlyReportView from '../views/monthly-report/MonthlyReportView.vue'
 import MS010001013001View from '../views/complex-model/MS010001013001View.vue'
 import LoginView from '../views/login/LoginView.vue'
 import { clearAuthState, isAuthenticated, resolveRoutePermission } from '../constants/access'
@@ -100,6 +103,24 @@ const router = createRouter({
       name: 'major-demand-list',
       component: MajorDemandView,
       meta: { title: '重大需求', permission: 'major-demand.view' },
+    },
+    {
+      path: '/repair/list',
+      name: 'repair-list',
+      component: RepairRecordView,
+      meta: { title: '报修记录', permission: 'repair.view' },
+    },
+    {
+      path: '/workhours/list',
+      name: 'workhours-list',
+      component: WorkHoursView,
+      meta: { title: '工时管理', permission: 'workhours.view' },
+    },
+    {
+      path: '/monthly-report/list',
+      name: 'monthly-report-list',
+      component: MonthlyReportView,
+      meta: { title: '月度报告', permission: 'monthly-report.view' },
     },
     {
       path: '/complex-model/ms010001-013-001',

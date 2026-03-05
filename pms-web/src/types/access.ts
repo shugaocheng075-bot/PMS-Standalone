@@ -9,14 +9,25 @@ export interface PersonnelActor {
   personnelId: number
   personnelName: string
   roleType: string
+  systemRole: string
+}
+
+export interface DataScope {
+  scopeType: 'own' | 'subordinates' | 'all'
+  accessiblePersonnelNames: string[]
+  accessibleHospitalNames: string[]
 }
 
 export interface AccessProfile {
   personnelId: number
   personnelName: string
   roleType: string
+  systemRole: string
   isAdmin: boolean
   permissions: string[]
+  supervisorId?: number
+  supervisorName?: string
+  dataScope?: DataScope
 }
 
 export interface AccessUserItem {
@@ -25,8 +36,11 @@ export interface AccessUserItem {
   department: string
   groupName: string
   roleType: string
+  systemRole: string
   isAdmin: boolean
   permissionCount: number
+  supervisorId?: number
+  supervisorName?: string
   updatedAt: string
 }
 
@@ -39,4 +53,12 @@ export interface AccessUserQuery {
 export interface UpdateUserPermissionPayload {
   permissionKeys: string[]
   isAdmin?: boolean
+}
+
+export interface SetSystemRolePayload {
+  systemRole: string
+}
+
+export interface SetSupervisorPayload {
+  supervisorId: number | null
 }
