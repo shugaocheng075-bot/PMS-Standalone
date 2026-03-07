@@ -21,11 +21,14 @@ public class InMemoryWorkHoursService : IWorkHoursService
                 {
                     Id = x.Id,
                     ProjectId = x.ProjectId,
+                    OpportunityNumber = x.OpportunityNumber,
                     PersonnelName = x.PersonnelName,
                     HospitalName = x.HospitalName,
+                    ProductName = x.ProductName,
                     WorkDate = x.WorkDate,
                     Hours = x.Hours,
                     WorkType = x.WorkType,
+                    ImplementationStatus = x.ImplementationStatus,
                     Description = x.Description,
                     CreatedAt = x.CreatedAt,
                     UpdatedAt = x.UpdatedAt
@@ -67,6 +70,12 @@ public class InMemoryWorkHoursService : IWorkHoursService
 
             if (!string.IsNullOrWhiteSpace(query.HospitalName))
                 filtered = filtered.Where(x => x.HospitalName.Contains(query.HospitalName, StringComparison.OrdinalIgnoreCase));
+
+            if (!string.IsNullOrWhiteSpace(query.ProductName))
+                filtered = filtered.Where(x => x.ProductName.Contains(query.ProductName, StringComparison.OrdinalIgnoreCase));
+
+            if (!string.IsNullOrWhiteSpace(query.ImplementationStatus))
+                filtered = filtered.Where(x => x.ImplementationStatus == query.ImplementationStatus);
 
             if (!string.IsNullOrWhiteSpace(query.WorkType))
                 filtered = filtered.Where(x => x.WorkType == query.WorkType);
@@ -116,11 +125,14 @@ public class InMemoryWorkHoursService : IWorkHoursService
             {
                 Id = _nextId++,
                 ProjectId = dto.ProjectId,
+                OpportunityNumber = dto.OpportunityNumber.Trim(),
                 PersonnelName = personnelName,
                 HospitalName = dto.HospitalName.Trim(),
+                ProductName = dto.ProductName.Trim(),
                 WorkDate = dto.WorkDate.Trim(),
                 Hours = dto.Hours,
                 WorkType = string.IsNullOrWhiteSpace(dto.WorkType) ? "驻场" : dto.WorkType.Trim(),
+                ImplementationStatus = dto.ImplementationStatus.Trim(),
                 Description = dto.Description.Trim(),
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow
@@ -141,10 +153,13 @@ public class InMemoryWorkHoursService : IWorkHoursService
             if (entity is null) return Task.FromResult<WorkHoursItemDto?>(null);
 
             entity.ProjectId = dto.ProjectId;
+            entity.OpportunityNumber = dto.OpportunityNumber.Trim();
             entity.HospitalName = dto.HospitalName.Trim();
+            entity.ProductName = dto.ProductName.Trim();
             entity.WorkDate = dto.WorkDate.Trim();
             entity.Hours = dto.Hours;
             entity.WorkType = string.IsNullOrWhiteSpace(dto.WorkType) ? entity.WorkType : dto.WorkType.Trim();
+            entity.ImplementationStatus = dto.ImplementationStatus.Trim();
             entity.Description = dto.Description.Trim();
             entity.UpdatedAt = DateTime.UtcNow;
 
@@ -169,11 +184,14 @@ public class InMemoryWorkHoursService : IWorkHoursService
         {
             Id = entity.Id,
             ProjectId = entity.ProjectId,
+            OpportunityNumber = entity.OpportunityNumber,
             PersonnelName = entity.PersonnelName,
             HospitalName = entity.HospitalName,
+            ProductName = entity.ProductName,
             WorkDate = entity.WorkDate,
             Hours = entity.Hours,
             WorkType = entity.WorkType,
+            ImplementationStatus = entity.ImplementationStatus,
             Description = entity.Description,
             CreatedAt = entity.CreatedAt,
             UpdatedAt = entity.UpdatedAt

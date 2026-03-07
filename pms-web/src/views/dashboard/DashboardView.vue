@@ -10,7 +10,7 @@
 
     <el-row :gutter="16" class="stats-row">
       <el-col :span="6" v-for="card in cards" :key="card.title">
-        <el-card shadow="never" class="stat-card stats-card">
+        <el-card shadow="never" class="stat-card stats-card clickable" @click="card.onClick()">
           <div class="t">{{ card.title }}</div>
           <div class="v">{{ card.value }}</div>
         </el-card>
@@ -60,35 +60,50 @@
       <el-tabs v-model="activeTab">
         <el-tab-pane label="项目台账" name="project">
           <div class="drill-tip">当前筛选：{{ selectedProjectStatus }}</div>
-          <el-table :data="projectDrillRows" stripe border max-height="320" scrollbar-always-on empty-text="暂无项目明细">
+          <el-table :data="projectDrillRows" stripe border max-height="320" scrollbar-always-on empty-text="暂无项目明细" @row-dblclick="onProjectDrillGoto">
             <el-table-column prop="hospitalName" label="医院" min-width="180" show-overflow-tooltip />
             <el-table-column prop="productName" label="产品" min-width="160" show-overflow-tooltip />
             <el-table-column prop="province" label="省份" width="110" />
             <el-table-column prop="contractStatus" label="状态" width="140" />
             <el-table-column prop="overdueDays" label="超期天数" width="110" align="right" />
+            <el-table-column label="操作" width="120" fixed="right">
+              <template #default="scope">
+                <el-button link type="primary" @click="onProjectDrillGoto(scope.row)">去处理</el-button>
+              </template>
+            </el-table-column>
           </el-table>
         </el-tab-pane>
 
         <el-tab-pane label="重大需求" name="demand">
           <div class="drill-tip">当前筛选：{{ selectedDemandStatus }}</div>
-          <el-table :data="demandDrillRows" stripe border max-height="320" scrollbar-always-on empty-text="暂无重大需求明细">
+          <el-table :data="demandDrillRows" stripe border max-height="320" scrollbar-always-on empty-text="暂无重大需求明细" @row-dblclick="onDemandDrillGoto">
             <el-table-column prop="title" label="需求" min-width="220" show-overflow-tooltip />
             <el-table-column prop="hospital" label="医院/客户" min-width="180" show-overflow-tooltip />
             <el-table-column prop="owner" label="负责人" width="120" show-overflow-tooltip />
             <el-table-column prop="status" label="状态" width="120" />
             <el-table-column prop="dueDate" label="计划完成" width="140" />
+            <el-table-column label="操作" width="120" fixed="right">
+              <template #default="scope">
+                <el-button link type="primary" @click="onDemandDrillGoto(scope.row)">去处理</el-button>
+              </template>
+            </el-table-column>
           </el-table>
         </el-tab-pane>
 
         <el-tab-pane label="告警" name="alert">
           <div class="drill-tip">当前筛选：{{ selectedAlertLevel }}</div>
-          <el-table :data="alertDrillRows" stripe border max-height="320" scrollbar-always-on empty-text="暂无告警明细">
+          <el-table :data="alertDrillRows" stripe border max-height="320" scrollbar-always-on empty-text="暂无告警明细" @row-dblclick="onAlertDrillGoto">
             <el-table-column prop="source" label="来源" width="90" />
             <el-table-column prop="level" label="等级" width="90" />
             <el-table-column prop="hospitalName" label="医院" min-width="180" show-overflow-tooltip />
             <el-table-column prop="title" label="标题" min-width="220" show-overflow-tooltip />
             <el-table-column prop="owner" label="责任人" width="110" show-overflow-tooltip />
             <el-table-column prop="overdueDays" label="超期天数" width="110" align="right" />
+            <el-table-column label="操作" width="120" fixed="right">
+              <template #default="scope">
+                <el-button link type="primary" @click="onAlertDrillGoto(scope.row)">去处理</el-button>
+              </template>
+            </el-table-column>
           </el-table>
         </el-tab-pane>
       </el-tabs>
@@ -98,6 +113,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import * as echarts from 'echarts'
 import { ElMessage } from 'element-plus'
 import { fetchProjectList } from '../../api/modules/project'
@@ -120,6 +136,7 @@ type DemandDrillItem = {
 
 const loading = ref(false)
 const demandLoading = ref(false)
+const router = useRouter()
 const activeTab = ref<'project' | 'demand' | 'alert'>('project')
 const demandLastLoadedAt = ref(0)
 const DEMAND_REFRESH_INTERVAL = 5 * 60 * 1000
@@ -147,11 +164,11 @@ const cards = computed(() => {
   const overdueProjects = projectItems.value.filter((item) => Number(item.overdueDays || 0) > 0).length
 
   return [
-    { title: '项目总数', value: String(projectItems.value.length) },
-    { title: '重大需求', value: String((majorSnapshot.value?.workflows ?? []).length) },
-    { title: '告警总数', value: String(totalAlerts) },
-    { title: '严重告警占比', value: severeRatio },
-    { title: '超期项目', value: String(overdueProjects) },
+    { title: '项目总数', value: String(projectItems.value.length), onClick: () => void router.push('/project/list') },
+    { title: '重大需求', value: String((majorSnapshot.value?.workflows ?? []).length), onClick: () => void router.push('/major-demand/list') },
+    { title: '告警总数', value: String(totalAlerts), onClick: () => void router.push('/alert/center') },
+    { title: '严重告警占比', value: severeRatio, onClick: () => void router.push({ path: '/alert/center', query: { level: '严重' } }) },
+    { title: '超期项目', value: String(overdueProjects), onClick: () => void router.push({ path: '/project/list', query: { contractStatus: '超期未签署' } }) },
   ]
 })
 
@@ -325,6 +342,35 @@ const resizeCharts = () => {
   alertChart.value?.resize()
 }
 
+const onProjectDrillGoto = (row: any) => {
+  void router.push({
+    path: '/project/list',
+    query: {
+      hospitalName: row.hospitalName,
+      productName: row.productName,
+      action: 'edit',
+    },
+  })
+}
+
+const onDemandDrillGoto = (row: DemandDrillItem) => {
+  void router.push({
+    path: '/major-demand/list',
+    query: {
+      action: 'detail',
+      rowId: row.rowId,
+      status: row.status,
+    },
+  })
+}
+
+const onAlertDrillGoto = (row: AlertCenterItem) => {
+  void router.push({
+    path: row.relatedPath,
+    query: row.relatedQuery,
+  })
+}
+
 const shouldLoadDemand = (force = false) => {
   if (force) {
     return true
@@ -462,6 +508,10 @@ onBeforeUnmount(() => {
 .drill-tip {
   margin-bottom: 8px;
   color: #4d6b90;
+}
+
+.clickable {
+  cursor: pointer;
 }
 
 @media (max-width: 1280px) {

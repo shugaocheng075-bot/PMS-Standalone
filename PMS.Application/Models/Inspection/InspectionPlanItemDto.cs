@@ -13,3 +13,13 @@ public class InspectionPlanItemDto
     public string Status { get; set; } = string.Empty;
     public string InspectionType { get; set; } = string.Empty;
 }
+
+public class InspectionPlanUpsertDto
+{
+    public string GroupName { get; set; } = string.Empty;
+    public string Inspector { get; set; } = string.Empty;
+    public DateTime PlanDate { get; set; }
+    public DateTime? ActualDate { get; set; }
+    public string Status { get; set; } = string.Empty;
+    public string InspectionType { get; set; } = string.Empty;
+}

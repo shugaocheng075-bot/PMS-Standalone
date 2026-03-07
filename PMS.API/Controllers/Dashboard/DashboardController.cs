@@ -3,9 +3,14 @@ using PMS.API.Models;
 using PMS.Application.Contracts.Contract;
 using PMS.Application.Contracts.Handover;
 using PMS.Application.Contracts.Inspection;
+using PMS.Application.Contracts.Personnel;
+using PMS.Application.Contracts.RepairRecord;
 using PMS.Application.Models.Contract;
 using PMS.Application.Models.Handover;
 using PMS.Application.Models.Inspection;
+using PMS.Application.Models.Personnel;
+using PMS.Application.Models.RepairRecord;
+using PMS.Infrastructure.Services;
 
 namespace PMS.API.Controllers.Dashboard;
 
@@ -14,7 +19,9 @@ namespace PMS.API.Controllers.Dashboard;
 public class DashboardController(
     IContractAlertService contractAlertService,
     IHandoverService handoverService,
-    IInspectionService inspectionService) : ControllerBase
+    IInspectionService inspectionService,
+    IPersonnelService personnelService,
+    IRepairRecordService repairRecordService) : ControllerBase
 {
     [HttpGet("v2")]
     public async Task<IActionResult> GetV2(
@@ -111,6 +118,119 @@ public class DashboardController(
             trend,
             sourceDistribution,
             ownerWorkload
+        }));
+    }
+
+    /// <summary>
+    /// Dashboard v3 — 5 大 KPI 指标
+    /// </summary>
+    [HttpGet("v3")]
+    public async Task<IActionResult> GetV3(CancellationToken cancellationToken = default)
+    {
+        var projects = InMemoryProjectDataStore.Projects;
+
+        // 1. 合同状态占比
+        var statusGroups = projects
+            .GroupBy(x => string.IsNullOrWhiteSpace(x.ContractStatus) ? "未知" : x.ContractStatus)
+            .Select(g => new { status = g.Key, count = g.Count() })
+            .OrderByDescending(x => x.count)
+            .ToList();
+
+        var contractStatusDistribution = new
+        {
+            total = projects.Count,
+            items = statusGroups
+        };
+
+        // 2. 医院产品覆盖率
+        var distinctHospitals = projects.Select(x => x.HospitalName).Distinct().Count();
+        var distinctProducts = projects.Select(x => x.ProductName).Distinct().Count();
+        var hospitalProductPairs = projects
+            .Select(x => $"{x.HospitalName}||{x.ProductName}")
+            .Distinct()
+            .Count();
+
+        var hospitalProductCoverage = new
+        {
+            hospitalCount = distinctHospitals,
+            productCount = distinctProducts,
+            coveragePairs = hospitalProductPairs,
+            avgProductsPerHospital = distinctHospitals > 0
+                ? Math.Round((double)hospitalProductPairs / distinctHospitals, 2)
+                : 0
+        };
+
+        // 3. 报修处理率
+        var repairResult = await repairRecordService.QueryAsync(new RepairRecordQuery
+        {
+            Page = 1,
+            Size = 50000
+        }, cancellationToken);
+
+        var repairTotal = repairResult.Items.Count;
+        var repairCompleted = repairResult.Items.Count(x =>
+            string.Equals(x.Status, "已完成", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(x.Status, "已关闭", StringComparison.OrdinalIgnoreCase));
+
+        var repairProcessingRate = new
+        {
+            total = repairTotal,
+            completed = repairCompleted,
+            rate = repairTotal > 0
+                ? Math.Round((double)repairCompleted / repairTotal * 100, 1)
+                : 0.0
+        };
+
+        // 4. 人员负载率
+        var personnelResult = await personnelService.QueryAsync(new PersonnelQuery
+        {
+            Page = 1,
+            Size = 5000
+        }, cancellationToken);
+
+        var totalPersonnel = personnelResult.Items.Count;
+        var workHoursSnapshot = InMemoryWorkHoursService.GetSnapshot();
+        var personnelWithHours = workHoursSnapshot
+            .Select(x => x.PersonnelName)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Count();
+
+        var personnelLoadRate = new
+        {
+            totalPersonnel,
+            activePersonnel = personnelWithHours,
+            rate = totalPersonnel > 0
+                ? Math.Round((double)personnelWithHours / totalPersonnel * 100, 1)
+                : 0.0
+        };
+
+        // 5. 巡检完成率
+        var inspectionResult = await inspectionService.QueryAsync(new InspectionQuery
+        {
+            Page = 1,
+            Size = 50000
+        }, cancellationToken);
+
+        var inspectionTotal = inspectionResult.Items.Count;
+        var inspectionCompleted = inspectionResult.Items.Count(x =>
+            string.Equals(x.Status, "已完成", StringComparison.OrdinalIgnoreCase));
+
+        var inspectionCompletionRate = new
+        {
+            total = inspectionTotal,
+            completed = inspectionCompleted,
+            rate = inspectionTotal > 0
+                ? Math.Round((double)inspectionCompleted / inspectionTotal * 100, 1)
+                : 0.0
+        };
+
+        return Ok(ApiResponse<object>.Success(new
+        {
+            contractStatusDistribution,
+            hospitalProductCoverage,
+            repairProcessingRate,
+            personnelLoadRate,
+            inspectionCompletionRate
         }));
     }
 

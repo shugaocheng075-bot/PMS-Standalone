@@ -24,6 +24,9 @@ public class InMemoryMonthlyReportService : IMonthlyReportService
             if (!string.IsNullOrWhiteSpace(query.ReportMonth))
                 filtered = filtered.Where(x => x.ReportMonth == query.ReportMonth);
 
+            if (!string.IsNullOrWhiteSpace(query.GroupName))
+                filtered = filtered.Where(x => x.GroupName == query.GroupName);
+
             if (!string.IsNullOrWhiteSpace(query.SubmittedBy))
                 filtered = filtered.Where(x => x.SubmittedBy.Contains(query.SubmittedBy, StringComparison.OrdinalIgnoreCase));
 
@@ -70,9 +73,25 @@ public class InMemoryMonthlyReportService : IMonthlyReportService
                 Id = _nextId++,
                 HospitalName = dto.HospitalName.Trim(),
                 ReportMonth = dto.ReportMonth.Trim(),
+                GroupName = (dto.GroupName ?? "").Trim(),
                 SubmittedBy = submittedBy,
                 Title = dto.Title.Trim(),
                 Content = dto.Content.Trim(),
+                TeamTotal = dto.TeamTotal ?? 0,
+                TeamOnsiteJson = dto.TeamOnsiteJson ?? "",
+                TeamSummaryJson = dto.TeamSummaryJson ?? "{}",
+                ProjectOverviewJson = dto.ProjectOverviewJson ?? "{}",
+                PerCapitaMetricsJson = dto.PerCapitaMetricsJson ?? "{}",
+                HandoverItemsJson = dto.HandoverItemsJson ?? "",
+                WeeklyReportRate = dto.WeeklyReportRate ?? 0m,
+                MonthlyReportRate = dto.MonthlyReportRate ?? 0m,
+                MajorDemandAcceptanceJson = dto.MajorDemandAcceptanceJson ?? "",
+                InspectionRecordsJson = dto.InspectionRecordsJson ?? "",
+                AnnualServiceReportsJson = dto.AnnualServiceReportsJson ?? "",
+                IncidentsJson = dto.IncidentsJson ?? "",
+                NextMonthInspectionPlanJson = dto.NextMonthInspectionPlanJson ?? "",
+                NextMonthAnnualReportPlanJson = dto.NextMonthAnnualReportPlanJson ?? "",
+                NextMonthOtherPlanJson = dto.NextMonthOtherPlanJson ?? "",
                 Attachments = dto.Attachments ?? [],
                 Status = string.IsNullOrWhiteSpace(dto.Status) ? "draft" : dto.Status.Trim(),
                 CreatedAt = DateTime.UtcNow,
@@ -95,8 +114,24 @@ public class InMemoryMonthlyReportService : IMonthlyReportService
 
             entity.HospitalName = dto.HospitalName.Trim();
             entity.ReportMonth = dto.ReportMonth.Trim();
+            entity.GroupName = (dto.GroupName ?? entity.GroupName).Trim();
             entity.Title = dto.Title.Trim();
             entity.Content = dto.Content.Trim();
+            if (dto.TeamTotal.HasValue) entity.TeamTotal = dto.TeamTotal.Value;
+            if (dto.TeamOnsiteJson != null) entity.TeamOnsiteJson = dto.TeamOnsiteJson;
+            if (dto.TeamSummaryJson != null) entity.TeamSummaryJson = dto.TeamSummaryJson;
+            if (dto.ProjectOverviewJson != null) entity.ProjectOverviewJson = dto.ProjectOverviewJson;
+            if (dto.PerCapitaMetricsJson != null) entity.PerCapitaMetricsJson = dto.PerCapitaMetricsJson;
+            if (dto.HandoverItemsJson != null) entity.HandoverItemsJson = dto.HandoverItemsJson;
+            if (dto.WeeklyReportRate.HasValue) entity.WeeklyReportRate = dto.WeeklyReportRate.Value;
+            if (dto.MonthlyReportRate.HasValue) entity.MonthlyReportRate = dto.MonthlyReportRate.Value;
+            if (dto.MajorDemandAcceptanceJson != null) entity.MajorDemandAcceptanceJson = dto.MajorDemandAcceptanceJson;
+            if (dto.InspectionRecordsJson != null) entity.InspectionRecordsJson = dto.InspectionRecordsJson;
+            if (dto.AnnualServiceReportsJson != null) entity.AnnualServiceReportsJson = dto.AnnualServiceReportsJson;
+            if (dto.IncidentsJson != null) entity.IncidentsJson = dto.IncidentsJson;
+            if (dto.NextMonthInspectionPlanJson != null) entity.NextMonthInspectionPlanJson = dto.NextMonthInspectionPlanJson;
+            if (dto.NextMonthAnnualReportPlanJson != null) entity.NextMonthAnnualReportPlanJson = dto.NextMonthAnnualReportPlanJson;
+            if (dto.NextMonthOtherPlanJson != null) entity.NextMonthOtherPlanJson = dto.NextMonthOtherPlanJson;
             entity.Attachments = dto.Attachments ?? entity.Attachments;
             entity.Status = string.IsNullOrWhiteSpace(dto.Status) ? entity.Status : dto.Status.Trim();
             entity.UpdatedAt = DateTime.UtcNow;
@@ -123,9 +158,25 @@ public class InMemoryMonthlyReportService : IMonthlyReportService
             Id = entity.Id,
             HospitalName = entity.HospitalName,
             ReportMonth = entity.ReportMonth,
+            GroupName = entity.GroupName,
             SubmittedBy = entity.SubmittedBy,
             Title = entity.Title,
             Content = entity.Content,
+            TeamTotal = entity.TeamTotal,
+            TeamOnsiteJson = entity.TeamOnsiteJson,
+            TeamSummaryJson = entity.TeamSummaryJson,
+            ProjectOverviewJson = entity.ProjectOverviewJson,
+            PerCapitaMetricsJson = entity.PerCapitaMetricsJson,
+            HandoverItemsJson = entity.HandoverItemsJson,
+            WeeklyReportRate = entity.WeeklyReportRate,
+            MonthlyReportRate = entity.MonthlyReportRate,
+            MajorDemandAcceptanceJson = entity.MajorDemandAcceptanceJson,
+            InspectionRecordsJson = entity.InspectionRecordsJson,
+            AnnualServiceReportsJson = entity.AnnualServiceReportsJson,
+            IncidentsJson = entity.IncidentsJson,
+            NextMonthInspectionPlanJson = entity.NextMonthInspectionPlanJson,
+            NextMonthAnnualReportPlanJson = entity.NextMonthAnnualReportPlanJson,
+            NextMonthOtherPlanJson = entity.NextMonthOtherPlanJson,
             Attachments = entity.Attachments,
             Status = entity.Status,
             CreatedAt = entity.CreatedAt,

@@ -11,6 +11,15 @@ export interface InspectionPlanItem {
   inspectionType: '现场' | '远程'
 }
 
+export interface InspectionPlanUpsert {
+  groupName: string
+  inspector: string
+  planDate: string
+  actualDate?: string | null
+  status: '已计划' | '执行中' | '已完成' | '已取消'
+  inspectionType: '现场' | '远程'
+}
+
 export interface InspectionSummary {
   plannedCount: number
   inProgressCount: number

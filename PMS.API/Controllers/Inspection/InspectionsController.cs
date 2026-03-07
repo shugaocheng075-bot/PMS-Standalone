@@ -65,6 +65,21 @@ public class InspectionsController(
         return Ok(ApiResponse<PagedResult<InspectionPlanItemDto>>.Success(result));
     }
 
+    [HttpPut("{id:long}")]
+    public async Task<IActionResult> Update(
+        long id,
+        [FromBody] InspectionPlanUpsertDto dto,
+        CancellationToken cancellationToken = default)
+    {
+        var updated = await inspectionService.UpdateAsync(id, dto, cancellationToken);
+        if (updated is null)
+        {
+            return NotFound(new ApiResponse<object> { Code = 404, Message = "未找到对应巡检计划" });
+        }
+
+        return Ok(ApiResponse<InspectionPlanItemDto>.Success(updated));
+    }
+
     // ─── SystemAuditTool 巡检结果推送 ───
 
     /// <summary>

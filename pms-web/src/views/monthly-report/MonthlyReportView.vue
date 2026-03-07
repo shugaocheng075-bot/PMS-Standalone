@@ -43,7 +43,7 @@
     </el-card>
 
     <el-card shadow="never" class="table-card">
-      <el-table :data="tableData" v-loading="loading" stripe max-height="520" scrollbar-always-on empty-text="暂无符合条件的数据">
+      <el-table :data="tableData" v-loading="loading" stripe max-height="520" scrollbar-always-on empty-text="暂无符合条件的数据" @row-dblclick="onRowDoubleClick">
         <el-table-column prop="id" label="ID" width="70" />
         <el-table-column prop="hospitalName" label="医院名称" min-width="180" show-overflow-tooltip />
         <el-table-column prop="reportMonth" label="报告月份" width="120" />
@@ -123,7 +123,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import {
@@ -142,6 +143,8 @@ import { useLinkedRealtimeRefresh } from '../../composables/useLinkedRealtimeRef
 
 const access = useAccessControl()
 const canManage = computed(() => access.canPermission('monthly-report.manage'))
+const route = useRoute()
+const router = useRouter()
 
 const loading = ref(false)
 const submitLoading = ref(false)
@@ -172,6 +175,40 @@ const form = reactive<MonthlyReportUpsert>({
   attachments: [],
   status: 'draft',
 })
+
+const readRouteQueryValue = (value: unknown): string => {
+  if (typeof value === 'string') {
+    return value
+  }
+
+  if (Array.isArray(value) && typeof value[0] === 'string') {
+    return value[0]
+  }
+
+  return ''
+}
+
+const updateRouteQuery = async (patch: Record<string, string | undefined>) => {
+  const nextQuery = { ...route.query }
+  Object.entries(patch).forEach(([key, value]) => {
+    if (value) {
+      nextQuery[key] = value
+      return
+    }
+
+    delete nextQuery[key]
+  })
+
+  await router.replace({ path: route.path, query: nextQuery })
+}
+
+const clearRouteActionQuery = async () => {
+  if (!readRouteQueryValue(route.query.action) && !readRouteQueryValue(route.query.id)) {
+    return
+  }
+
+  await updateRouteQuery({ action: undefined, id: undefined })
+}
 
 type MonthlyReportFilterState = {
   hospitalName: string
@@ -300,13 +337,13 @@ const resetForm = () => {
   })
 }
 
-const onOpenCreate = () => {
+const openCreateDialog = () => {
   editingId.value = null
   resetForm()
   dialogVisible.value = true
 }
 
-const onOpenEdit = (row: MonthlyReportItem) => {
+const openEditDialog = (row: MonthlyReportItem) => {
   editingId.value = row.id
   Object.assign(form, {
     hospitalName: row.hospitalName,
@@ -317,6 +354,44 @@ const onOpenEdit = (row: MonthlyReportItem) => {
     status: row.status,
   })
   dialogVisible.value = true
+}
+
+const onOpenCreate = () => {
+  openCreateDialog()
+  void updateRouteQuery({ action: 'create', id: undefined })
+}
+
+const onOpenEdit = (row: MonthlyReportItem) => {
+  openEditDialog(row)
+  void updateRouteQuery({ action: 'edit', id: String(row.id) })
+}
+
+const onRowDoubleClick = (row: MonthlyReportItem) => {
+  onOpenEdit(row)
+}
+
+const syncDialogFromRoute = () => {
+  const action = readRouteQueryValue(route.query.action)
+  if (!action) {
+    return
+  }
+
+  if (action === 'create') {
+    if (canManage.value && !dialogVisible.value) {
+      openCreateDialog()
+    }
+    return
+  }
+
+  const id = Number(readRouteQueryValue(route.query.id))
+  if (!Number.isFinite(id) || id <= 0) {
+    return
+  }
+
+  const matched = tableData.value.find((item) => item.id === id)
+  if (matched) {
+    openEditDialog(matched)
+  }
 }
 
 const onSubmit = async () => {
@@ -373,12 +448,24 @@ const onDelete = async (row: MonthlyReportItem) => {
   }
 }
 
+watch(dialogVisible, (visible) => {
+  if (!visible) {
+    void clearRouteActionQuery()
+  }
+})
+
+watch(() => route.fullPath, () => {
+  syncDialogFromRoute()
+})
+
 onMounted(async () => {
   filterPersist.restore()
 
   await runInitialLoad({
     tasks: [loadScope, loadData],
   })
+
+  syncDialogFromRoute()
 })
 </script>
 

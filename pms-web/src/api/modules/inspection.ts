@@ -2,6 +2,7 @@ import request from '../request'
 import type { ApiResponse, PagedResult } from '../../types/project'
 import type {
   InspectionPlanItem,
+  InspectionPlanUpsert,
   InspectionQuery,
   InspectionResult,
   InspectionRiskItem,
@@ -17,6 +18,10 @@ export function fetchInspections(params: InspectionQuery) {
   return request.get<any, ApiResponse<PagedResult<InspectionPlanItem>>>('/inspections', {
     params,
   })
+}
+
+export function updateInspection(id: number, payload: InspectionPlanUpsert) {
+  return request.put<any, ApiResponse<InspectionPlanItem>>(`/inspections/${id}`, payload)
 }
 
 // ---- 巡检结果（由 SystemAuditTool 推送） ----

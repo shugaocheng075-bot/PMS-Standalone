@@ -68,6 +68,7 @@
         :max-height="tableMaxHeight"
         scrollbar-always-on
         empty-text="暂无符合条件的数据"
+        @row-dblclick="onRowDoubleClick"
       >
         <el-table-column label="员工编号" width="110" show-overflow-tooltip>
           <template #default="scope">
@@ -121,8 +122,16 @@
           </template>
         </el-table-column>
         <el-table-column prop="groupName" label="组别" width="160" show-overflow-tooltip sortable />
-        <el-table-column label="操作" width="170" fixed="right">
+        <el-table-column label="操作" width="240" fixed="right">
           <template #default="scope">
+            <el-button
+              v-if="canManagePersonnel"
+              plain
+              type="primary"
+              size="small"
+              :disabled="submitLoading || deletingId === scope.row.id"
+              @click="onOpenEdit(scope.row)"
+            >编辑</el-button>
             <el-button
               plain
               size="small"
@@ -285,7 +294,7 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { Refresh } from '@element-plus/icons-vue'
 import {
   createPersonnel,
@@ -340,6 +349,7 @@ const query = reactive({
 })
 const activeStatFilter = ref('')
 const route = useRoute()
+const router = useRouter()
 
 const readRouteQueryValue = (value: unknown): string => {
   if (typeof value === 'string') {
@@ -351,6 +361,28 @@ const readRouteQueryValue = (value: unknown): string => {
   }
 
   return ''
+}
+
+const updateRouteQuery = async (patch: Record<string, string | undefined>) => {
+  const nextQuery = { ...route.query }
+  Object.entries(patch).forEach(([key, value]) => {
+    if (value) {
+      nextQuery[key] = value
+      return
+    }
+
+    delete nextQuery[key]
+  })
+
+  await router.replace({ path: route.path, query: nextQuery })
+}
+
+const clearRouteActionQuery = async () => {
+  if (!readRouteQueryValue(route.query.action) && !readRouteQueryValue(route.query.id)) {
+    return
+  }
+
+  await updateRouteQuery({ action: undefined, id: undefined })
 }
 
 const departmentOptions = ref<string[]>([...DEPARTMENT_OPTIONS])
@@ -664,9 +696,21 @@ const updateTableMaxHeight = () => {
 }
 
 const applyDrillQuery = () => {
+  const name = readRouteQueryValue(route.query.name)
+  const groupName = readRouteQueryValue(route.query.groupName)
   const roleType = readRouteQueryValue(route.query.roleType)
   const isOnsite = readRouteQueryValue(route.query.isOnsite)
   let applied = false
+
+  if (name) {
+    query.name = name
+    applied = true
+  }
+
+  if (groupName) {
+    query.groupName = groupName
+    applied = true
+  }
 
   if (roleType) {
     query.roleType = roleType
@@ -780,13 +824,26 @@ const supervisorActorOptions = computed(() => {
     return []
   }
 
-  return accessActors.value.filter((actor) => {
+  const supervisorCandidates = accessActors.value.filter((actor) => {
     if (actor.personnelId === permissionTarget.value?.id) {
       return false
     }
 
     const role = (actor.systemRole ?? '').toLowerCase()
     return role === 'supervisor' || role === 'manager'
+  })
+
+  if (supervisorCandidates.length > 0) {
+    return supervisorCandidates
+  }
+
+  // Fallback: when no role-marked supervisors exist yet, allow selecting service personnel.
+  return accessActors.value.filter((actor) => {
+    if (actor.personnelId === permissionTarget.value?.id) {
+      return false
+    }
+
+    return (actor.roleType ?? '').trim() === '服务'
   })
 })
 
@@ -1011,6 +1068,74 @@ const onOpenCreate = () => {
   activeId.value = null
   resetEditForm()
   editVisible.value = true
+  void updateRouteQuery({ action: 'create', id: undefined })
+}
+
+const onOpenEdit = (row: PersonnelItem) => {
+  if (!canManagePersonnel.value) {
+    ElMessage.warning('当前账号无维护人员权限')
+    return
+  }
+
+  editMode.value = 'edit'
+  activeId.value = row.id
+  editForm.name = row.name
+  editForm.department = row.department
+  editForm.groupName = row.groupName
+  editForm.roleType = row.roleType
+  editForm.phone = row.phone
+  editForm.isOnsite = row.isOnsite
+  editForm.projectCount = row.projectCount
+  editForm.overdueCount = row.overdueCount
+  editVisible.value = true
+  void updateRouteQuery({ action: 'edit', id: String(row.id) })
+}
+
+const onRowDoubleClick = (row: PersonnelItem) => {
+  if (canManagePersonnel.value) {
+    onOpenEdit(row)
+    return
+  }
+
+  void onOpenDetail(row.id)
+}
+
+const syncEditDialogFromRoute = async () => {
+  const action = readRouteQueryValue(route.query.action)
+  if (!action) {
+    return
+  }
+
+  if (action === 'create') {
+    if (canManagePersonnel.value && !editVisible.value) {
+      editMode.value = 'create'
+      activeId.value = null
+      resetEditForm()
+      editVisible.value = true
+    }
+    return
+  }
+
+  if (action !== 'edit' || !canManagePersonnel.value) {
+    return
+  }
+
+  const id = Number(readRouteQueryValue(route.query.id))
+  if (!Number.isFinite(id) || id <= 0) {
+    return
+  }
+
+  const matched = allPersonnelRows.value.find((item) => item.id === id) ?? tableData.value.find((item) => item.id === id)
+  if (matched) {
+    onOpenEdit(matched)
+    return
+  }
+
+  try {
+    const res = await fetchPersonnelById(id)
+    onOpenEdit(res.data)
+  } catch {
+  }
 }
 
 
@@ -1064,6 +1189,17 @@ const onSaveEdit = async () => {
   }
 }
 
+watch(editVisible, (visible) => {
+  if (!visible) {
+    void clearRouteActionQuery()
+  }
+})
+
+watch(() => route.fullPath, () => {
+  applyDrillQuery()
+  void syncEditDialogFromRoute()
+})
+
 const ensurePermissionCatalog = async () => {
   if (permissionCatalog.value.length > 0) {
     return
@@ -1073,8 +1209,8 @@ const ensurePermissionCatalog = async () => {
   permissionCatalog.value = res.data
 }
 
-const ensureAccessActors = async () => {
-  if (accessActors.value.length > 0) {
+const ensureAccessActors = async (force = false) => {
+  if (!force && accessActors.value.length > 0) {
     return
   }
 
@@ -1109,7 +1245,7 @@ const onOpenPermission = async (row: PersonnelItem) => {
 
   try {
     await ensurePermissionCatalog()
-    await ensureAccessActors()
+    await ensureAccessActors(true)
     await ensureHospitalNameOptions()
     const res = await fetchUserAccessProfile(row.id)
     permissionForm.isAdmin = res.data.isAdmin
@@ -1162,6 +1298,8 @@ const onSavePermission = async () => {
       await access.ensureAccessProfileLoaded(true)
     }
 
+    await ensureAccessActors(true)
+
     permissionVisible.value = false
     ElMessage.success('权限保存成功')
   } catch (error) {
@@ -1205,6 +1343,7 @@ onMounted(async () => {
       },
     ],
   })
+  await syncEditDialogFromRoute()
 })
 
 onBeforeUnmount(() => {

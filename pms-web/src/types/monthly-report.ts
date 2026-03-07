@@ -9,6 +9,22 @@ export interface MonthlyReportItem {
   status: string
   createdAt: string
   updatedAt: string
+  groupName: string
+  teamTotal: number
+  teamOnsiteJson: string
+  teamSummaryJson: string
+  projectOverviewJson: string
+  perCapitaMetricsJson: string
+  handoverItemsJson: string
+  weeklyReportRate: number
+  monthlyReportRate: number
+  majorDemandAcceptanceJson: string
+  inspectionRecordsJson: string
+  annualServiceReportsJson: string
+  incidentsJson: string
+  nextMonthInspectionPlanJson: string
+  nextMonthAnnualReportPlanJson: string
+  nextMonthOtherPlanJson: string
 }
 
 export interface MonthlyReportUpsert {
@@ -18,6 +34,22 @@ export interface MonthlyReportUpsert {
   content: string
   attachments: string[]
   status?: string
+  groupName?: string
+  teamTotal?: number
+  teamOnsiteJson?: string
+  teamSummaryJson?: string
+  projectOverviewJson?: string
+  perCapitaMetricsJson?: string
+  handoverItemsJson?: string
+  weeklyReportRate?: number
+  monthlyReportRate?: number
+  majorDemandAcceptanceJson?: string
+  inspectionRecordsJson?: string
+  annualServiceReportsJson?: string
+  incidentsJson?: string
+  nextMonthInspectionPlanJson?: string
+  nextMonthAnnualReportPlanJson?: string
+  nextMonthOtherPlanJson?: string
 }
 
 export interface MonthlyReportQuery {
@@ -25,6 +57,7 @@ export interface MonthlyReportQuery {
   reportMonth?: string
   submittedBy?: string
   status?: string
+  groupName?: string
   page?: number
   size?: number
 }

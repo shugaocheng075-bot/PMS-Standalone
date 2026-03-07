@@ -9,6 +9,14 @@ export interface AnnualReportItem {
   submitDate?: string | null
 }
 
+export interface AnnualReportUpsert {
+  groupName: string
+  servicePerson: string
+  reportYear: number
+  status: '未开始' | '编写中' | '已提交' | '已完成'
+  submitDate?: string | null
+}
+
 export interface AnnualReportSummary {
   notStartedCount: number
   writingCount: number

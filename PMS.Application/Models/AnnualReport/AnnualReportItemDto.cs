@@ -11,3 +11,12 @@ public class AnnualReportItemDto
     public string Status { get; set; } = string.Empty;
     public DateTime? SubmitDate { get; set; }
 }
+
+public class AnnualReportUpsertDto
+{
+    public string GroupName { get; set; } = string.Empty;
+    public string ServicePerson { get; set; } = string.Empty;
+    public int ReportYear { get; set; }
+    public string Status { get; set; } = string.Empty;
+    public DateTime? SubmitDate { get; set; }
+}

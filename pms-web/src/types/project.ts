@@ -13,6 +13,17 @@ export interface ProjectItem {
   contractValidityStatus: string
   maintenanceAmount: number
   overdueDays: number
+  opportunityNumber: string
+  implementationStatus: string
+  workHoursManDays: number
+  personnelCount: number
+  personnel1: string
+  personnel2: string
+  personnel3: string
+  personnel4: string
+  personnel5: string
+  afterSalesProjectType: string
+  remarks: string
 }
 
 export interface ProjectQuery {

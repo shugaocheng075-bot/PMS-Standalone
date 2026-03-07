@@ -57,6 +57,7 @@
         scrollbar-always-on
         empty-text="暂无重大需求数据"
         @selection-change="onSelectionChange"
+        @row-dblclick="onRowDoubleClick"
       >
         <el-table-column type="selection" width="46" />
         <el-table-column prop="_status" label="状态" min-width="120">
@@ -155,8 +156,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { useRoute, useRouter } from 'vue-router'
 import {
   addMajorDemandComment,
   batchAssignMajorDemandOwner,
@@ -182,6 +184,42 @@ const activeRowId = ref('')
 const commentVisible = ref(false)
 const commentTargetRowId = ref('')
 const commentContent = ref('')
+const route = useRoute()
+const router = useRouter()
+
+const readRouteQueryValue = (value: unknown): string => {
+  if (typeof value === 'string') {
+    return value
+  }
+
+  if (Array.isArray(value) && typeof value[0] === 'string') {
+    return value[0]
+  }
+
+  return ''
+}
+
+const updateRouteQuery = async (patch: Record<string, string | undefined>) => {
+  const nextQuery = { ...route.query }
+  Object.entries(patch).forEach(([key, value]) => {
+    if (value) {
+      nextQuery[key] = value
+      return
+    }
+
+    delete nextQuery[key]
+  })
+
+  await router.replace({ path: route.path, query: nextQuery })
+}
+
+const clearRouteActionQuery = async () => {
+  if (!readRouteQueryValue(route.query.action) && !readRouteQueryValue(route.query.rowId)) {
+    return
+  }
+
+  await updateRouteQuery({ action: undefined, rowId: undefined })
+}
 
 const query = reactive({
   keyword: '',
@@ -272,6 +310,24 @@ const summaryText = computed(() => {
   const importedText = importedAt.value ? `，导入时间：${importedAt.value}` : ''
   return `来源文件：${sourceFilePath.value}${importedText}`
 })
+
+const applyRouteFilters = () => {
+  const status = readRouteQueryValue(route.query.status)
+  const owner = readRouteQueryValue(route.query.owner)
+  const keyword = readRouteQueryValue(route.query.keyword)
+
+  if (status) {
+    query.status = status
+  }
+
+  if (owner) {
+    query.owner = owner
+  }
+
+  if (keyword) {
+    query.keyword = keyword
+  }
+}
 
 const isProgressColumn = (columnName: string): boolean => {
   const value = columnName.trim().toLowerCase()
@@ -416,6 +472,11 @@ const onBatchDueDate = async () => {
 const openDetail = (row: Record<string, string>) => {
   activeRowId.value = row._rowId ?? ''
   detailVisible.value = true
+  void updateRouteQuery({ action: 'detail', rowId: activeRowId.value || undefined })
+}
+
+const onRowDoubleClick = (row: Record<string, string>) => {
+  openDetail(row)
 }
 
 const openComment = (row: Record<string, string>) => {
@@ -427,6 +488,29 @@ const openComment = (row: Record<string, string>) => {
   commentTargetRowId.value = row._rowId ?? ''
   commentContent.value = ''
   commentVisible.value = true
+  void updateRouteQuery({ action: 'comment', rowId: commentTargetRowId.value || undefined })
+}
+
+const syncPanelFromRoute = () => {
+  const action = readRouteQueryValue(route.query.action)
+  const rowId = readRouteQueryValue(route.query.rowId)
+  if (!action || !rowId) {
+    return
+  }
+
+  const matched = displayRows.value.find((item) => item._rowId === rowId)
+  if (!matched) {
+    return
+  }
+
+  if (action === 'detail' && !detailVisible.value) {
+    openDetail(matched)
+    return
+  }
+
+  if (action === 'comment' && !commentVisible.value) {
+    openComment(matched)
+  }
 }
 
 const submitComment = async () => {
@@ -507,7 +591,26 @@ const onImport = async () => {
 
 onMounted(async () => {
   await access.ensureAccessProfileLoaded()
+  applyRouteFilters()
   await loadData()
+  syncPanelFromRoute()
+})
+
+watch(detailVisible, (visible) => {
+  if (!visible && !commentVisible.value) {
+    void clearRouteActionQuery()
+  }
+})
+
+watch(commentVisible, (visible) => {
+  if (!visible && !detailVisible.value) {
+    void clearRouteActionQuery()
+  }
+})
+
+watch(() => route.fullPath, () => {
+  applyRouteFilters()
+  syncPanelFromRoute()
 })
 </script>
 

@@ -6,6 +6,11 @@ namespace PMS.Infrastructure.Services;
 
 public class InMemoryAnnualReportService : IAnnualReportService
 {
+    private static readonly object SyncRoot = new();
+    private const string OverridesStateKey = "annual_report_overrides";
+    private static readonly List<AnnualReportItemDto> Overrides =
+        SqliteJsonStore.LoadOrSeed(OverridesStateKey, () => new List<AnnualReportItemDto>());
+
     public Task<AnnualReportSummaryDto> GetSummaryAsync(CancellationToken cancellationToken = default)
     {
         var seed = BuildSeed();
@@ -59,12 +64,48 @@ public class InMemoryAnnualReportService : IAnnualReportService
         });
     }
 
+    public Task<AnnualReportItemDto?> UpdateAsync(long id, AnnualReportUpsertDto dto, CancellationToken cancellationToken = default)
+    {
+        lock (SyncRoot)
+        {
+            var current = BuildSeed().FirstOrDefault(x => x.Id == id);
+            if (current is null)
+            {
+                return Task.FromResult<AnnualReportItemDto?>(null);
+            }
+
+            current.GroupName = dto.GroupName.Trim();
+            current.ServicePerson = dto.ServicePerson.Trim();
+            current.ReportYear = dto.ReportYear;
+            current.Status = dto.Status.Trim();
+            current.SubmitDate = dto.SubmitDate;
+
+            var existingIndex = Overrides.FindIndex(x => x.Id == id);
+            if (existingIndex >= 0)
+            {
+                Overrides[existingIndex] = current;
+            }
+            else
+            {
+                Overrides.Add(current);
+            }
+
+            PersistOverrides();
+            return Task.FromResult<AnnualReportItemDto?>(current);
+        }
+    }
+
+    private static void PersistOverrides()
+    {
+        SqliteJsonStore.Save(OverridesStateKey, Overrides);
+    }
+
     private static List<AnnualReportItemDto> BuildSeed()
     {
         var statuses = new[] { "编写中", "已提交", "未开始", "已完成" };
         var currentYear = DateTime.Today.Year;
 
-        return InMemoryProjectDataStore.Projects
+        var seed = InMemoryProjectDataStore.Projects
             .OrderBy(x => x.Id)
             .Select((project, index) =>
             {
@@ -87,5 +128,27 @@ public class InMemoryAnnualReportService : IAnnualReportService
                 };
             })
             .ToList();
+
+        if (Overrides.Count == 0)
+        {
+            return seed;
+        }
+
+        foreach (var item in seed)
+        {
+            var overrideItem = Overrides.FirstOrDefault(x => x.Id == item.Id);
+            if (overrideItem is null)
+            {
+                continue;
+            }
+
+            item.GroupName = overrideItem.GroupName;
+            item.ServicePerson = overrideItem.ServicePerson;
+            item.ReportYear = overrideItem.ReportYear;
+            item.Status = overrideItem.Status;
+            item.SubmitDate = overrideItem.SubmitDate;
+        }
+
+        return seed;
     }
 }

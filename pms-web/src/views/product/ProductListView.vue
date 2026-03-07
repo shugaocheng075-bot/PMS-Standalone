@@ -36,7 +36,7 @@
     </el-card>
 
     <el-card shadow="never" class="table-card">
-      <el-table :data="tableData" v-loading="loading" stripe max-height="520" scrollbar-always-on empty-text="暂无符合条件的数据">
+      <el-table :data="tableData" v-loading="loading" stripe max-height="520" scrollbar-always-on empty-text="暂无符合条件的数据" @row-dblclick="onRowDoubleClick">
         <el-table-column prop="productName" label="产品名称" min-width="220" show-overflow-tooltip sortable />
         <el-table-column prop="version" label="版本" width="100" sortable />
         <el-table-column prop="category" label="分类" width="120" show-overflow-tooltip sortable />
@@ -125,10 +125,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import {
   createProduct,
   deleteProduct,
@@ -158,6 +158,7 @@ const query = reactive({
 const categoryOptions = ref<string[]>(['EMR', '临床辅助', '管理', 'AI', '移动'])
 const statusOptions = ref<string[]>(['运行中', '试运行', '已停用'])
 const route = useRoute()
+const router = useRouter()
 
 const readRouteQueryValue = (value: unknown): string => {
   if (typeof value === 'string') {
@@ -169,6 +170,28 @@ const readRouteQueryValue = (value: unknown): string => {
   }
 
   return ''
+}
+
+const updateRouteQuery = async (patch: Record<string, string | undefined>) => {
+  const nextQuery = { ...route.query }
+  Object.entries(patch).forEach(([key, value]) => {
+    if (value) {
+      nextQuery[key] = value
+      return
+    }
+
+    delete nextQuery[key]
+  })
+
+  await router.replace({ path: route.path, query: nextQuery })
+}
+
+const clearRouteActionQuery = async () => {
+  if (!readRouteQueryValue(route.query.action) && !readRouteQueryValue(route.query.id)) {
+    return
+  }
+
+  await updateRouteQuery({ action: undefined, id: undefined })
 }
 
 const applyDrillQuery = () => {
@@ -301,24 +324,14 @@ const resetEditForm = () => {
   editForm.deployHospitalCount = 0
 }
 
-const onOpenCreate = () => {
-  if (!canManageProduct.value) {
-    ElMessage.warning('当前账号无新增产品权限')
-    return
-  }
-
+const openCreateDialog = () => {
   editMode.value = 'create'
   activeId.value = null
   resetEditForm()
   editVisible.value = true
 }
 
-const onOpenEdit = (row: ProductItem) => {
-  if (!canManageProduct.value) {
-    ElMessage.warning('当前账号无编辑产品权限')
-    return
-  }
-
+const openEditDialog = (row: ProductItem) => {
   editMode.value = 'edit'
   activeId.value = row.id
   editForm.productName = row.productName
@@ -327,6 +340,69 @@ const onOpenEdit = (row: ProductItem) => {
   editForm.status = row.status
   editForm.deployHospitalCount = row.deployHospitalCount
   editVisible.value = true
+}
+
+const onOpenCreate = () => {
+  if (!canManageProduct.value) {
+    ElMessage.warning('当前账号无新增产品权限')
+    return
+  }
+
+  openCreateDialog()
+  void updateRouteQuery({ action: 'create', id: undefined })
+}
+
+const onOpenEdit = (row: ProductItem) => {
+  if (!canManageProduct.value) {
+    ElMessage.warning('当前账号无编辑产品权限')
+    return
+  }
+
+  openEditDialog(row)
+  void updateRouteQuery({ action: 'edit', id: String(row.id) })
+}
+
+const onRowDoubleClick = (row: ProductItem) => {
+  if (!canManageProduct.value) {
+    return
+  }
+
+  onOpenEdit(row)
+}
+
+const syncEditDialogFromRoute = async () => {
+  const action = readRouteQueryValue(route.query.action)
+  if (!action) {
+    return
+  }
+
+  if (action === 'create') {
+    if (canManageProduct.value && !editVisible.value) {
+      openCreateDialog()
+    }
+    return
+  }
+
+  if (action !== 'edit' || !canManageProduct.value) {
+    return
+  }
+
+  const id = Number(readRouteQueryValue(route.query.id))
+  if (!Number.isFinite(id) || id <= 0) {
+    return
+  }
+
+  const matched = tableData.value.find((item) => item.id === id)
+  if (matched) {
+    openEditDialog(matched)
+    return
+  }
+
+  try {
+    const res = await fetchProductById(id)
+    openEditDialog(res.data)
+  } catch {
+  }
 }
 
 const onOpenDetail = async (id: number) => {
@@ -379,6 +455,17 @@ const onSaveEdit = async () => {
   }
 }
 
+watch(editVisible, (visible) => {
+  if (!visible) {
+    void clearRouteActionQuery()
+  }
+})
+
+watch(() => route.fullPath, () => {
+  applyDrillQuery()
+  void syncEditDialogFromRoute()
+})
+
 const onDelete = async (row: ProductItem) => {
   if (!canManageProduct.value) {
     ElMessage.warning('当前账号无删除产品权限')
@@ -421,6 +508,7 @@ onMounted(async () => {
       },
     ],
   })
+  await syncEditDialogFromRoute()
 })
 </script>
 

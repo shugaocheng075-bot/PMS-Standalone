@@ -38,6 +38,7 @@ public static class InMemoryProjectDataStore
                     .Select(x => new ProjectEntity
                     {
                         Id = x.Id,
+                        OpportunityNumber = x.OpportunityNumber,
                         HospitalName = x.HospitalName,
                         ProductName = x.ProductName,
                         Province = x.Province,
@@ -50,7 +51,17 @@ public static class InMemoryProjectDataStore
                         ContractStatus = x.ContractStatus,
                         ContractValidityStatus = x.ContractValidityStatus,
                         MaintenanceAmount = x.MaintenanceAmount,
-                        OverdueDays = x.OverdueDays
+                        OverdueDays = x.OverdueDays,
+                        ImplementationStatus = x.ImplementationStatus,
+                        WorkHoursManDays = x.WorkHoursManDays,
+                        PersonnelCount = x.PersonnelCount,
+                        Personnel1 = x.Personnel1,
+                        Personnel2 = x.Personnel2,
+                        Personnel3 = x.Personnel3,
+                        Personnel4 = x.Personnel4,
+                        Personnel5 = x.Personnel5,
+                        AfterSalesProjectType = x.AfterSalesProjectType,
+                        Remarks = x.Remarks
                     })
                     .ToList();
             }
@@ -70,6 +81,7 @@ public static class InMemoryProjectDataStore
             return new ProjectEntity
             {
                 Id = found.Id,
+                OpportunityNumber = found.OpportunityNumber,
                 HospitalName = found.HospitalName,
                 ProductName = found.ProductName,
                 Province = found.Province,
@@ -82,7 +94,17 @@ public static class InMemoryProjectDataStore
                 ContractStatus = found.ContractStatus,
                 ContractValidityStatus = found.ContractValidityStatus,
                 MaintenanceAmount = found.MaintenanceAmount,
-                OverdueDays = found.OverdueDays
+                OverdueDays = found.OverdueDays,
+                ImplementationStatus = found.ImplementationStatus,
+                WorkHoursManDays = found.WorkHoursManDays,
+                PersonnelCount = found.PersonnelCount,
+                Personnel1 = found.Personnel1,
+                Personnel2 = found.Personnel2,
+                Personnel3 = found.Personnel3,
+                Personnel4 = found.Personnel4,
+                Personnel5 = found.Personnel5,
+                AfterSalesProjectType = found.AfterSalesProjectType,
+                Remarks = found.Remarks
             };
         }
     }
@@ -371,7 +393,18 @@ public static class InMemoryProjectDataStore
                 ContractStatus = project.ContractStatus,
                 ContractValidityStatus = project.ContractValidityStatus,
                 MaintenanceAmount = project.MaintenanceAmount,
-                OverdueDays = project.OverdueDays
+                OverdueDays = project.OverdueDays,
+                OpportunityNumber = project.OpportunityNumber,
+                ImplementationStatus = project.ImplementationStatus,
+                WorkHoursManDays = project.WorkHoursManDays,
+                PersonnelCount = project.PersonnelCount,
+                Personnel1 = project.Personnel1,
+                Personnel2 = project.Personnel2,
+                Personnel3 = project.Personnel3,
+                Personnel4 = project.Personnel4,
+                Personnel5 = project.Personnel5,
+                AfterSalesProjectType = project.AfterSalesProjectType,
+                Remarks = project.Remarks
             });
         }
 
@@ -445,7 +478,18 @@ public static class InMemoryProjectDataStore
                     HospitalLevel = hospitalLevel,
                     ContractStatus = contractStatus,
                     MaintenanceAmount = amount,
-                    OverdueDays = overdueDays
+                    OverdueDays = overdueDays,
+                    OpportunityNumber = raw.OpportunityNumber,
+                    ImplementationStatus = raw.ImplementationStatus,
+                    WorkHoursManDays = raw.WorkHoursManDays,
+                    PersonnelCount = raw.PersonnelCount,
+                    Personnel1 = raw.Personnel1,
+                    Personnel2 = raw.Personnel2,
+                    Personnel3 = raw.Personnel3,
+                    Personnel4 = raw.Personnel4,
+                    Personnel5 = raw.Personnel5,
+                    AfterSalesProjectType = raw.AfterSalesProjectType,
+                    Remarks = raw.Remarks
                 });
             }
         }
@@ -527,6 +571,26 @@ public static class InMemoryProjectDataStore
             .OrderByDescending(GetStatusPriority)
             .FirstOrDefault() ?? "未知";
 
+        var opportunityNumber = rows
+            .Select(x => x.OpportunityNumber)
+            .FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)) ?? string.Empty;
+
+        var implementationStatus = rows
+            .Where(x => !string.IsNullOrWhiteSpace(x.ImplementationStatus))
+            .GroupBy(x => x.ImplementationStatus)
+            .OrderByDescending(g => g.Count())
+            .ThenBy(g => g.Key)
+            .Select(g => g.Key)
+            .FirstOrDefault() ?? string.Empty;
+
+        var afterSalesProjectType = rows
+            .Select(x => x.AfterSalesProjectType)
+            .FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)) ?? string.Empty;
+
+        var remarks = rows
+            .Select(x => x.Remarks)
+            .FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)) ?? string.Empty;
+
         return new ProjectEntity
         {
             HospitalName = rows[0].HospitalName,
@@ -540,7 +604,18 @@ public static class InMemoryProjectDataStore
             HospitalLevel = hospitalLevel,
             ContractStatus = status,
             MaintenanceAmount = rows.Max(x => x.MaintenanceAmount),
-            OverdueDays = rows.Max(x => x.OverdueDays)
+            OverdueDays = rows.Max(x => x.OverdueDays),
+            OpportunityNumber = opportunityNumber,
+            ImplementationStatus = implementationStatus,
+            WorkHoursManDays = rows.Max(x => x.WorkHoursManDays),
+            PersonnelCount = rows.Max(x => x.PersonnelCount),
+            Personnel1 = rows.Select(x => x.Personnel1).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)) ?? string.Empty,
+            Personnel2 = rows.Select(x => x.Personnel2).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)) ?? string.Empty,
+            Personnel3 = rows.Select(x => x.Personnel3).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)) ?? string.Empty,
+            Personnel4 = rows.Select(x => x.Personnel4).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)) ?? string.Empty,
+            Personnel5 = rows.Select(x => x.Personnel5).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)) ?? string.Empty,
+            AfterSalesProjectType = afterSalesProjectType,
+            Remarks = remarks
         };
     }
 

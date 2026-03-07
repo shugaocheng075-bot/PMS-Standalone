@@ -44,7 +44,7 @@
     </el-card>
 
     <el-card shadow="never" class="table-card">
-      <el-table :data="tableData" v-loading="loading" stripe max-height="520" scrollbar-always-on empty-text="暂无符合条件的数据">
+      <el-table :data="tableData" v-loading="loading" stripe max-height="520" scrollbar-always-on empty-text="暂无符合条件的数据" @row-dblclick="onRowDoubleClick">
         <el-table-column prop="hospitalName" label="医院" min-width="220" show-overflow-tooltip sortable />
         <el-table-column prop="province" label="省份" width="100" show-overflow-tooltip sortable />
         <el-table-column prop="groupName" label="组别" width="120" show-overflow-tooltip />
@@ -57,6 +57,13 @@
         </el-table-column>
         <el-table-column prop="submitDate" label="提交日期" width="120">
           <template #default="scope">{{ scope.row.submitDate ? formatDate(scope.row.submitDate) : '-' }}</template>
+        </el-table-column>
+        <el-table-column label="操作" width="180" fixed="right">
+          <template #default="scope">
+            <el-button v-if="canManageAnnualReport" link type="primary" @click="onOpenEdit(scope.row)">编辑</el-button>
+            <el-button link type="primary" @click="onOpenDetail(scope.row)">详情</el-button>
+            <el-button link @click="goToProjectPage(scope.row)">项目页</el-button>
+          </template>
         </el-table-column>
       </el-table>
 
@@ -72,20 +79,73 @@
         />
       </div>
     </el-card>
+
+    <el-dialog v-model="detailVisible" title="年度报告详情" width="680px">
+      <template v-if="detailItem">
+        <el-descriptions :column="2" border size="small">
+          <el-descriptions-item label="医院">{{ detailItem.hospitalName }}</el-descriptions-item>
+          <el-descriptions-item label="省份">{{ detailItem.province }}</el-descriptions-item>
+          <el-descriptions-item label="组别">{{ detailItem.groupName }}</el-descriptions-item>
+          <el-descriptions-item label="服务人员">{{ detailItem.servicePerson }}</el-descriptions-item>
+          <el-descriptions-item label="年度">{{ detailItem.reportYear }}</el-descriptions-item>
+          <el-descriptions-item label="状态">
+            <el-tag :type="statusTag(detailItem.status)">{{ detailItem.status }}</el-tag>
+          </el-descriptions-item>
+          <el-descriptions-item label="提交日期">{{ detailItem.submitDate ? formatDate(detailItem.submitDate) : '-' }}</el-descriptions-item>
+        </el-descriptions>
+
+        <div class="detail-actions">
+          <el-button v-if="canManageAnnualReport" plain type="primary" @click="onOpenEdit(detailItem)">编辑报告</el-button>
+          <el-button plain @click="goToProjectPage(detailItem)">去项目台账</el-button>
+          <el-button plain @click="goToPersonnelPage(detailItem)">去人员权限页</el-button>
+        </div>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="editVisible" title="编辑年度报告" width="620px">
+      <el-form label-width="100px">
+        <el-form-item label="组别">
+          <el-select v-model="editForm.groupName" clearable filterable style="width: 100%">
+            <el-option v-for="group in filteredGroupOptions" :key="`edit-group-${group}`" :label="group" :value="group" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="服务人员">
+          <el-select v-model="editForm.servicePerson" clearable filterable style="width: 100%">
+            <el-option v-for="person in filteredServicePersonOptions" :key="`edit-person-${person}`" :label="person" :value="person" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="年度">
+          <el-input-number v-model="editForm.reportYear" :min="2020" :max="2035" controls-position="right" style="width: 100%" />
+        </el-form-item>
+        <el-form-item label="状态">
+          <el-select v-model="editForm.status" style="width: 100%">
+            <el-option v-for="status in statusOptions" :key="`edit-status-${status}`" :label="status" :value="status" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="提交日期">
+          <el-date-picker v-model="editForm.submitDate" type="date" value-format="YYYY-MM-DD" clearable style="width: 100%" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="editVisible = false">取消</el-button>
+        <el-button type="primary" :loading="submitting" @click="submitEdit">保存</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { useRoute } from 'vue-router'
-import { fetchAnnualReportList, fetchAnnualReportSummary } from '../../api/modules/annual-report'
-import type { AnnualReportItem, AnnualReportSummary } from '../../types/annual-report'
+import { useRoute, useRouter } from 'vue-router'
+import { fetchAnnualReportList, fetchAnnualReportSummary, updateAnnualReport } from '../../api/modules/annual-report'
+import type { AnnualReportItem, AnnualReportSummary, AnnualReportUpsert } from '../../types/annual-report'
 import { useResilientLoad } from '../../composables/useResilientLoad'
 import { getErrorMessage } from '../../utils/error'
 import { GROUP_OPTIONS, PERSON_OPTIONS } from '../../constants/filterOptions'
 import { useFilterStatePersist } from '../../composables/useFilterStatePersist'
 import { useLinkedRealtimeRefresh } from '../../composables/useLinkedRealtimeRefresh'
+import { useAccessControl } from '../../composables/useAccessControl'
 
 const loading = ref(false)
 const total = ref(0)
@@ -109,6 +169,21 @@ const query = reactive({
   size: 15,
 })
 const route = useRoute()
+const router = useRouter()
+const access = useAccessControl()
+const canManageAnnualReport = computed(() => access.isManager() && access.canPermission('annual-report.view'))
+const detailVisible = ref(false)
+const detailItem = ref<AnnualReportItem | null>(null)
+const editVisible = ref(false)
+const submitting = ref(false)
+const editingId = ref<number | null>(null)
+const editForm = reactive<AnnualReportUpsert>({
+  groupName: '',
+  servicePerson: '',
+  reportYear: new Date().getFullYear(),
+  status: '未开始',
+  submitDate: null,
+})
 
 const readRouteQueryValue = (value: unknown): string => {
   if (typeof value === 'string') {
@@ -122,15 +197,61 @@ const readRouteQueryValue = (value: unknown): string => {
   return ''
 }
 
-const applyDrillQuery = () => {
-  const status = readRouteQueryValue(route.query.status)
-  if (!status) {
+const updateRouteQuery = async (patch: Record<string, string | undefined>) => {
+  const nextQuery = { ...route.query }
+  Object.entries(patch).forEach(([key, value]) => {
+    if (value) {
+      nextQuery[key] = value
+      return
+    }
+
+    delete nextQuery[key]
+  })
+
+  await router.replace({ path: route.path, query: nextQuery })
+}
+
+const clearRouteActionQuery = async () => {
+  if (!readRouteQueryValue(route.query.action) && !readRouteQueryValue(route.query.id)) {
     return
   }
 
-  query.status = status
-  query.page = 1
+  await updateRouteQuery({ action: undefined, id: undefined })
 }
+
+const applyDrillQuery = () => {
+  const status = readRouteQueryValue(route.query.status)
+  const groupName = readRouteQueryValue(route.query.groupName)
+  const servicePerson = readRouteQueryValue(route.query.servicePerson)
+  const hospitalName = readRouteQueryValue(route.query.hospitalName)
+  const reportYear = Number(readRouteQueryValue(route.query.reportYear))
+
+  if (status) {
+    query.status = status
+  }
+
+  if (groupName) {
+    query.groupName = groupName
+  }
+
+  if (servicePerson) {
+    query.servicePerson = servicePerson
+  }
+
+  if (hospitalName) {
+    query.page = 1
+  }
+
+  if (Number.isFinite(reportYear) && reportYear > 0) {
+    query.reportYear = reportYear
+  }
+
+  if (status || groupName || servicePerson || hospitalName || Number.isFinite(reportYear)) {
+    query.page = 1
+  }
+}
+
+const getRouteHospitalName = () => readRouteQueryValue(route.query.hospitalName)
 
 type AnnualReportFilterState = {
   status: string
@@ -149,6 +270,7 @@ const { runInitialLoad } = useResilientLoad()
 const filteredGroupOptions = computed(() => {
   const groups = allRows.value
     .filter((item) => {
+      if (getRouteHospitalName() && item.hospitalName !== getRouteHospitalName()) return false
       if (query.status && item.status !== query.status) return false
       if (query.reportYear && item.reportYear !== query.reportYear) return false
       if (query.servicePerson && item.servicePerson !== query.servicePerson) return false
@@ -164,6 +286,7 @@ const filteredGroupOptions = computed(() => {
 const filteredServicePersonOptions = computed(() => {
   const people = allRows.value
     .filter((item) => {
+      if (getRouteHospitalName() && item.hospitalName !== getRouteHospitalName()) return false
       if (query.status && item.status !== query.status) return false
       if (query.reportYear && item.reportYear !== query.reportYear) return false
       if (query.groupName && item.groupName !== query.groupName) return false
@@ -201,6 +324,146 @@ const statusTag = (status: string) => {
   if (status === '编写中') return 'warning'
   if (status === '已提交') return 'info'
   return 'danger'
+}
+
+const goToProjectPage = (row: AnnualReportItem) => {
+  void router.push({
+    path: '/project/list',
+    query: {
+      groupName: row.groupName,
+      maintenancePersonName: row.servicePerson,
+      action: 'edit',
+    },
+  })
+}
+
+const goToPersonnelPage = (row: AnnualReportItem) => {
+  void router.push({
+    path: '/permission/manage',
+    query: {
+      name: row.servicePerson,
+      groupName: row.groupName,
+    },
+  })
+}
+
+const onOpenDetail = (row: AnnualReportItem, syncRoute = true) => {
+  detailItem.value = row
+  detailVisible.value = true
+  if (syncRoute) {
+    void updateRouteQuery({ action: 'detail', id: String(row.id) })
+  }
+}
+
+const onOpenEdit = (row: AnnualReportItem, syncRoute = true) => {
+  editingId.value = row.id
+  editForm.groupName = row.groupName
+  editForm.servicePerson = row.servicePerson
+  editForm.reportYear = row.reportYear
+  editForm.status = row.status
+  editForm.submitDate = row.submitDate ?? null
+  editVisible.value = true
+  if (syncRoute) {
+    void updateRouteQuery({ action: 'edit', id: String(row.id) })
+  }
+}
+
+const onRowDoubleClick = (row: AnnualReportItem) => {
+  if (canManageAnnualReport.value) {
+    onOpenEdit(row)
+    return
+  }
+
+  onOpenDetail(row)
+}
+
+const submitEdit = async () => {
+  if (!editingId.value) {
+    return
+  }
+
+  submitting.value = true
+  try {
+    const res = await updateAnnualReport(editingId.value, editForm)
+    ElMessage.success('年度报告更新成功')
+    detailItem.value = res.data
+    editVisible.value = false
+    await Promise.allSettled([loadSummary(), loadFilterOptions(), loadData()])
+  } catch (error) {
+    ElMessage.error(getErrorMessage(error, '更新年度报告失败'))
+  } finally {
+    submitting.value = false
+  }
+}
+
+const syncDetailFromRoute = () => {
+  const action = readRouteQueryValue(route.query.action)
+  if (action !== 'detail' && action !== 'edit') {
+    return
+  }
+
+  const id = Number(readRouteQueryValue(route.query.id))
+  if (!Number.isFinite(id) || id <= 0) {
+    return
+  }
+
+  const matched = tableData.value.find((item) => item.id === id) ?? allRows.value.find((item) => item.id === id)
+  if (matched) {
+    if (action === 'edit' && canManageAnnualReport.value) {
+      onOpenEdit(matched, false)
+      return
+    }
+
+    onOpenDetail(matched, false)
+  }
+}
+
+const syncSingleActionFromFilters = () => {
+  const action = readRouteQueryValue(route.query.action)
+  const id = Number(readRouteQueryValue(route.query.id))
+  if ((action !== 'detail' && action !== 'edit') || (Number.isFinite(id) && id > 0) || detailVisible.value || editVisible.value) {
+    return
+  }
+
+  const filtered = allRows.value.filter((item) => {
+    if (getRouteHospitalName() && item.hospitalName !== getRouteHospitalName()) {
+      return false
+    }
+
+    if (query.status && item.status !== query.status) {
+      return false
+    }
+
+    if (query.reportYear && item.reportYear !== query.reportYear) {
+      return false
+    }
+
+    if (query.groupName && item.groupName !== query.groupName) {
+      return false
+    }
+
+    if (query.servicePerson && item.servicePerson !== query.servicePerson) {
+      return false
+    }
+
+    return true
+  })
+
+  if (filtered.length !== 1) {
+    return
+  }
+
+  const matched = filtered[0]
+  if (!matched) {
+    return
+  }
+
+  if (action === 'edit' && canManageAnnualReport.value) {
+    onOpenEdit(matched, false)
+    return
+  }
+
+  onOpenDetail(matched, false)
 }
 
 const loadSummary = async () => {
@@ -258,6 +521,10 @@ const loadData = async () => {
   }
 
   const filtered = allRows.value.filter((item) => {
+    if (getRouteHospitalName() && item.hospitalName !== getRouteHospitalName()) {
+      return false
+    }
+
     if (query.status && item.status !== query.status) {
       return false
     }
@@ -310,6 +577,7 @@ const onReset = () => {
   query.page = 1
   query.size = 15
   clearFilterState()
+  void updateRouteQuery({ hospitalName: undefined, action: undefined, id: undefined })
   loadData()
 }
 
@@ -355,6 +623,25 @@ useLinkedRealtimeRefresh({
   intervalMs: 60000,
 })
 
+watch(detailVisible, (visible) => {
+  if (!visible) {
+    void clearRouteActionQuery()
+  }
+})
+
+watch(editVisible, (visible) => {
+  if (!visible && !detailVisible.value) {
+    void clearRouteActionQuery()
+  }
+})
+
+watch(() => route.fullPath, async () => {
+  applyDrillQuery()
+  await loadData()
+  syncDetailFromRoute()
+  syncSingleActionFromFilters()
+})
+
 onMounted(async () => {
   restoreFilterState()
   applyDrillQuery()
@@ -367,8 +654,16 @@ onMounted(async () => {
       },
     ],
   })
+  syncDetailFromRoute()
+  syncSingleActionFromFilters()
 })
 </script>
 
 <style scoped>
+.detail-actions {
+  margin-top: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
 </style>

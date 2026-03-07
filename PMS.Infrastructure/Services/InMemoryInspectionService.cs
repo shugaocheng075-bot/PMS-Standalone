@@ -8,9 +8,12 @@ public class InMemoryInspectionService : IInspectionService
 {
     private static readonly object SyncRoot = new();
     private const string ResultsStateKey = "inspection_results";
+    private const string PlanOverridesStateKey = "inspection_plan_overrides";
 
     private static readonly List<InspectionResultDto> StoredResults =
         SqliteJsonStore.LoadOrSeed(ResultsStateKey, () => new List<InspectionResultDto>());
+    private static readonly List<InspectionPlanItemDto> PlanOverrides =
+        SqliteJsonStore.LoadOrSeed(PlanOverridesStateKey, () => new List<InspectionPlanItemDto>());
 
     private static long _nextResultId = StoredResults.Count > 0
         ? StoredResults.Max(r => r.Id) + 1
@@ -75,6 +78,38 @@ public class InMemoryInspectionService : IInspectionService
             Page = page,
             Size = size
         });
+    }
+
+    public Task<InspectionPlanItemDto?> UpdateAsync(long id, InspectionPlanUpsertDto dto, CancellationToken cancellationToken = default)
+    {
+        lock (SyncRoot)
+        {
+            var current = BuildSeed().FirstOrDefault(x => x.Id == id);
+            if (current is null)
+            {
+                return Task.FromResult<InspectionPlanItemDto?>(null);
+            }
+
+            current.GroupName = dto.GroupName.Trim();
+            current.Inspector = dto.Inspector.Trim();
+            current.PlanDate = dto.PlanDate;
+            current.ActualDate = dto.ActualDate;
+            current.Status = dto.Status.Trim();
+            current.InspectionType = dto.InspectionType.Trim();
+
+            var existingIndex = PlanOverrides.FindIndex(x => x.Id == id);
+            if (existingIndex >= 0)
+            {
+                PlanOverrides[existingIndex] = current;
+            }
+            else
+            {
+                PlanOverrides.Add(current);
+            }
+
+            PersistPlanOverrides();
+            return Task.FromResult<InspectionPlanItemDto?>(current);
+        }
     }
 
     // ─── SystemAuditTool 巡检结果 ───
@@ -175,13 +210,18 @@ public class InMemoryInspectionService : IInspectionService
         SqliteJsonStore.Save(ResultsStateKey, StoredResults);
     }
 
+    private static void PersistPlanOverrides()
+    {
+        SqliteJsonStore.Save(PlanOverridesStateKey, PlanOverrides);
+    }
+
     // ─── 种子数据 ───
 
     private static List<InspectionPlanItemDto> BuildSeed()
     {
         var statuses = new[] { "已完成", "已计划", "执行中", "已计划", "已取消" };
 
-        return InMemoryProjectDataStore.Projects
+        var seed = InMemoryProjectDataStore.Projects
             .OrderBy(x => x.Id)
             .Select((project, index) =>
             {
@@ -206,5 +246,28 @@ public class InMemoryInspectionService : IInspectionService
                 };
             })
             .ToList();
+
+        if (PlanOverrides.Count == 0)
+        {
+            return seed;
+        }
+
+        foreach (var item in seed)
+        {
+            var overrideItem = PlanOverrides.FirstOrDefault(x => x.Id == item.Id);
+            if (overrideItem is null)
+            {
+                continue;
+            }
+
+            item.GroupName = overrideItem.GroupName;
+            item.Inspector = overrideItem.Inspector;
+            item.PlanDate = overrideItem.PlanDate;
+            item.ActualDate = overrideItem.ActualDate;
+            item.Status = overrideItem.Status;
+            item.InspectionType = overrideItem.InspectionType;
+        }
+
+        return seed;
     }
 }

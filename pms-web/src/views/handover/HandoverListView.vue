@@ -50,7 +50,7 @@
     </el-card>
 
     <el-card shadow="never" class="table-card">
-      <el-table :data="tableData" v-loading="loading" stripe max-height="520" scrollbar-always-on empty-text="暂无符合条件的数据">
+      <el-table :data="tableData" v-loading="loading" stripe max-height="520" scrollbar-always-on empty-text="暂无符合条件的数据" @row-dblclick="onRowDoubleClick">
         <el-table-column prop="handoverNo" label="交接单号" width="130" sortable />
         <el-table-column prop="hospitalName" label="医院" min-width="220" show-overflow-tooltip sortable />
         <el-table-column prop="productName" label="产品" min-width="140" show-overflow-tooltip sortable />
@@ -69,8 +69,11 @@
             {{ scope.row.emailSentDate ? formatDate(scope.row.emailSentDate) : '-' }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="140" fixed="right">
+        <el-table-column label="操作" width="210" fixed="right">
           <template #default="scope">
+            <el-button type="primary" link @click="onOpenDetail(scope.row)">
+              详情
+            </el-button>
             <el-button
               v-if="canManageHandover && nextStage(scope.row.stage)"
               type="primary"
@@ -99,6 +102,38 @@
       </div>
     </el-card>
 
+    <el-dialog v-model="detailVisible" title="交接详情" width="680px">
+      <template v-if="detailItem">
+        <el-descriptions :column="2" border size="small">
+          <el-descriptions-item label="交接单号">{{ detailItem.handoverNo }}</el-descriptions-item>
+          <el-descriptions-item label="阶段">
+            <el-tag :type="stageTag(detailItem.stage)">{{ detailItem.stage }}</el-tag>
+          </el-descriptions-item>
+          <el-descriptions-item label="医院">{{ detailItem.hospitalName }}</el-descriptions-item>
+          <el-descriptions-item label="产品">{{ detailItem.productName }}</el-descriptions-item>
+          <el-descriptions-item label="类型">{{ detailItem.type }}</el-descriptions-item>
+          <el-descriptions-item label="批次">{{ detailItem.batch || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="原组别">{{ detailItem.fromGroup || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="提出人">{{ detailItem.fromOwner || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="对接人">{{ detailItem.toOwner || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="邮件日期">{{ detailItem.emailSentDate ? formatDate(detailItem.emailSentDate) : '-' }}</el-descriptions-item>
+        </el-descriptions>
+
+        <div class="detail-actions">
+          <el-button plain @click="goToProjectPage(detailItem)">去项目台账</el-button>
+          <el-button plain @click="goToInspectionPage(detailItem)">去巡检计划</el-button>
+          <el-button
+            v-if="canManageHandover && nextStage(detailItem.stage)"
+            type="primary"
+            :loading="advancingId === detailItem.id"
+            @click="onAdvanceStage(detailItem)"
+          >
+            推进到{{ nextStage(detailItem.stage) }}
+          </el-button>
+        </div>
+      </template>
+    </el-dialog>
+
     <el-card shadow="never" class="table-card">
       <template #header>
         <div class="kanban-title">交接看板</div>
@@ -109,7 +144,7 @@
           <div class="kanban-col">
             <div class="kanban-col-header">{{ column.stage }}（{{ column.count }}）</div>
             <div class="kanban-items">
-              <div class="kanban-item" v-for="item in column.items" :key="item.id">
+              <div class="kanban-item clickable" v-for="item in column.items" :key="item.id" @click="onOpenDetail(item)">
                 <div class="kanban-item-name">{{ item.hospitalName }}</div>
                 <div class="kanban-item-meta">{{ item.handoverNo }} · {{ item.productName }} · {{ item.toOwner }}</div>
               </div>
@@ -123,9 +158,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import {
   fetchHandovers,
   fetchHandoverKanban,
@@ -143,6 +178,7 @@ import { useAccessControl } from '../../composables/useAccessControl'
 const loading = ref(false)
 const total = ref(0)
 const tableData = ref<HandoverItem[]>([])
+const allRows = ref<HandoverItem[]>([])
 const kanbanColumns = ref<HandoverKanbanColumn[]>([])
 const summary = ref<HandoverSummary>({
   pendingCount: 0,
@@ -162,6 +198,9 @@ const query = reactive({
   size: 15,
 })
 const route = useRoute()
+const router = useRouter()
+const detailVisible = ref(false)
+const detailItem = ref<HandoverItem | null>(null)
 
 const readRouteQueryValue = (value: unknown): string => {
   if (typeof value === 'string') {
@@ -175,18 +214,91 @@ const readRouteQueryValue = (value: unknown): string => {
   return ''
 }
 
-const applyDrillQuery = () => {
-  const stage = readRouteQueryValue(route.query.stage)
-  if (!stage) {
+const updateRouteQuery = async (patch: Record<string, string | undefined>) => {
+  const nextQuery = { ...route.query }
+  Object.entries(patch).forEach(([key, value]) => {
+    if (value) {
+      nextQuery[key] = value
+      return
+    }
+
+    delete nextQuery[key]
+  })
+
+  await router.replace({ path: route.path, query: nextQuery })
+}
+
+const clearRouteActionQuery = async () => {
+  if (!readRouteQueryValue(route.query.action) && !readRouteQueryValue(route.query.id)) {
     return
   }
 
-  query.batch = ''
-  query.type = ''
-  query.fromGroup = ''
-  query.toOwner = ''
-  query.stage = stage
-  query.page = 1
+  await updateRouteQuery({ action: undefined, id: undefined })
+}
+
+const applyDrillQuery = () => {
+  const stage = readRouteQueryValue(route.query.stage)
+  const fromGroup = readRouteQueryValue(route.query.fromGroup)
+  const toOwner = readRouteQueryValue(route.query.toOwner)
+  const batch = readRouteQueryValue(route.query.batch)
+  const type = readRouteQueryValue(route.query.type)
+  const hospitalName = readRouteQueryValue(route.query.hospitalName)
+  const productName = readRouteQueryValue(route.query.productName)
+  let applied = false
+
+  if (stage) {
+    query.stage = stage
+    applied = true
+  }
+
+  if (fromGroup) {
+    query.fromGroup = fromGroup
+    applied = true
+  }
+
+  if (toOwner) {
+    query.toOwner = toOwner
+    applied = true
+  }
+
+  if (batch) {
+    query.batch = batch
+    applied = true
+  }
+
+  if (type) {
+    query.type = type
+    applied = true
+  }
+
+  if (hospitalName || productName) {
+    applied = true
+  }
+
+  if (applied) {
+    query.page = 1
+  }
+}
+
+const getRouteHospitalName = () => readRouteQueryValue(route.query.hospitalName)
+
+const getRouteProductName = () => readRouteQueryValue(route.query.productName)
+
+const buildFilteredRows = (rows: HandoverItem[]) => {
+  const hospitalName = getRouteHospitalName()
+  const productName = getRouteProductName()
+
+  return rows.filter((item) => {
+    if (hospitalName && item.hospitalName !== hospitalName) {
+      return false
+    }
+
+    if (productName && item.productName !== productName) {
+      return false
+    }
+
+    return true
+  })
 }
 
 type HandoverFilterState = {
@@ -232,6 +344,90 @@ const nextStage = (stage: string) => {
   return ''
 }
 
+const goToProjectPage = (item: HandoverItem) => {
+  void router.push({
+    path: '/project/list',
+    query: {
+      hospitalName: item.hospitalName,
+      productName: item.productName,
+      groupName: item.fromGroup,
+      action: 'edit',
+    },
+  })
+}
+
+const goToInspectionPage = (item: HandoverItem) => {
+  void router.push({
+    path: '/inspection/plan',
+    query: {
+      groupName: item.fromGroup,
+      hospitalName: item.hospitalName,
+      productName: item.productName,
+      action: 'detail',
+    },
+  })
+}
+
+const onOpenDetail = (item: HandoverItem, syncRoute = true) => {
+  detailItem.value = item
+  detailVisible.value = true
+  if (syncRoute) {
+    void updateRouteQuery({ action: 'detail', id: String(item.id) })
+  }
+}
+
+const onRowDoubleClick = (row: HandoverItem) => {
+  onOpenDetail(row)
+}
+
+const syncDetailFromRoute = async () => {
+  const action = readRouteQueryValue(route.query.action)
+  if (action !== 'detail') {
+    return
+  }
+
+  const id = Number(readRouteQueryValue(route.query.id))
+  if (!Number.isFinite(id) || id <= 0) {
+    return
+  }
+
+  const matched = tableData.value.find((item) => item.id === id)
+    ?? kanbanColumns.value.flatMap((column) => column.items).find((item) => item.id === id)
+  if (matched) {
+    onOpenDetail(matched, false)
+    return
+  }
+
+  try {
+    const res = await fetchHandovers({ ...query, page: 1, size: 1000 })
+    const found = res.data.items.find((item) => item.id === id)
+    if (found) {
+      onOpenDetail(found, false)
+    }
+  } catch {
+  }
+}
+
+const syncSingleDetailFromFilters = () => {
+  const action = readRouteQueryValue(route.query.action)
+  const id = Number(readRouteQueryValue(route.query.id))
+  if (action !== 'detail' || (Number.isFinite(id) && id > 0) || detailVisible.value) {
+    return
+  }
+
+  const filtered = buildFilteredRows(allRows.value)
+    .filter((item) => !query.stage || item.stage === query.stage)
+    .filter((item) => !query.batch || item.batch === query.batch)
+    .filter((item) => !query.type || item.type === query.type)
+    .filter((item) => !query.fromGroup || item.fromGroup === query.fromGroup)
+    .filter((item) => !query.toOwner || item.toOwner === query.toOwner)
+
+  const matched = filtered[0]
+  if (filtered.length === 1 && matched) {
+    onOpenDetail(matched, false)
+  }
+}
+
 const loadSummary = async () => {
   try {
     const res = await fetchHandoverSummary()
@@ -255,6 +451,7 @@ const loadFilterOptions = async () => {
   try {
     const res = await fetchHandovers({ page: 1, size: 1000 })
     const items = res.data.items
+    allRows.value = items
 
     if (!items.length) {
       return
@@ -291,6 +488,25 @@ const loadFilterOptions = async () => {
 const loadData = async () => {
   loading.value = true
   try {
+    if (getRouteHospitalName() || getRouteProductName()) {
+      const source = allRows.value.length > 0 ? allRows.value : (await fetchHandovers({ page: 1, size: 1000 })).data.items
+      if (allRows.value.length === 0) {
+        allRows.value = source
+      }
+
+      const filtered = buildFilteredRows(source)
+        .filter((item) => !query.stage || item.stage === query.stage)
+        .filter((item) => !query.batch || item.batch === query.batch)
+        .filter((item) => !query.type || item.type === query.type)
+        .filter((item) => !query.fromGroup || item.fromGroup === query.fromGroup)
+        .filter((item) => !query.toOwner || item.toOwner === query.toOwner)
+
+      total.value = filtered.length
+      const start = (query.page - 1) * query.size
+      tableData.value = filtered.slice(start, start + query.size)
+      return
+    }
+
     const res = await fetchHandovers(query)
     tableData.value = res.data.items
     total.value = res.data.total
@@ -327,6 +543,7 @@ const onReset = () => {
   query.page = 1
   query.size = 15
   clearFilterState()
+  void updateRouteQuery({ hospitalName: undefined, productName: undefined, action: undefined, id: undefined })
   loadData()
 }
 
@@ -379,8 +596,9 @@ const onAdvanceStage = async (item: HandoverItem) => {
 
   advancingId.value = item.id
   try {
-    await updateHandoverStage(item.id, { targetStage })
+    const res = await updateHandoverStage(item.id, { targetStage })
     ElMessage.success(`已推进到${targetStage}`)
+    detailItem.value = res.data
     await Promise.all([loadSummary(), loadData(), loadKanban()])
     notifyDataChanged('global')
   } catch (error) {
@@ -389,6 +607,19 @@ const onAdvanceStage = async (item: HandoverItem) => {
     advancingId.value = null
   }
 }
+
+watch(detailVisible, (visible) => {
+  if (!visible) {
+    void clearRouteActionQuery()
+  }
+})
+
+watch(() => route.fullPath, async () => {
+  applyDrillQuery()
+  await Promise.allSettled([loadData(), loadKanban()])
+  await syncDetailFromRoute()
+  syncSingleDetailFromFilters()
+})
 
 onMounted(async () => {
   await access.ensureAccessProfileLoaded()
@@ -407,10 +638,19 @@ onMounted(async () => {
       },
     ],
   })
+  await syncDetailFromRoute()
+  syncSingleDetailFromFilters()
 })
 </script>
 
 <style scoped>
+.detail-actions {
+  margin-top: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .kanban-title {
   font-weight: 600;
 }
@@ -469,5 +709,9 @@ onMounted(async () => {
   color: var(--el-text-color-placeholder);
   text-align: center;
   padding: 24px 0;
+}
+
+.clickable {
+  cursor: pointer;
 }
 </style>

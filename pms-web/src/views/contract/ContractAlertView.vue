@@ -50,7 +50,7 @@
     </el-card>
 
     <el-card shadow="never" class="table-card">
-      <el-table :data="tableData" v-loading="loading" stripe max-height="520" scrollbar-always-on empty-text="暂无符合条件的数据">
+      <el-table :data="tableData" v-loading="loading" stripe max-height="520" scrollbar-always-on empty-text="暂无符合条件的数据" @row-dblclick="onGotoProject">
         <el-table-column prop="hospitalName" label="医院" min-width="220" show-overflow-tooltip sortable />
         <el-table-column prop="province" label="省份" width="100" show-overflow-tooltip />
         <el-table-column prop="groupName" label="组别" width="120" show-overflow-tooltip />
@@ -65,6 +65,11 @@
         <el-table-column prop="alertLevel" label="预警级别" width="120" sortable>
           <template #default="scope">
             <el-tag :type="tagType(scope.row.alertLevel)">{{ scope.row.alertLevel }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="120" fixed="right">
+          <template #default="scope">
+            <el-button link type="primary" @click="onGotoProject(scope.row)">去处理</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -87,7 +92,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { fetchContractAlerts, fetchContractAlertSummary } from '../../api/modules/contract'
 import type { ContractAlertItem, ContractAlertSummary } from '../../types/contract'
 import { useResilientLoad } from '../../composables/useResilientLoad'
@@ -110,6 +115,7 @@ const query = reactive({
   size: 15,
 })
 const route = useRoute()
+const router = useRouter()
 
 const readRouteQueryValue = (value: unknown): string => {
   if (typeof value === 'string') {
@@ -125,7 +131,30 @@ const readRouteQueryValue = (value: unknown): string => {
 
 const applyDrillQuery = () => {
   const alertLevel = readRouteQueryValue(route.query.alertLevel)
+  const province = readRouteQueryValue(route.query.province)
+  const groupName = readRouteQueryValue(route.query.groupName)
+  const salesName = readRouteQueryValue(route.query.salesName)
+  let applied = false
+
+  if (province) {
+    query.province = province
+    applied = true
+  }
+
+  if (groupName) {
+    query.groupName = groupName
+    applied = true
+  }
+
+  if (salesName) {
+    query.salesName = salesName
+    applied = true
+  }
+
   if (!alertLevel) {
+    if (applied) {
+      query.page = 1
+    }
     return
   }
 
@@ -279,6 +308,19 @@ const onReset = () => {
   loadData()
 }
 
+const onGotoProject = (row: ContractAlertItem) => {
+  void router.push({
+    path: '/project/list',
+    query: {
+      hospitalName: row.hospitalName,
+      groupName: row.groupName,
+      salesName: row.salesName,
+      contractStatus: row.contractStatus,
+      action: 'edit',
+    },
+  })
+}
+
 const { restore: restoreFilterState, clear: clearFilterState } = useFilterStatePersist<ContractFilterState>({
   key: 'contract-alert',
   getState: () => ({
@@ -321,6 +363,11 @@ onMounted(async () => {
       },
     ],
   })
+})
+
+watch(() => route.fullPath, () => {
+  applyDrillQuery()
+  loadData()
 })
 </script>
 

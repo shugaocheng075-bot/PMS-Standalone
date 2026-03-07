@@ -29,6 +29,9 @@
             <el-option label="驻场" value="驻场" />
             <el-option label="远程" value="远程" />
             <el-option label="出差" value="出差" />
+            <el-option label="病假" value="病假" />
+            <el-option label="事假" value="事假" />
+            <el-option label="其他特殊" value="其他特殊" />
           </el-select>
         </el-form-item>
         <el-form-item label="日期范围">
@@ -50,7 +53,7 @@
     </el-card>
 
     <el-card shadow="never" class="table-card">
-      <el-table :data="tableData" v-loading="loading" stripe max-height="520" scrollbar-always-on empty-text="暂无符合条件的数据">
+      <el-table :data="tableData" v-loading="loading" stripe max-height="520" scrollbar-always-on empty-text="暂无符合条件的数据" @row-dblclick="onRowDoubleClick">
         <el-table-column prop="id" label="ID" width="70" />
         <el-table-column prop="personnelName" label="人员" width="100" />
         <el-table-column prop="hospitalName" label="医院名称" min-width="180" show-overflow-tooltip />
@@ -121,6 +124,9 @@
             <el-option label="驻场" value="驻场" />
             <el-option label="远程" value="远程" />
             <el-option label="出差" value="出差" />
+            <el-option label="病假" value="病假" />
+            <el-option label="事假" value="事假" />
+            <el-option label="其他特殊" value="其他特殊" />
           </el-select>
         </el-form-item>
         <el-form-item label="工作内容"><el-input v-model="form.description" type="textarea" :rows="3" /></el-form-item>
@@ -149,7 +155,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import {
@@ -170,6 +177,8 @@ import { useLinkedRealtimeRefresh } from '../../composables/useLinkedRealtimeRef
 
 const access = useAccessControl()
 const canManage = computed(() => access.isManager() && access.canPermission('workhours.manage'))
+const route = useRoute()
+const router = useRouter()
 
 const loading = ref(false)
 const submitLoading = ref(false)
@@ -184,6 +193,7 @@ const accessibleHospitals = ref<string[]>([])
 const dateRange = ref<[string, string] | null>(null)
 const detailItem = ref<WorkHoursItem | null>(null)
 const summary = ref<WorkHoursSummary>({ total: 0, totalHours: 0, onsiteCount: 0, remoteCount: 0, travelCount: 0 })
+const workTypeOptions = ['驻场', '远程', '出差', '病假', '事假', '其他特殊'] as const
 
 const query = reactive({
   personnelName: '',
@@ -192,6 +202,40 @@ const query = reactive({
   page: 1,
   size: 15,
 })
+
+const readRouteQueryValue = (value: unknown): string => {
+  if (typeof value === 'string') {
+    return value
+  }
+
+  if (Array.isArray(value) && typeof value[0] === 'string') {
+    return value[0]
+  }
+
+  return ''
+}
+
+const updateRouteQuery = async (patch: Record<string, string | undefined>) => {
+  const nextQuery = { ...route.query }
+  Object.entries(patch).forEach(([key, value]) => {
+    if (value) {
+      nextQuery[key] = value
+      return
+    }
+
+    delete nextQuery[key]
+  })
+
+  await router.replace({ path: route.path, query: nextQuery })
+}
+
+const clearRouteActionQuery = async () => {
+  if (!readRouteQueryValue(route.query.action) && !readRouteQueryValue(route.query.id)) {
+    return
+  }
+
+  await updateRouteQuery({ action: undefined, id: undefined })
+}
 
 const form = reactive<WorkHoursUpsert>({
   projectId: 0,
@@ -253,6 +297,8 @@ const formRules: FormRules<WorkHoursUpsert> = {
 const typeTag = (type: string) => {
   if (type === '驻场') return 'success'
   if (type === '远程') return 'warning'
+  if (type === '病假') return 'danger'
+  if (type === '事假' || type === '其他特殊') return 'info'
   return 'danger'
 }
 
@@ -330,6 +376,30 @@ const onTypeClick = (workType: string) => {
   loadData()
 }
 
+const applyRouteFilters = () => {
+  const personnelName = readRouteQueryValue(route.query.personnelName)
+  const hospitalName = readRouteQueryValue(route.query.hospitalName)
+  const workType = readRouteQueryValue(route.query.workType)
+
+  if (personnelName) {
+    query.personnelName = personnelName
+  }
+
+  if (hospitalName) {
+    query.hospitalName = hospitalName
+  }
+
+  if (!workType || !workTypeOptions.includes(workType as (typeof workTypeOptions)[number])) {
+    if (personnelName || hospitalName) {
+      query.page = 1
+    }
+    return
+  }
+
+  query.workType = workType
+  query.page = 1
+}
+
 const onPageSizeChange = (size: number) => {
   query.size = size
   query.page = 1
@@ -353,23 +423,31 @@ const resetForm = () => {
   personnelName.value = ''
 }
 
-const onOpenCreate = () => {
-  if (!canManage.value) {
-    ElMessage.warning('当前账号无工时管理权限')
-    return
+const fillCreateWorkType = () => {
+  const workType = readRouteQueryValue(route.query.workType)
+  if (workType && workTypeOptions.includes(workType as (typeof workTypeOptions)[number])) {
+    form.workType = workType
   }
 
+  const routePersonnelName = readRouteQueryValue(route.query.personnelName)
+  const routeHospitalName = readRouteQueryValue(route.query.hospitalName)
+  if (routePersonnelName) {
+    personnelName.value = routePersonnelName
+  }
+
+  if (routeHospitalName) {
+    form.hospitalName = routeHospitalName
+  }
+}
+
+const openCreateDialog = () => {
   editingId.value = null
   resetForm()
+  fillCreateWorkType()
   dialogVisible.value = true
 }
 
-const onOpenEdit = (row: WorkHoursItem) => {
-  if (!canManage.value) {
-    ElMessage.warning('当前账号无工时管理权限')
-    return
-  }
-
+const openEditDialog = (row: WorkHoursItem) => {
   editingId.value = row.id
   Object.assign(form, {
     projectId: row.projectId,
@@ -381,6 +459,69 @@ const onOpenEdit = (row: WorkHoursItem) => {
   })
   personnelName.value = row.personnelName
   dialogVisible.value = true
+}
+
+const onOpenCreate = () => {
+  if (!canManage.value) {
+    ElMessage.warning('当前账号无工时管理权限')
+    return
+  }
+
+  openCreateDialog()
+  void updateRouteQuery({ action: 'create', id: undefined })
+}
+
+const onOpenEdit = (row: WorkHoursItem) => {
+  if (!canManage.value) {
+    ElMessage.warning('当前账号无工时管理权限')
+    return
+  }
+
+  openEditDialog(row)
+  void updateRouteQuery({ action: 'edit', id: String(row.id) })
+}
+
+const onRowDoubleClick = (row: WorkHoursItem) => {
+  if (!canManage.value) {
+    return
+  }
+
+  onOpenEdit(row)
+}
+
+const syncDialogFromRoute = async () => {
+  const action = readRouteQueryValue(route.query.action)
+  if (!action) {
+    return
+  }
+
+  if (action === 'create') {
+    if (canManage.value && !dialogVisible.value) {
+      openCreateDialog()
+    }
+    return
+  }
+
+  if (action !== 'edit' || !canManage.value) {
+    return
+  }
+
+  const id = Number(readRouteQueryValue(route.query.id))
+  if (!Number.isFinite(id) || id <= 0) {
+    return
+  }
+
+  const matched = tableData.value.find((item) => item.id === id)
+  if (matched) {
+    openEditDialog(matched)
+    return
+  }
+
+  try {
+    const res = await fetchWorkHoursById(id)
+    openEditDialog(res.data)
+  } catch {
+  }
 }
 
 const onOpenDetail = async (id: number) => {
@@ -455,8 +596,20 @@ const onDelete = async (row: WorkHoursItem) => {
   }
 }
 
+watch(dialogVisible, (visible) => {
+  if (!visible) {
+    void clearRouteActionQuery()
+  }
+})
+
+watch(() => route.fullPath, () => {
+  applyRouteFilters()
+  void syncDialogFromRoute()
+})
+
 onMounted(async () => {
   const restored = filterPersist.restore()
+  applyRouteFilters()
 
   await runInitialLoad({
     tasks: [loadScope, loadSummary, loadData],
@@ -470,6 +623,8 @@ onMounted(async () => {
       },
     ],
   })
+
+  await syncDialogFromRoute()
 })
 </script>
 

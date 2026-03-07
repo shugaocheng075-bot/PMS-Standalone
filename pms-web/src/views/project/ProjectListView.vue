@@ -71,7 +71,7 @@
     </el-card>
 
     <el-card shadow="never" class="table-card">
-      <el-table :data="tableData" v-loading="loading" stripe max-height="520" scrollbar-always-on empty-text="暂无符合条件的数据" @selection-change="onSelectionChange">
+      <el-table :data="tableData" v-loading="loading" stripe max-height="520" scrollbar-always-on empty-text="暂无符合条件的数据" @selection-change="onSelectionChange" @row-dblclick="onRowDoubleClick">
         <el-table-column v-if="canManageProjects" type="selection" width="46" />
         <el-table-column prop="hospitalName" label="医院名称" min-width="220" show-overflow-tooltip sortable />
         <el-table-column prop="productName" label="产品" min-width="180" show-overflow-tooltip sortable />
@@ -91,6 +91,11 @@
         <el-table-column prop="overdueDays" label="超期/剩余天数" width="130" align="right" sortable>
           <template #default="scope">
             <span :class="serviceDaysClass(scope.row)">{{ serviceDaysText(scope.row) }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column v-if="canManageProjects" label="操作" width="100" fixed="right">
+          <template #default="scope">
+            <el-button link type="primary" @click="onOpenEdit(scope.row)">编辑</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -135,14 +140,42 @@
         <el-button type="primary" :loading="batchUpdating" @click="submitBatchEdit">提交</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog v-model="editVisible" title="编辑项目台账" width="560px">
+      <el-form label-width="110px">
+        <el-form-item label="合同状态">
+          <el-select v-model="editForm.contractStatus" clearable placeholder="请选择合同状态" style="width: 100%">
+            <el-option v-for="status in contractStatusOptions" :key="`edit-status-${status}`" :label="status" :value="status" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="组别">
+          <el-input v-model="editForm.groupName" clearable />
+        </el-form-item>
+        <el-form-item label="销售">
+          <el-input v-model="editForm.salesName" clearable />
+        </el-form-item>
+        <el-form-item label="维护人员">
+          <el-input v-model="editForm.maintenancePersonName" clearable />
+        </el-form-item>
+        <el-form-item label="医院级别">
+          <el-select v-model="editForm.hospitalLevel" clearable placeholder="请选择医院级别" style="width: 100%">
+            <el-option v-for="level in levelOptions" :key="`edit-level-${level}`" :label="level" :value="level" />
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button :disabled="editSubmitting" @click="editVisible = false">取消</el-button>
+        <el-button type="primary" :loading="editSubmitting" @click="submitEdit">保存</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { useRoute } from 'vue-router'
-import { batchUpdateProjects, exportProjects, fetchProjectList } from '../../api/modules/project'
+import { useRoute, useRouter } from 'vue-router'
+import { batchUpdateProjects, exportProjects, fetchProjectList, updateProject } from '../../api/modules/project'
 import type { ProjectItem } from '../../types/project'
 import { getErrorMessage } from '../../utils/error'
 import { GROUP_OPTIONS, PROVINCE_OPTIONS } from '../../constants/filterOptions'
@@ -153,12 +186,23 @@ import { useAccessControl } from '../../composables/useAccessControl'
 const loading = ref(false)
 const exporting = ref(false)
 const batchUpdating = ref(false)
+const editSubmitting = ref(false)
 const total = ref(0)
 const tableData = ref<ProjectItem[]>([])
 const selectedProjectIds = ref<number[]>([])
 const batchEditVisible = ref(false)
+const editVisible = ref(false)
+const editingId = ref<number | null>(null)
 
 const batchEditForm = reactive({
+  contractStatus: '',
+  groupName: '',
+  salesName: '',
+  maintenancePersonName: '',
+  hospitalLevel: '',
+})
+
+const editForm = reactive({
   contractStatus: '',
   groupName: '',
   salesName: '',
@@ -190,6 +234,7 @@ const query = reactive({
   size: 15,
 })
 const route = useRoute()
+const router = useRouter()
 
 const readRouteQueryValue = (value: unknown): string => {
   if (typeof value === 'string') {
@@ -201,6 +246,28 @@ const readRouteQueryValue = (value: unknown): string => {
   }
 
   return ''
+}
+
+const updateRouteQuery = async (patch: Record<string, string | undefined>) => {
+  const nextQuery = { ...route.query }
+  Object.entries(patch).forEach(([key, value]) => {
+    if (value) {
+      nextQuery[key] = value
+      return
+    }
+
+    delete nextQuery[key]
+  })
+
+  await router.replace({ path: route.path, query: nextQuery })
+}
+
+const clearRouteActionQuery = async () => {
+  if (!readRouteQueryValue(route.query.action) && !readRouteQueryValue(route.query.id)) {
+    return
+  }
+
+  await updateRouteQuery({ action: undefined, id: undefined })
 }
 
 const afterSalesEndDateRange = ref<string[]>([])
@@ -223,7 +290,42 @@ type ProjectFilterState = {
 
 const applyDrillQuery = () => {
   const contractStatus = readRouteQueryValue(route.query.contractStatus)
+  const groupName = readRouteQueryValue(route.query.groupName)
+  const hospitalName = readRouteQueryValue(route.query.hospitalName)
+  const productName = readRouteQueryValue(route.query.productName)
+  const salesName = readRouteQueryValue(route.query.salesName)
+  const maintenancePersonName = readRouteQueryValue(route.query.maintenancePersonName)
+  let applied = false
+
+  if (hospitalName) {
+    query.hospitalName = hospitalName
+    applied = true
+  }
+
+  if (groupName) {
+    query.groupName = groupName
+    applied = true
+  }
+
+  if (productName) {
+    query.productName = productName
+    applied = true
+  }
+
+  if (salesName) {
+    query.salesName = salesName
+    applied = true
+  }
+
+  if (maintenancePersonName) {
+    query.maintenancePersonName = maintenancePersonName
+    applied = true
+  }
+
   if (!contractStatus) {
+    if (applied) {
+      query.page = 1
+    }
     return
   }
 
@@ -488,6 +590,90 @@ const openBatchEdit = () => {
   batchEditVisible.value = true
 }
 
+const openEditDialog = (row: ProjectItem) => {
+  editingId.value = row.id
+  editForm.contractStatus = getDisplayContractStatus(row)
+  editForm.groupName = row.groupName ?? ''
+  editForm.salesName = row.salesName ?? ''
+  editForm.maintenancePersonName = row.maintenancePersonName ?? ''
+  editForm.hospitalLevel = row.hospitalLevel ?? ''
+  editVisible.value = true
+}
+
+const onOpenEdit = (row: ProjectItem) => {
+  if (!canManageProjects.value) {
+    return
+  }
+
+  openEditDialog(row)
+  void updateRouteQuery({ action: 'edit', id: String(row.id) })
+}
+
+const onRowDoubleClick = (row: ProjectItem) => {
+  if (!canManageProjects.value) {
+    return
+  }
+
+  onOpenEdit(row)
+}
+
+const syncEditDialogFromRoute = () => {
+  if (!canManageProjects.value) {
+    return
+  }
+
+  const action = readRouteQueryValue(route.query.action)
+  if (action !== 'edit') {
+    return
+  }
+
+  const id = Number(readRouteQueryValue(route.query.id))
+  if (!Number.isFinite(id) || id <= 0) {
+    const singleRow = tableData.value.length === 1 ? tableData.value[0] : null
+    if (singleRow) {
+      openEditDialog(singleRow)
+    }
+    return
+  }
+
+  const matched = tableData.value.find((item) => item.id === id)
+  if (matched) {
+    openEditDialog(matched)
+  }
+}
+
+const submitEdit = async () => {
+  if (!editingId.value) {
+    return
+  }
+
+  const payload = {
+    contractStatus: editForm.contractStatus.trim() || undefined,
+    groupName: editForm.groupName.trim() || undefined,
+    salesName: editForm.salesName.trim() || undefined,
+    maintenancePersonName: editForm.maintenancePersonName.trim() || undefined,
+    hospitalLevel: editForm.hospitalLevel.trim() || undefined,
+  }
+
+  if (!payload.contractStatus && !payload.groupName && !payload.salesName && !payload.maintenancePersonName && !payload.hospitalLevel) {
+    ElMessage.warning('请至少填写一个需要修改的字段')
+    return
+  }
+
+  editSubmitting.value = true
+  try {
+    await updateProject(editingId.value, payload)
+    ElMessage.success('更新成功')
+    editVisible.value = false
+    notifyDataChanged('project')
+    await loadData()
+  } catch (error) {
+    ElMessage.error(getErrorMessage(error, '更新项目失败，请稍后重试'))
+  } finally {
+    editSubmitting.value = false
+  }
+}
+
 const submitBatchEdit = async () => {
   const payload = {
     projectIds: selectedProjectIds.value,
@@ -508,6 +694,7 @@ const submitBatchEdit = async () => {
     const res = await batchUpdateProjects(payload)
     ElMessage.success(res.data.message ?? '批量更新成功')
     batchEditVisible.value = false
+    notifyDataChanged('project')
     await loadData()
   } catch (error) {
     ElMessage.error(getErrorMessage(error, '批量更新失败，请稍后重试'))
@@ -582,16 +769,28 @@ const refreshLinkedData = async () => {
   await Promise.allSettled([loadFilterOptions(), loadData()])
 }
 
-useLinkedRealtimeRefresh({
+const { notifyDataChanged } = useLinkedRealtimeRefresh({
   refresh: refreshLinkedData,
   scope: 'project',
   intervalMs: 60000,
+})
+
+watch(editVisible, (visible) => {
+  if (!visible) {
+    void clearRouteActionQuery()
+  }
+})
+
+watch(() => route.fullPath, () => {
+  applyDrillQuery()
+  syncEditDialogFromRoute()
 })
 
 onMounted(async () => {
   restoreFilterState()
   applyDrillQuery()
   await refreshLinkedData()
+  syncEditDialogFromRoute()
 })
 </script>
 

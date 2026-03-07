@@ -16,6 +16,9 @@ import WorkHoursView from '../views/workhours/WorkHoursView.vue'
 import MonthlyReportView from '../views/monthly-report/MonthlyReportView.vue'
 import MS010001013001View from '../views/complex-model/MS010001013001View.vue'
 import LoginView from '../views/login/LoginView.vue'
+import KpiDashboardView from '../views/dashboard/KpiDashboardView.vue'
+import WorkHoursReportView from '../views/report/WorkHoursReportView.vue'
+import MonthlyReportGenerateView from '../views/report/MonthlyReportGenerateView.vue'
 import { clearAuthState, isAuthenticated, resolveRoutePermission } from '../constants/access'
 import { useAccessControl } from '../composables/useAccessControl'
 
@@ -133,6 +136,24 @@ const router = createRouter({
       name: 'maintenance-data',
       component: DataMaintenanceView,
       meta: { title: '数据维护中心', permission: 'maintenance.manage' },
+    },
+    {
+      path: '/dashboard/kpi',
+      name: 'dashboard-kpi',
+      component: KpiDashboardView,
+      meta: { title: 'KPI 概览', permission: 'dashboard.view' },
+    },
+    {
+      path: '/report/workhours',
+      name: 'report-workhours',
+      component: WorkHoursReportView,
+      meta: { title: '工时报表', permission: 'workhours.view' },
+    },
+    {
+      path: '/report/monthly-generate',
+      name: 'report-monthly-generate',
+      component: MonthlyReportGenerateView,
+      meta: { title: '月度报告生成', permission: 'monthly-report.view' },
     },
     {
       path: '/docs/design-spec',

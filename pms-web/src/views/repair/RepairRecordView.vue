@@ -38,7 +38,7 @@
     </el-card>
 
     <el-card shadow="never" class="table-card">
-      <el-table :data="tableData" v-loading="loading" stripe max-height="520" scrollbar-always-on empty-text="暂无符合条件的数据">
+      <el-table :data="tableData" v-loading="loading" stripe max-height="520" scrollbar-always-on empty-text="暂无符合条件的数据" @row-dblclick="onRowDoubleClick">
         <el-table-column prop="id" label="ID" width="70" />
         <el-table-column prop="hospitalName" label="医院名称" min-width="180" show-overflow-tooltip />
         <el-table-column prop="productName" label="产品名称" min-width="140" show-overflow-tooltip />
@@ -157,9 +157,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
+import { useRoute, useRouter } from 'vue-router'
 import {
   fetchRepairRecords,
   fetchRepairSummary,
@@ -198,6 +199,42 @@ const tableData = ref<RepairRecordItem[]>([])
 const accessibleHospitals = ref<string[]>([])
 const detailItem = ref<RepairRecordItem | null>(null)
 const summary = ref<RepairRecordSummary>({ total: 0, pendingCount: 0, inProgressCount: 0, completedCount: 0 })
+const route = useRoute()
+const router = useRouter()
+
+const readRouteQueryValue = (value: unknown): string => {
+  if (typeof value === 'string') {
+    return value
+  }
+
+  if (Array.isArray(value) && typeof value[0] === 'string') {
+    return value[0]
+  }
+
+  return ''
+}
+
+const updateRouteQuery = async (patch: Record<string, string | undefined>) => {
+  const nextQuery = { ...route.query }
+  Object.entries(patch).forEach(([key, value]) => {
+    if (value) {
+      nextQuery[key] = value
+      return
+    }
+
+    delete nextQuery[key]
+  })
+
+  await router.replace({ path: route.path, query: nextQuery })
+}
+
+const clearRouteActionQuery = async () => {
+  if (!readRouteQueryValue(route.query.action) && !readRouteQueryValue(route.query.id)) {
+    return
+  }
+
+  await updateRouteQuery({ action: undefined, id: undefined })
+}
 
 const query = reactive({
   hospitalName: '',
@@ -262,6 +299,32 @@ const formRules: FormRules<RepairRecordUpsert> = {
   hospitalName: [{ required: true, message: '请选择医院名称', trigger: 'change' }],
   description: [{ required: true, message: '请输入问题描述', trigger: 'blur' }],
   status: [{ required: true, message: '请选择状态', trigger: 'change' }],
+}
+
+const applyRouteFilters = () => {
+  const status = readRouteQueryValue(route.query.status)
+  const hospitalName = readRouteQueryValue(route.query.hospitalName)
+  const reporterName = readRouteQueryValue(route.query.reporterName)
+  let applied = false
+
+  if (status) {
+    query.status = status
+    applied = true
+  }
+
+  if (hospitalName) {
+    query.hospitalName = hospitalName
+    applied = true
+  }
+
+  if (reporterName) {
+    query.reporterName = reporterName
+    applied = true
+  }
+
+  if (applied) {
+    query.page = 1
+  }
 }
 
 const statusTag = (status: string) => {
@@ -390,6 +453,7 @@ const onOpenCreate = () => {
   editingId.value = null
   resetForm()
   dialogVisible.value = true
+  void updateRouteQuery({ action: 'create', id: undefined })
 }
 
 const onOpenEdit = (row: RepairRecordItem) => {
@@ -420,6 +484,16 @@ const onOpenEdit = (row: RepairRecordItem) => {
     urgency: row.urgency,
   })
   dialogVisible.value = true
+  void updateRouteQuery({ action: 'edit', id: String(row.id) })
+}
+
+const onRowDoubleClick = (row: RepairRecordItem) => {
+  if (canEditOrDelete.value) {
+    onOpenEdit(row)
+    return
+  }
+
+  void onOpenDetail(row.id)
 }
 
 const onOpenDetail = async (id: number) => {
@@ -428,10 +502,51 @@ const onOpenDetail = async (id: number) => {
     const res = await fetchRepairRecordById(id)
     detailItem.value = res.data
     detailVisible.value = true
+    void updateRouteQuery({ action: 'detail', id: String(id) })
   } catch (error) {
     ElMessage.error(getErrorMessage(error, '加载报修详情失败，请稍后重试'))
   } finally {
     detailLoadingId.value = null
+  }
+}
+
+const syncDialogFromRoute = async () => {
+  const action = readRouteQueryValue(route.query.action)
+  if (!action) {
+    return
+  }
+
+  if (action === 'create') {
+    if (canCreate.value && !dialogVisible.value) {
+      editingId.value = null
+      resetForm()
+      dialogVisible.value = true
+    }
+    return
+  }
+
+  const id = Number(readRouteQueryValue(route.query.id))
+  if (!Number.isFinite(id) || id <= 0) {
+    return
+  }
+
+  if (action === 'edit' && canEditOrDelete.value) {
+    const matched = tableData.value.find((item) => item.id === id)
+    if (matched) {
+      onOpenEdit(matched)
+      return
+    }
+
+    try {
+      const res = await fetchRepairRecordById(id)
+      onOpenEdit(res.data)
+    } catch {
+    }
+    return
+  }
+
+  if (action === 'detail' && !detailVisible.value) {
+    await onOpenDetail(id)
   }
 }
 
@@ -501,6 +616,7 @@ const onDelete = async (row: RepairRecordItem) => {
 
 onMounted(async () => {
   const restored = filterPersist.restore()
+  applyRouteFilters()
 
   await runInitialLoad({
     tasks: [loadScope, loadSummary, loadData],
@@ -514,6 +630,25 @@ onMounted(async () => {
       },
     ],
   })
+
+  await syncDialogFromRoute()
+})
+
+watch(dialogVisible, (visible) => {
+  if (!visible && !detailVisible.value) {
+    void clearRouteActionQuery()
+  }
+})
+
+watch(detailVisible, (visible) => {
+  if (!visible && !dialogVisible.value) {
+    void clearRouteActionQuery()
+  }
+})
+
+watch(() => route.fullPath, () => {
+  applyRouteFilters()
+  void syncDialogFromRoute()
 })
 </script>
 

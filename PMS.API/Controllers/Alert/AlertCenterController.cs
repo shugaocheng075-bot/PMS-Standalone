@@ -124,7 +124,11 @@ public class AlertCenterController(
             RelatedPath = "/contract/alerts",
             RelatedQuery = new Dictionary<string, string>
             {
-                ["alertLevel"] = x.AlertLevel
+                ["alertLevel"] = x.AlertLevel,
+                ["hospitalName"] = x.HospitalName,
+                ["groupName"] = x.GroupName,
+                ["salesName"] = x.SalesName,
+                ["contractStatus"] = x.ContractStatus
             }
         }).ToList();
     }
@@ -150,7 +154,13 @@ public class AlertCenterController(
                     RelatedPath = "/handover/list",
                     RelatedQuery = new Dictionary<string, string>
                     {
-                        ["stage"] = x.Stage
+                        ["stage"] = x.Stage,
+                        ["fromGroup"] = x.FromGroup,
+                        ["toOwner"] = x.ToOwner,
+                        ["hospitalName"] = x.HospitalName,
+                        ["productName"] = x.ProductName,
+                        ["action"] = "detail",
+                        ["id"] = x.Id.ToString()
                     }
                 };
             })
@@ -185,7 +195,13 @@ public class AlertCenterController(
                     RelatedPath = "/inspection/plan",
                     RelatedQuery = new Dictionary<string, string>
                     {
-                        ["status"] = x.Status
+                        ["status"] = x.Status,
+                        ["groupName"] = x.GroupName,
+                        ["inspector"] = x.Inspector,
+                        ["hospitalName"] = x.HospitalName,
+                        ["productName"] = x.ProductName,
+                        ["action"] = "detail",
+                        ["id"] = x.Id.ToString()
                     }
                 };
             })

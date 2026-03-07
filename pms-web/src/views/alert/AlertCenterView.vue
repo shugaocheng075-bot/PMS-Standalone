@@ -73,7 +73,7 @@
     </el-card>
 
     <el-card shadow="never" class="table-card">
-      <el-table :data="tableData" v-loading="loading" stripe max-height="520" scrollbar-always-on empty-text="暂无待办预警">
+      <el-table :data="tableData" v-loading="loading" stripe max-height="520" scrollbar-always-on empty-text="暂无待办预警" @row-dblclick="onGoto">
         <el-table-column prop="source" label="来源" width="90" />
         <el-table-column prop="level" label="级别" width="90">
           <template #default="scope">
@@ -108,13 +108,14 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { onMounted, reactive, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { fetchAlertCenter, type AlertCenterItem } from '../../api/modules/alertCenter'
 import { getErrorMessage } from '../../utils/error'
 
 const router = useRouter()
+const route = useRoute()
 
 const loading = ref(false)
 const tableData = ref<AlertCenterItem[]>([])
@@ -136,6 +137,44 @@ const query = reactive({
   page: 1,
   size: 15,
 })
+
+const readRouteQueryValue = (value: unknown): string => {
+  if (typeof value === 'string') {
+    return value
+  }
+
+  if (Array.isArray(value) && typeof value[0] === 'string') {
+    return value[0]
+  }
+
+  return ''
+}
+
+const applyRouteFilters = () => {
+  const source = readRouteQueryValue(route.query.source)
+  const level = readRouteQueryValue(route.query.level)
+  const keyword = readRouteQueryValue(route.query.keyword)
+  let applied = false
+
+  if (source) {
+    query.source = source
+    applied = true
+  }
+
+  if (level) {
+    query.level = level
+    applied = true
+  }
+
+  if (keyword) {
+    query.keyword = keyword
+    applied = true
+  }
+
+  if (applied) {
+    query.page = 1
+  }
+}
 
 const levelTagType = (level: string) => {
   if (level === '严重') return 'danger'
@@ -203,6 +242,12 @@ const onGoto = (row: AlertCenterItem) => {
 }
 
 onMounted(() => {
+  applyRouteFilters()
+  loadData()
+})
+
+watch(() => route.fullPath, () => {
+  applyRouteFilters()
   loadData()
 })
 </script>

@@ -60,4 +60,19 @@ public class AnnualReportsController(
 
         return Ok(ApiResponse<PagedResult<AnnualReportItemDto>>.Success(result));
     }
+
+    [HttpPut("{id:long}")]
+    public async Task<IActionResult> Update(
+        long id,
+        [FromBody] AnnualReportUpsertDto dto,
+        CancellationToken cancellationToken = default)
+    {
+        var updated = await annualReportService.UpdateAsync(id, dto, cancellationToken);
+        if (updated is null)
+        {
+            return NotFound(new ApiResponse<object> { Code = 404, Message = "未找到对应年度报告" });
+        }
+
+        return Ok(ApiResponse<AnnualReportItemDto>.Success(updated));
+    }
 }

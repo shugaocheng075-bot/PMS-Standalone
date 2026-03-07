@@ -61,7 +61,7 @@
         </el-card>
 
         <el-card shadow="never" class="table-card">
-          <el-table :data="tableData" v-loading="loading" stripe max-height="520" scrollbar-always-on empty-text="暂无符合条件的数据">
+          <el-table :data="tableData" v-loading="loading" stripe max-height="520" scrollbar-always-on empty-text="暂无符合条件的数据" @row-dblclick="onPlanRowDoubleClick">
             <el-table-column prop="hospitalName" label="医院" min-width="220" show-overflow-tooltip sortable />
             <el-table-column prop="productName" label="产品" min-width="180" show-overflow-tooltip sortable />
             <el-table-column prop="province" label="省份" width="100" show-overflow-tooltip sortable />
@@ -77,6 +77,13 @@
             <el-table-column prop="status" label="状态" width="100" sortable>
               <template #default="scope">
                 <el-tag :type="statusTag(scope.row.status)">{{ scope.row.status }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="操作" width="180" fixed="right">
+              <template #default="scope">
+                <el-button v-if="canManageInspection" link type="primary" @click="onOpenPlanEdit(scope.row)">编辑</el-button>
+                <el-button link type="primary" @click="onOpenPlanDetail(scope.row)">详情</el-button>
+                <el-button v-if="scope.row.status === '已完成'" link @click="goToResultTab(scope.row)">查看结果</el-button>
               </template>
             </el-table-column>
           </el-table>
@@ -157,7 +164,7 @@
 
         <!-- 结果表格 -->
         <el-card shadow="never" class="table-card">
-          <el-table :data="resultTableData" v-loading="resultLoading" stripe max-height="520" scrollbar-always-on empty-text="暂无巡检结果数据（SystemAuditTool 推送后将在此显示）">
+          <el-table :data="resultTableData" v-loading="resultLoading" stripe max-height="520" scrollbar-always-on empty-text="暂无巡检结果数据（SystemAuditTool 推送后将在此显示）" @row-dblclick="onResultRowDoubleClick">
             <el-table-column prop="hospitalName" label="医院" min-width="200" show-overflow-tooltip sortable />
             <el-table-column prop="productName" label="产品" min-width="160" show-overflow-tooltip sortable />
             <el-table-column prop="inspectedAt" label="巡检时间" width="170" sortable>
@@ -190,9 +197,10 @@
                 <span v-else>-</span>
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="80" fixed="right">
+            <el-table-column label="操作" width="150" fixed="right">
               <template #default="scope">
                 <el-button link type="primary" size="small" @click="showResultDetail(scope.row)">详情</el-button>
+                <el-button link size="small" @click="goToProjectPage(scope.row)">项目页</el-button>
               </template>
             </el-table-column>
           </el-table>
@@ -253,6 +261,66 @@
             </div>
           </template>
         </el-dialog>
+
+        <el-dialog v-model="planDetailVisible" title="巡检计划详情" width="680px" destroy-on-close>
+          <template v-if="planDetailRow">
+            <el-descriptions :column="2" border size="small" class="result-desc">
+              <el-descriptions-item label="医院">{{ planDetailRow.hospitalName }}</el-descriptions-item>
+              <el-descriptions-item label="产品">{{ planDetailRow.productName }}</el-descriptions-item>
+              <el-descriptions-item label="省份">{{ planDetailRow.province }}</el-descriptions-item>
+              <el-descriptions-item label="组别">{{ planDetailRow.groupName }}</el-descriptions-item>
+              <el-descriptions-item label="巡检人">{{ planDetailRow.inspector }}</el-descriptions-item>
+              <el-descriptions-item label="方式">{{ planDetailRow.inspectionType }}</el-descriptions-item>
+              <el-descriptions-item label="计划日期">{{ formatDate(planDetailRow.planDate) }}</el-descriptions-item>
+              <el-descriptions-item label="实际日期">{{ planDetailRow.actualDate ? formatDate(planDetailRow.actualDate) : '-' }}</el-descriptions-item>
+              <el-descriptions-item label="状态">
+                <el-tag :type="statusTag(planDetailRow.status)">{{ planDetailRow.status }}</el-tag>
+              </el-descriptions-item>
+            </el-descriptions>
+
+            <div class="detail-actions">
+              <el-button v-if="canManageInspection" plain type="primary" @click="onOpenPlanEdit(planDetailRow)">编辑计划</el-button>
+              <el-button plain @click="goToProjectPage(planDetailRow)">去项目台账</el-button>
+              <el-button plain @click="goToResultTab(planDetailRow)">去巡检结果</el-button>
+            </div>
+          </template>
+        </el-dialog>
+
+        <el-dialog v-model="planEditVisible" title="编辑巡检计划" width="620px" destroy-on-close>
+          <el-form label-width="100px">
+            <el-form-item label="组别">
+              <el-select v-model="planEditForm.groupName" clearable filterable style="width: 100%">
+                <el-option v-for="group in filteredGroupOptions" :key="`edit-${group}`" :label="group" :value="group" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="巡检人">
+              <el-select v-model="planEditForm.inspector" clearable filterable style="width: 100%">
+                <el-option v-for="person in inspectorOptions" :key="`edit-person-${person}`" :label="person" :value="person" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="计划日期">
+              <el-date-picker v-model="planEditForm.planDate" type="date" value-format="YYYY-MM-DD" style="width: 100%" />
+            </el-form-item>
+            <el-form-item label="实际日期">
+              <el-date-picker v-model="planEditForm.actualDate" type="date" value-format="YYYY-MM-DD" clearable style="width: 100%" />
+            </el-form-item>
+            <el-form-item label="状态">
+              <el-select v-model="planEditForm.status" style="width: 100%">
+                <el-option v-for="status in statusOptions" :key="`edit-status-${status}`" :label="status" :value="status" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="方式">
+              <el-select v-model="planEditForm.inspectionType" style="width: 100%">
+                <el-option label="现场" value="现场" />
+                <el-option label="远程" value="远程" />
+              </el-select>
+            </el-form-item>
+          </el-form>
+          <template #footer>
+            <el-button @click="planEditVisible = false">取消</el-button>
+            <el-button type="primary" :loading="planSubmitting" @click="submitPlanEdit">保存</el-button>
+          </template>
+        </el-dialog>
       </el-tab-pane>
     </el-tabs>
   </div>
@@ -261,27 +329,33 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import {
   fetchInspections,
   fetchInspectionResults,
   fetchInspectionSummary,
   submitInspectionResults,
+  updateInspection,
   type InspectionResultSubmitItem,
 } from '../../api/modules/inspection'
-import type { InspectionPlanItem, InspectionResult, InspectionSummary } from '../../types/inspection'
+import type { InspectionPlanItem, InspectionPlanUpsert, InspectionResult, InspectionSummary } from '../../types/inspection'
 import { useResilientLoad } from '../../composables/useResilientLoad'
 import { getErrorMessage } from '../../utils/error'
 import { GROUP_OPTIONS, PERSON_OPTIONS, PROVINCE_OPTIONS } from '../../constants/filterOptions'
 import { useFilterStatePersist } from '../../composables/useFilterStatePersist'
 import { useLinkedRealtimeRefresh } from '../../composables/useLinkedRealtimeRefresh'
+import { useAccessControl } from '../../composables/useAccessControl'
 
 // ---- Tab 切换 ----
 const activeTab = ref('plan')
+const router = useRouter()
+const access = useAccessControl()
+const canManageInspection = computed(() => access.isManager() && access.canPermission('inspection.view'))
 
 const loading = ref(false)
 const total = ref(0)
 const tableData = ref<InspectionPlanItem[]>([])
+const allPlanRows = ref<InspectionPlanItem[]>([])
 const summary = ref<InspectionSummary>({
   plannedCount: 0,
   inProgressCount: 0,
@@ -301,6 +375,19 @@ const query = reactive({
   size: 15,
 })
 const route = useRoute()
+const planDetailVisible = ref(false)
+const planDetailRow = ref<InspectionPlanItem | null>(null)
+const planEditVisible = ref(false)
+const planSubmitting = ref(false)
+const editingPlanId = ref<number | null>(null)
+const planEditForm = reactive<InspectionPlanUpsert>({
+  groupName: '',
+  inspector: '',
+  planDate: '',
+  actualDate: null,
+  status: '已计划',
+  inspectionType: '远程',
+})
 
 const readRouteQueryValue = (value: unknown): string => {
   if (typeof value === 'string') {
@@ -314,19 +401,63 @@ const readRouteQueryValue = (value: unknown): string => {
   return ''
 }
 
-const applyDrillQuery = () => {
-  const status = readRouteQueryValue(route.query.status)
-  if (!status) {
+const updateRouteQuery = async (patch: Record<string, string | undefined>) => {
+  const nextQuery = { ...route.query }
+  Object.entries(patch).forEach(([key, value]) => {
+    if (value) {
+      nextQuery[key] = value
+      return
+    }
+
+    delete nextQuery[key]
+  })
+
+  await router.replace({ path: route.path, query: nextQuery })
+}
+
+const clearRouteActionQuery = async () => {
+  if (!readRouteQueryValue(route.query.action) && !readRouteQueryValue(route.query.id) && !readRouteQueryValue(route.query.resultId)) {
     return
   }
 
-  query.province = ''
-  query.productName = ''
-  query.groupName = ''
-  query.inspector = ''
-  query.status = status
-  query.page = 1
+  await updateRouteQuery({ action: undefined, id: undefined, resultId: undefined })
 }
+
+const applyDrillQuery = () => {
+  const tab = readRouteQueryValue(route.query.tab)
+  activeTab.value = tab === 'results' ? 'results' : 'plan'
+
+  const status = readRouteQueryValue(route.query.status)
+  const province = readRouteQueryValue(route.query.province)
+  const productName = readRouteQueryValue(route.query.productName)
+  const groupName = readRouteQueryValue(route.query.groupName)
+  const inspector = readRouteQueryValue(route.query.inspector)
+  const hospitalName = readRouteQueryValue(route.query.hospitalName)
+  const healthLevel = readRouteQueryValue(route.query.healthLevel)
+
+  if (activeTab.value === 'results') {
+    if (hospitalName) resultQuery.hospitalName = hospitalName
+    if (productName) resultQuery.productName = productName
+    if (inspector) resultQuery.inspector = inspector
+    if (healthLevel) resultQuery.healthLevel = healthLevel
+    resultQuery.page = 1
+    return
+  }
+
+  if (status) query.status = status
+  if (province) query.province = province
+  if (productName) query.productName = productName
+  if (groupName) query.groupName = groupName
+  if (inspector) query.inspector = inspector
+  if (hospitalName) {
+    query.page = 1
+  }
+  if (status || province || productName || groupName || inspector) {
+    query.page = 1
+  }
+}
+
+const getRoutePlanHospitalName = () => readRouteQueryValue(route.query.hospitalName)
 
 type InspectionFilterState = {
   status: string
@@ -371,6 +502,7 @@ const loadFilterOptions = async () => {
   try {
     const res = await fetchInspections({ page: 1, size: 1000 })
     const items = res.data.items
+    allPlanRows.value = items
 
     if (!items.length) {
       return
@@ -438,6 +570,26 @@ const loadSummary = async () => {
 const loadData = async () => {
   loading.value = true
   try {
+    if (getRoutePlanHospitalName()) {
+      const source = allPlanRows.value.length > 0 ? allPlanRows.value : (await fetchInspections({ page: 1, size: 1000 })).data.items
+      if (allPlanRows.value.length === 0) {
+        allPlanRows.value = source
+      }
+
+      const filtered = source
+        .filter((item) => item.hospitalName === getRoutePlanHospitalName())
+        .filter((item) => !query.status || item.status === query.status)
+        .filter((item) => !query.province || item.province === query.province)
+        .filter((item) => !query.productName || item.productName === query.productName)
+        .filter((item) => !query.groupName || item.groupName === query.groupName)
+        .filter((item) => !query.inspector || item.inspector === query.inspector)
+
+      total.value = filtered.length
+      const start = (query.page - 1) * query.size
+      tableData.value = filtered.slice(start, start + query.size)
+      return
+    }
+
     const res = await fetchInspections(query)
     tableData.value = res.data.items
     total.value = res.data.total
@@ -474,6 +626,7 @@ const onReset = () => {
   query.page = 1
   query.size = 15
   clearFilterState()
+  void updateRouteQuery({ hospitalName: undefined, productName: undefined, groupName: undefined, inspector: undefined, action: undefined, id: undefined, tab: 'plan' })
   loadData()
 }
 
@@ -570,11 +723,89 @@ const loadResultFilterOptions = async () => {
 let resultsLoaded = false
 
 const onTabChange = (tab: string) => {
+  void updateRouteQuery({ tab })
   if (tab === 'results' && !resultsLoaded) {
     resultsLoaded = true
     loadResultFilterOptions()
     loadResults()
   }
+}
+
+const goToProjectPage = (row: Pick<InspectionPlanItem, 'hospitalName' | 'productName'> | Pick<InspectionResult, 'hospitalName' | 'productName'>) => {
+  void router.push({
+    path: '/project/list',
+    query: {
+      hospitalName: row.hospitalName,
+      productName: row.productName,
+      action: 'edit',
+    },
+  })
+}
+
+const onOpenPlanDetail = (row: InspectionPlanItem, syncRoute = true) => {
+  planDetailRow.value = row
+  planDetailVisible.value = true
+  if (syncRoute) {
+    void updateRouteQuery({ tab: 'plan', action: 'detail', id: String(row.id), resultId: undefined })
+  }
+}
+
+const onOpenPlanEdit = (row: InspectionPlanItem, syncRoute = true) => {
+  editingPlanId.value = row.id
+  planEditForm.groupName = row.groupName
+  planEditForm.inspector = row.inspector
+  planEditForm.planDate = row.planDate
+  planEditForm.actualDate = row.actualDate ?? null
+  planEditForm.status = row.status
+  planEditForm.inspectionType = row.inspectionType
+  planEditVisible.value = true
+  if (syncRoute) {
+    void updateRouteQuery({ tab: 'plan', action: 'edit', id: String(row.id), resultId: undefined })
+  }
+}
+
+const onPlanRowDoubleClick = (row: InspectionPlanItem) => {
+  if (canManageInspection.value) {
+    onOpenPlanEdit(row)
+    return
+  }
+
+  onOpenPlanDetail(row)
+}
+
+const submitPlanEdit = async () => {
+  if (!editingPlanId.value) {
+    return
+  }
+
+  planSubmitting.value = true
+  try {
+    const res = await updateInspection(editingPlanId.value, planEditForm)
+    ElMessage.success('巡检计划更新成功')
+    planDetailRow.value = res.data
+    planEditVisible.value = false
+    await Promise.allSettled([loadSummary(), loadFilterOptions(), loadData()])
+  } catch (error) {
+    ElMessage.error(getErrorMessage(error, '更新巡检计划失败'))
+  } finally {
+    planSubmitting.value = false
+  }
+}
+
+const goToResultTab = (row: Pick<InspectionPlanItem, 'hospitalName' | 'productName'>) => {
+  activeTab.value = 'results'
+  resultsLoaded = true
+  resultQuery.hospitalName = row.hospitalName
+  resultQuery.productName = row.productName
+  resultQuery.page = 1
+  void updateRouteQuery({
+    tab: 'results',
+    hospitalName: row.hospitalName,
+    productName: row.productName,
+    action: undefined,
+    id: undefined,
+  })
+  void Promise.allSettled([loadResultFilterOptions(), loadResults()])
 }
 
 const onResultHealthClick = (level: string) => {
@@ -598,6 +829,7 @@ const onResultReset = () => {
   resultQuery.healthLevel = ''
   resultQuery.page = 1
   resultQuery.size = 15
+  void updateRouteQuery({ hospitalName: undefined, productName: undefined, inspector: undefined, healthLevel: undefined, action: undefined, resultId: undefined, tab: 'results' })
   loadResults()
 }
 
@@ -643,6 +875,110 @@ const onResultFileChange = async (event: Event) => {
 const showResultDetail = (row: InspectionResult) => {
   detailRow.value = row
   detailVisible.value = true
+  void updateRouteQuery({ tab: 'results', action: 'result-detail', resultId: String(row.id), id: undefined })
+}
+
+const onResultRowDoubleClick = (row: InspectionResult) => {
+  showResultDetail(row)
+}
+
+const syncPlanDetailFromRoute = async () => {
+  const action = readRouteQueryValue(route.query.action)
+  if (activeTab.value !== 'plan' || (action !== 'detail' && action !== 'edit')) {
+    return
+  }
+
+  const id = Number(readRouteQueryValue(route.query.id))
+  if (!Number.isFinite(id) || id <= 0) {
+    return
+  }
+
+  const matched = tableData.value.find((item) => item.id === id)
+  if (matched) {
+    if (action === 'edit' && canManageInspection.value) {
+      onOpenPlanEdit(matched, false)
+      return
+    }
+
+    onOpenPlanDetail(matched, false)
+    return
+  }
+
+  try {
+    const res = await fetchInspections({ ...query, page: 1, size: 1000 })
+    const found = res.data.items.find((item) => item.id === id)
+    if (found) {
+      if (action === 'edit' && canManageInspection.value) {
+        onOpenPlanEdit(found, false)
+        return
+      }
+
+      onOpenPlanDetail(found, false)
+    }
+  } catch {
+  }
+}
+
+const syncSinglePlanActionFromFilters = async () => {
+  const action = readRouteQueryValue(route.query.action)
+  const id = Number(readRouteQueryValue(route.query.id))
+  if (activeTab.value !== 'plan' || (action !== 'detail' && action !== 'edit') || (Number.isFinite(id) && id > 0) || planDetailVisible.value || planEditVisible.value) {
+    return
+  }
+
+  const source = allPlanRows.value.length > 0 ? allPlanRows.value : tableData.value
+  const filtered = source
+    .filter((item) => !getRoutePlanHospitalName() || item.hospitalName === getRoutePlanHospitalName())
+    .filter((item) => !query.status || item.status === query.status)
+    .filter((item) => !query.province || item.province === query.province)
+    .filter((item) => !query.productName || item.productName === query.productName)
+    .filter((item) => !query.groupName || item.groupName === query.groupName)
+    .filter((item) => !query.inspector || item.inspector === query.inspector)
+
+  if (filtered.length !== 1) {
+    return
+  }
+
+  const matched = filtered[0]
+  if (!matched) {
+    return
+  }
+
+  if (action === 'edit' && canManageInspection.value) {
+    onOpenPlanEdit(matched, false)
+    return
+  }
+
+  onOpenPlanDetail(matched, false)
+}
+
+const syncResultDetailFromRoute = async () => {
+  const action = readRouteQueryValue(route.query.action)
+  if (activeTab.value !== 'results' || action !== 'result-detail') {
+    return
+  }
+
+  const resultId = Number(readRouteQueryValue(route.query.resultId))
+  if (!Number.isFinite(resultId) || resultId <= 0) {
+    return
+  }
+
+  const matched = resultTableData.value.find((item) => item.id === resultId)
+  if (matched) {
+    detailRow.value = matched
+    detailVisible.value = true
+    return
+  }
+
+  try {
+    const res = await fetchInspectionResults({ ...resultQuery, page: 1, size: 1000 })
+    const found = res.data.items.find((item) => item.id === resultId)
+    if (found) {
+      detailRow.value = found
+      detailVisible.value = true
+    }
+  } catch {
+  }
 }
 
 const formatDateTime = (value: string) => {
@@ -679,13 +1015,11 @@ onMounted(async () => {
   restoreFilterState()
   applyDrillQuery()
 
-  // 如果 route 带了 tab=results 参数
-  const tabParam = readRouteQueryValue(route.query.tab)
-  if (tabParam === 'results') {
+  if (activeTab.value === 'results') {
     activeTab.value = 'results'
     resultsLoaded = true
-    loadResultFilterOptions()
-    loadResults()
+    void loadResultFilterOptions()
+    void loadResults()
   }
 
   await runInitialLoad({
@@ -697,6 +1031,40 @@ onMounted(async () => {
       },
     ],
   })
+  await syncPlanDetailFromRoute()
+  await syncResultDetailFromRoute()
+})
+
+watch(planDetailVisible, (visible) => {
+  if (!visible && !detailVisible.value) {
+    void clearRouteActionQuery()
+  }
+})
+
+watch(planEditVisible, (visible) => {
+  if (!visible && !planDetailVisible.value && !detailVisible.value) {
+    void clearRouteActionQuery()
+  }
+})
+
+watch(detailVisible, (visible) => {
+  if (!visible && !planDetailVisible.value) {
+    void clearRouteActionQuery()
+  }
+})
+
+watch(() => route.fullPath, async () => {
+  applyDrillQuery()
+  if (activeTab.value === 'results') {
+    resultsLoaded = true
+    await Promise.allSettled([loadResultFilterOptions(), loadResults()])
+    await syncResultDetailFromRoute()
+    return
+  }
+
+  await loadData()
+  await syncPlanDetailFromRoute()
+  await syncSinglePlanActionFromFilters()
 })
 </script>
 
@@ -735,5 +1103,12 @@ onMounted(async () => {
 
 .result-desc {
   margin-bottom: 8px;
+}
+
+.detail-actions {
+  margin-top: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 </style>

@@ -9,6 +9,9 @@ export interface WorkHoursItem {
   description: string
   createdAt: string
   updatedAt: string
+  opportunityNumber: string
+  productName: string
+  implementationStatus: string
 }
 
 export interface WorkHoursUpsert {

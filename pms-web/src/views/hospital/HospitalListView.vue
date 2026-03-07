@@ -41,7 +41,7 @@
     </el-card>
 
     <el-card shadow="never" class="table-card">
-      <el-table :data="tableData" v-loading="loading" stripe max-height="520" scrollbar-always-on empty-text="暂无符合条件的数据">
+      <el-table :data="tableData" v-loading="loading" stripe max-height="520" scrollbar-always-on empty-text="暂无符合条件的数据" @row-dblclick="onRowDoubleClick">
         <el-table-column prop="hospitalName" label="医院名称" min-width="220" show-overflow-tooltip sortable />
         <el-table-column prop="tier" label="等级" width="100" sortable>
           <template #default="scope">
@@ -165,7 +165,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import {
   createHospital,
   deleteHospital,
@@ -204,6 +204,7 @@ const query = reactive({
   size: 15,
 })
 const route = useRoute()
+const router = useRouter()
 
 const readRouteQueryValue = (value: unknown): string => {
   if (typeof value === 'string') {
@@ -215,6 +216,28 @@ const readRouteQueryValue = (value: unknown): string => {
   }
 
   return ''
+}
+
+const updateRouteQuery = async (patch: Record<string, string | undefined>) => {
+  const nextQuery = { ...route.query }
+  Object.entries(patch).forEach(([key, value]) => {
+    if (value) {
+      nextQuery[key] = value
+      return
+    }
+
+    delete nextQuery[key]
+  })
+
+  await router.replace({ path: route.path, query: nextQuery })
+}
+
+const clearRouteActionQuery = async () => {
+  if (!readRouteQueryValue(route.query.action) && !readRouteQueryValue(route.query.id)) {
+    return
+  }
+
+  await updateRouteQuery({ action: undefined, id: undefined })
 }
 
 type HospitalFilterState = {
@@ -445,24 +468,14 @@ const resetEditForm = () => {
   editForm.departmentCount = ''
 }
 
-const onOpenCreate = () => {
-  if (!canManageHospital.value) {
-    ElMessage.warning('当前账号无新增医院权限')
-    return
-  }
-
+const openCreateDialog = () => {
   editMode.value = 'create'
   activeId.value = null
   resetEditForm()
   editVisible.value = true
 }
 
-const onOpenEdit = (row: HospitalItem) => {
-  if (!canManageHospital.value) {
-    ElMessage.warning('当前账号无编辑医院权限')
-    return
-  }
-
+const openEditDialog = (row: HospitalItem) => {
   editMode.value = 'edit'
   activeId.value = row.id
   editForm.hospitalName = row.hospitalName
@@ -474,6 +487,69 @@ const onOpenEdit = (row: HospitalItem) => {
   editForm.contactPhone = row.contactPhone
   editForm.departmentCount = row.departmentCount
   editVisible.value = true
+}
+
+const onOpenCreate = () => {
+  if (!canManageHospital.value) {
+    ElMessage.warning('当前账号无新增医院权限')
+    return
+  }
+
+  openCreateDialog()
+  void updateRouteQuery({ action: 'create', id: undefined })
+}
+
+const onOpenEdit = (row: HospitalItem) => {
+  if (!canManageHospital.value) {
+    ElMessage.warning('当前账号无编辑医院权限')
+    return
+  }
+
+  openEditDialog(row)
+  void updateRouteQuery({ action: 'edit', id: String(row.id) })
+}
+
+const onRowDoubleClick = (row: HospitalItem) => {
+  if (!canManageHospital.value) {
+    return
+  }
+
+  onOpenEdit(row)
+}
+
+const syncEditDialogFromRoute = async () => {
+  const action = readRouteQueryValue(route.query.action)
+  if (!action) {
+    return
+  }
+
+  if (action === 'create') {
+    if (canManageHospital.value && !editVisible.value) {
+      openCreateDialog()
+    }
+    return
+  }
+
+  if (action !== 'edit' || !canManageHospital.value) {
+    return
+  }
+
+  const id = Number(readRouteQueryValue(route.query.id))
+  if (!Number.isFinite(id) || id <= 0) {
+    return
+  }
+
+  const matched = tableData.value.find((item) => item.id === id)
+  if (matched) {
+    openEditDialog(matched)
+    return
+  }
+
+  try {
+    const res = await fetchHospitalById(id)
+    openEditDialog(res.data)
+  } catch {
+  }
 }
 
 const onOpenRating = (row: HospitalItem) => {
@@ -543,6 +619,17 @@ const onSaveEdit = async () => {
     submitLoading.value = false
   }
 }
+
+watch(editVisible, (visible) => {
+  if (!visible) {
+    void clearRouteActionQuery()
+  }
+})
+
+watch(() => route.fullPath, () => {
+  applyDrillQuery()
+  void syncEditDialogFromRoute()
+})
 
 const onDelete = async (row: HospitalItem) => {
   if (!canManageHospital.value) {
@@ -618,6 +705,7 @@ onMounted(async () => {
       },
     ],
   })
+  await syncEditDialogFromRoute()
 })
 </script>
 
