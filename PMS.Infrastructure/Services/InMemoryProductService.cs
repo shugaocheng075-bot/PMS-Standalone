@@ -156,6 +156,22 @@ public class InMemoryProductService : IProductService
         return Task.FromResult(true);
     }
 
+    public Task<int> BatchDeleteAsync(IReadOnlyList<int> ids, CancellationToken cancellationToken = default)
+    {
+        var count = 0;
+        foreach (var id in ids)
+        {
+            var current = GetCombinedProducts().FirstOrDefault(x => x.Id == id);
+            if (current is null) continue;
+            var custom = CustomProducts.FirstOrDefault(x => x.ProductName.Equals(current.ProductName, StringComparison.OrdinalIgnoreCase));
+            if (custom is null) continue;
+            CustomProducts.Remove(custom);
+            count++;
+        }
+        if (count > 0) Persist();
+        return Task.FromResult(count);
+    }
+
     private static void Persist()
     {
         SqliteJsonStore.Save(StateKey, CustomProducts);

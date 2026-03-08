@@ -87,4 +87,21 @@ public class ProductController(IProductService productService) : ControllerBase
 
         return Ok(new { code = 200, message = "success" });
     }
+
+    [HttpPost("batch-delete")]
+    public async Task<IActionResult> BatchDelete([FromBody] BatchDeleteRequest request, CancellationToken cancellationToken = default)
+    {
+        if (request.Ids is not { Count: > 0 })
+        {
+            return BadRequest(new { code = 400, message = "ids is required" });
+        }
+
+        var count = await productService.BatchDeleteAsync(request.Ids, cancellationToken);
+        return Ok(new { code = 200, message = $"成功删除 {count} 条产品" });
+    }
+}
+
+public class BatchDeleteRequest
+{
+    public List<int> Ids { get; set; } = [];
 }

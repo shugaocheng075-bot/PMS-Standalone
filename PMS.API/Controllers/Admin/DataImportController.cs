@@ -186,6 +186,80 @@ public class DataImportController : ControllerBase
         }));
     }
 
+    [HttpPost("upload/project-ledger")]
+    [RequestSizeLimit(50 * 1024 * 1024)]
+    public IActionResult UploadProjectLedger(IFormFile file, [FromForm] string? sheetName)
+    {
+        if (file is null || file.Length == 0)
+        {
+            return BadRequest(new ApiResponse<object> { Code = 400, Message = "请选择要上传的Excel文件" });
+        }
+
+        if (!IsExcelFile(file.FileName))
+        {
+            return BadRequest(new ApiResponse<object> { Code = 400, Message = "仅支持 .xlsx / .xls / .xlsm 格式" });
+        }
+
+        var sheet = string.IsNullOrWhiteSpace(sheetName) ? DefaultProjectLedgerSheetName : sheetName.Trim();
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+
+        using var stream = file.OpenReadStream();
+        var projects = ReadProjectLedgerFromStream(stream, sheet);
+
+        if (projects.Count == 0)
+        {
+            return BadRequest(new ApiResponse<object> { Code = 400, Message = $"未在工作表\u201c{sheet}\u201d中识别到有效数据" });
+        }
+
+        InMemoryProjectDataStore.ReplaceAllRaw(projects);
+        InMemoryHospitalService.RebuildFromProjects(InMemoryProjectDataStore.Projects);
+
+        return Ok(ApiResponse<object>.Success(new
+        {
+            fileName = file.FileName,
+            sheetName = sheet,
+            importedRowCount = projects.Count,
+            message = "项目台账已通过上传文件全量导入"
+        }));
+    }
+
+    [HttpPost("upload/major-demand")]
+    [RequestSizeLimit(50 * 1024 * 1024)]
+    public IActionResult UploadMajorDemand(IFormFile file, [FromForm] string? sheetName)
+    {
+        if (file is null || file.Length == 0)
+        {
+            return BadRequest(new ApiResponse<object> { Code = 400, Message = "请选择要上传的Excel文件" });
+        }
+
+        if (!IsExcelFile(file.FileName))
+        {
+            return BadRequest(new ApiResponse<object> { Code = 400, Message = "仅支持 .xlsx / .xls / .xlsm 格式" });
+        }
+
+        var sheet = string.IsNullOrWhiteSpace(sheetName) ? DefaultMajorDemandSheetName : sheetName.Trim();
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+
+        using var stream = file.OpenReadStream();
+        var majorDemand = ReadMajorDemandFromStream(stream, sheet);
+
+        if (majorDemand.Rows.Count == 0)
+        {
+            return BadRequest(new ApiResponse<object> { Code = 400, Message = $"未在工作表\u201c{sheet}\u201d中识别到有效数据" });
+        }
+
+        InMemoryMajorDemandStore.ReplaceAll(majorDemand.Columns, majorDemand.Rows, file.FileName, sheet);
+
+        return Ok(ApiResponse<object>.Success(new
+        {
+            fileName = file.FileName,
+            sheetName = sheet,
+            importedColumnCount = majorDemand.Columns.Count,
+            importedRowCount = majorDemand.Rows.Count,
+            message = "重大需求已通过上传文件导入"
+        }));
+    }
+
     private static IActionResult ImportFromFiles(IReadOnlyList<string> filePaths, string? targetSheetName)
     {
         if (filePaths.Count == 0)
@@ -429,10 +503,14 @@ public class DataImportController : ControllerBase
 
     private static List<ProjectEntity> ReadProjectLedgerFromWorkbook(string filePath, string sheetName)
     {
+        using var stream = System.IO.File.Open(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+        return ReadProjectLedgerFromStream(stream, sheetName);
+    }
+
+    private static List<ProjectEntity> ReadProjectLedgerFromStream(Stream stream, string sheetName)
+    {
         var result = new List<ProjectEntity>();
         var normalizedTargetSheet = NormalizeHeader(sheetName);
-
-        using var stream = System.IO.File.Open(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
         using var reader = ExcelReaderFactory.CreateReader(stream);
 
         do
@@ -883,9 +961,13 @@ public class DataImportController : ControllerBase
 
     private static MajorDemandParsedResult ReadMajorDemandFromWorkbook(string filePath, string sheetName)
     {
-        var normalizedTargetSheet = NormalizeHeader(sheetName);
-
         using var stream = System.IO.File.Open(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+        return ReadMajorDemandFromStream(stream, sheetName);
+    }
+
+    private static MajorDemandParsedResult ReadMajorDemandFromStream(Stream stream, string sheetName)
+    {
+        var normalizedTargetSheet = NormalizeHeader(sheetName);
         using var reader = ExcelReaderFactory.CreateReader(stream);
 
         do

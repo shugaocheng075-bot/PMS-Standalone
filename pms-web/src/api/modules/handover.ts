@@ -25,3 +25,10 @@ export function fetchHandoverKanban() {
 export function updateHandoverStage(id: number, payload: HandoverStageUpdateRequest) {
   return request.put<any, ApiResponse<HandoverItem>>(`/handovers/${id}/stage`, payload)
 }
+
+export function exportHandovers(params: HandoverQuery) {
+  return request.get<any, Blob>('/handovers/export', {
+    params,
+    responseType: 'blob',
+  })
+}

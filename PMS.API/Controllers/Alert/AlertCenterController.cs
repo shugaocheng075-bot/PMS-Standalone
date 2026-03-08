@@ -1,5 +1,8 @@
+using System.Text;
 using Microsoft.AspNetCore.Mvc;
+using PMS.API.Middleware;
 using PMS.API.Models;
+using PMS.Application.Contracts.Access;
 using PMS.Application.Contracts.Contract;
 using PMS.Application.Contracts.Handover;
 using PMS.Application.Contracts.Inspection;
@@ -14,7 +17,8 @@ namespace PMS.API.Controllers.Alert;
 public class AlertCenterController(
     IContractAlertService contractAlertService,
     IHandoverService handoverService,
-    IInspectionService inspectionService) : ControllerBase
+    IInspectionService inspectionService,
+    IAccessControlService accessControlService) : ControllerBase
 {
     [HttpGet]
     public async Task<IActionResult> GetList(
@@ -25,6 +29,9 @@ public class AlertCenterController(
         [FromQuery] int size = 20,
         CancellationToken cancellationToken = default)
     {
+        var personnelId = HttpContext.GetCurrentPersonnelId();
+        var dataScope = await accessControlService.GetDataScopeAsync(personnelId);
+
         var contractTask = contractAlertService.QueryAlertsAsync(new ContractAlertQuery
         {
             Page = 1,
@@ -49,6 +56,10 @@ public class AlertCenterController(
         alerts.AddRange(MapContractAlerts(contractTask.Result.Items));
         alerts.AddRange(MapHandoverAlerts(handoverTask.Result.Items));
         alerts.AddRange(MapInspectionAlerts(inspectionTask.Result.Items));
+
+        // 数据范围过滤：非 manager 角色只看到自己负责的医院数据
+        alerts = HospitalScopeHelper.FilterByHospitalScope(
+            dataScope, alerts, x => x.HospitalName).ToList();
 
         if (!string.IsNullOrWhiteSpace(source))
         {
@@ -246,6 +257,84 @@ public class AlertCenterController(
             "警告" => 2,
             _ => 1
         };
+    }
+
+    [HttpGet("export")]
+    public async Task<IActionResult> Export(
+        [FromQuery] string? source,
+        [FromQuery] string? level,
+        [FromQuery] string? keyword,
+        CancellationToken cancellationToken = default)
+    {
+        var personnelId = HttpContext.GetCurrentPersonnelId();
+        var dataScope = await accessControlService.GetDataScopeAsync(personnelId);
+
+        var contractTask = contractAlertService.QueryAlertsAsync(new ContractAlertQuery
+        {
+            Page = 1, Size = 5000
+        }, cancellationToken);
+        var handoverTask = handoverService.QueryAsync(new HandoverQuery
+        {
+            Page = 1, Size = 5000
+        }, cancellationToken);
+        var inspectionTask = inspectionService.QueryAsync(new InspectionQuery
+        {
+            Page = 1, Size = 5000
+        }, cancellationToken);
+
+        await Task.WhenAll(contractTask, handoverTask, inspectionTask);
+
+        var alerts = new List<AlertCenterItemDto>();
+        alerts.AddRange(MapContractAlerts(contractTask.Result.Items));
+        alerts.AddRange(MapHandoverAlerts(handoverTask.Result.Items));
+        alerts.AddRange(MapInspectionAlerts(inspectionTask.Result.Items));
+
+        alerts = HospitalScopeHelper.FilterByHospitalScope(
+            dataScope, alerts, x => x.HospitalName).ToList();
+
+        if (!string.IsNullOrWhiteSpace(source))
+            alerts = alerts.Where(x => x.Source.Equals(source.Trim(), StringComparison.OrdinalIgnoreCase)).ToList();
+        if (!string.IsNullOrWhiteSpace(level))
+            alerts = alerts.Where(x => x.Level.Equals(level.Trim(), StringComparison.OrdinalIgnoreCase)).ToList();
+        if (!string.IsNullOrWhiteSpace(keyword))
+        {
+            var kw = keyword.Trim();
+            alerts = alerts.Where(x =>
+                x.Title.Contains(kw, StringComparison.OrdinalIgnoreCase)
+                || x.Detail.Contains(kw, StringComparison.OrdinalIgnoreCase)
+                || x.Owner.Contains(kw, StringComparison.OrdinalIgnoreCase)
+                || x.HospitalName.Contains(kw, StringComparison.OrdinalIgnoreCase)).ToList();
+        }
+
+        alerts = alerts.OrderByDescending(x => x.Priority).ThenByDescending(x => x.OverdueDays).ToList();
+
+        var sb = new StringBuilder();
+        sb.AppendLine("\uFEFFID,来源,级别,医院名称,标题,详情,负责人,逾期天数");
+        foreach (var item in alerts)
+        {
+            sb.AppendLine(string.Join(",",
+                EscapeCsv(item.Id),
+                EscapeCsv(item.Source),
+                EscapeCsv(item.Level),
+                EscapeCsv(item.HospitalName),
+                EscapeCsv(item.Title),
+                EscapeCsv(item.Detail),
+                EscapeCsv(item.Owner),
+                EscapeCsv(item.OverdueDays.ToString())));
+        }
+
+        var bytes = Encoding.UTF8.GetBytes(sb.ToString());
+        return File(bytes, "text/csv; charset=utf-8", $"预警中心-{DateTime.Now:yyyyMMddHHmmss}.csv");
+    }
+
+    private static string EscapeCsv(string value)
+    {
+        var text = value ?? string.Empty;
+        if (text.Contains('"') || text.Contains(',') || text.Contains('\n') || text.Contains('\r'))
+        {
+            return $"\"{text.Replace("\"", "\"\"")}\"";
+        }
+        return text;
     }
 
     public class AlertCenterItemDto

@@ -20,6 +20,13 @@ export function fetchInspections(params: InspectionQuery) {
   })
 }
 
+export function exportInspections(params: InspectionQuery) {
+  return request.get<any, Blob>('/inspections/export', {
+    params,
+    responseType: 'blob',
+  })
+}
+
 export function updateInspection(id: number, payload: InspectionPlanUpsert) {
   return request.put<any, ApiResponse<InspectionPlanItem>>(`/inspections/${id}`, payload)
 }

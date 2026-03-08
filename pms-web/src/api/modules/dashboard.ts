@@ -1,6 +1,7 @@
 import request from '../request'
 import type { ApiResponse } from '../../types/project'
 import type { DashboardV3Data } from '../../types/dashboard-kpi'
+import type { WorkbenchData } from '../../types/workbench'
 
 export type DashboardV2Query = {
   source?: string
@@ -60,4 +61,8 @@ export function fetchDashboardV2(params: DashboardV2Query) {
 
 export function fetchDashboardV3() {
   return request.get<any, ApiResponse<DashboardV3Data>>('/dashboard/v3')
+}
+
+export function fetchWorkbench() {
+  return request.get<any, ApiResponse<WorkbenchData>>('/dashboard/workbench')
 }

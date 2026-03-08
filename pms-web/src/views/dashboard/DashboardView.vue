@@ -1,5 +1,6 @@
 <template>
-  <div class="page-shell dashboard-page">
+  <PersonalWorkbench v-if="!showManagerDashboard" />
+  <div v-else class="page-shell dashboard-page">
     <div class="page-head">
       <div>
         <h2 class="page-title">首页</h2>
@@ -56,6 +57,28 @@
           </div>
         </template>
         <div ref="annualChartRef" class="chart-box"></div>
+      </el-card>
+    </div>
+
+    <div class="analysis-grid">
+      <el-card shadow="never" class="table-card chart-card">
+        <template #header>
+          <div class="panel-head">
+            <span class="panel-title">告警月度趋势</span>
+            <el-tag type="info">近6个月</el-tag>
+          </div>
+        </template>
+        <div ref="trendChartRef" class="chart-box"></div>
+      </el-card>
+
+      <el-card shadow="never" class="table-card chart-card">
+        <template #header>
+          <div class="panel-head">
+            <span class="panel-title">责任人工作量 TOP12</span>
+            <el-tag type="warning">堆叠柱状</el-tag>
+          </div>
+        </template>
+        <div ref="workloadChartRef" class="chart-box"></div>
       </el-card>
     </div>
 
@@ -130,9 +153,15 @@ import { fetchProjectList } from '../../api/modules/project'
 import { fetchMajorDemands, type MajorDemandSnapshot } from '../../api/modules/majorDemand'
 import { fetchAlertCenter, type AlertCenterItem } from '../../api/modules/alertCenter'
 import { fetchAnnualReportSummary } from '../../api/modules/annual-report'
+import { fetchDashboardV2, type DashboardV2TrendItem, type DashboardV2OwnerItem } from '../../api/modules/dashboard'
 import type { AnnualReportSummary } from '../../types/annual-report'
 import { getErrorMessage } from '../../utils/error'
 import { useLinkedRealtimeRefresh } from '../../composables/useLinkedRealtimeRefresh'
+import { useAccessControl } from '../../composables/useAccessControl'
+import PersonalWorkbench from './PersonalWorkbench.vue'
+
+const access = useAccessControl()
+const showManagerDashboard = computed(() => access.isManager())
 
 type ChartDatum = { name: string; value: number }
 type ChartInstance = any
@@ -172,6 +201,14 @@ const alertChart = ref<ChartInstance | null>(null)
 const annualChart = ref<ChartInstance | null>(null)
 
 const annualSummary = ref<AnnualReportSummary | null>(null)
+
+const trendData = ref<DashboardV2TrendItem[]>([])
+const ownerWorkloadData = ref<DashboardV2OwnerItem[]>([])
+
+const trendChartRef = ref<HTMLDivElement | null>(null)
+const workloadChartRef = ref<HTMLDivElement | null>(null)
+const trendChart = ref<ChartInstance | null>(null)
+const workloadChart = ref<ChartInstance | null>(null)
 
 const cards = computed(() => {
   const totalAlerts = alertItems.value.length
@@ -330,11 +367,47 @@ const renderDonut = (
   })
 }
 
+const renderTrendChart = () => {
+  if (!trendChart.value || !trendData.value.length) return
+  const months = trendData.value.map(d => d.month)
+  trendChart.value.setOption({
+    tooltip: { trigger: 'axis', axisPointer: { type: 'cross' } },
+    legend: { bottom: 0 },
+    grid: { left: 50, right: 20, top: 30, bottom: 50 },
+    xAxis: { type: 'category', data: months, boundaryGap: false },
+    yAxis: { type: 'value', minInterval: 1 },
+    series: [
+      { name: '严重', type: 'line', stack: 'total', areaStyle: { opacity: 0.25 }, smooth: true, data: trendData.value.map(d => d.severe), itemStyle: { color: '#ef4444' } },
+      { name: '警告', type: 'line', stack: 'total', areaStyle: { opacity: 0.25 }, smooth: true, data: trendData.value.map(d => d.warning), itemStyle: { color: '#f59e0b' } },
+      { name: '提醒', type: 'line', stack: 'total', areaStyle: { opacity: 0.25 }, smooth: true, data: trendData.value.map(d => d.reminder), itemStyle: { color: '#3b82f6' } },
+    ],
+  })
+}
+
+const renderWorkloadChart = () => {
+  if (!workloadChart.value || !ownerWorkloadData.value.length) return
+  const owners = ownerWorkloadData.value.map(d => d.owner)
+  workloadChart.value.setOption({
+    tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+    legend: { bottom: 0 },
+    grid: { left: 80, right: 20, top: 20, bottom: 50 },
+    yAxis: { type: 'category', data: owners, inverse: true, axisLabel: { width: 60, overflow: 'truncate' } },
+    xAxis: { type: 'value', minInterval: 1 },
+    series: [
+      { name: '严重', type: 'bar', stack: 'total', data: ownerWorkloadData.value.map(d => d.severe), itemStyle: { color: '#ef4444' } },
+      { name: '警告', type: 'bar', stack: 'total', data: ownerWorkloadData.value.map(d => d.warning), itemStyle: { color: '#f59e0b' } },
+      { name: '提醒', type: 'bar', stack: 'total', data: ownerWorkloadData.value.map(d => d.reminder), itemStyle: { color: '#3b82f6' } },
+    ],
+  })
+}
+
 const updateCharts = () => {
   renderDonut(projectChart.value, '项目台账', projectStatusData.value, ['#3b82f6', '#14b8a6', '#f59e0b', '#ef4444', '#8b5cf6'])
   renderDonut(demandChart.value, '重大需求', demandStatusData.value, ['#0ea5e9', '#22c55e', '#f97316', '#6366f1', '#ec4899'])
   renderDonut(alertChart.value, '告警等级', alertLevelData.value, ['#ef4444', '#f59e0b', '#3b82f6', '#6b7280'])
   renderDonut(annualChart.value, '年度报告', annualReportStatusData.value, ['#ef4444', '#f59e0b', '#0ea5e9', '#22c55e'])
+  renderTrendChart()
+  renderWorkloadChart()
 }
 
 const bindChartEvents = () => {
@@ -375,6 +448,8 @@ const resizeCharts = () => {
   demandChart.value?.resize()
   alertChart.value?.resize()
   annualChart.value?.resize()
+  trendChart.value?.resize()
+  workloadChart.value?.resize()
 }
 
 const onProjectDrillGoto = (row: any) => {
@@ -446,15 +521,18 @@ const loadDashboard = async () => {
 
   loading.value = true
   try {
-    const [projectRes, alertRes, annualRes] = await Promise.all([
+    const [projectRes, alertRes, annualRes, v2Res] = await Promise.all([
       fetchProjectList({ page: 1, size: 100000 }),
       fetchAlertCenter({ page: 1, size: 100000 }),
       fetchAnnualReportSummary(),
+      fetchDashboardV2({ months: 6 }),
     ])
 
     projectItems.value = projectRes.data.items
     alertItems.value = alertRes.data.items
     annualSummary.value = annualRes.data
+    trendData.value = v2Res.data.trend
+    ownerWorkloadData.value = v2Res.data.ownerWorkload
 
     await nextTick()
     updateCharts()
@@ -490,6 +568,12 @@ onMounted(async () => {
   if (annualChartRef.value) {
     annualChart.value = echarts.init(annualChartRef.value)
   }
+  if (trendChartRef.value) {
+    trendChart.value = echarts.init(trendChartRef.value)
+  }
+  if (workloadChartRef.value) {
+    workloadChart.value = echarts.init(workloadChartRef.value)
+  }
 
   window.addEventListener('resize', resizeCharts)
   await loadDashboard()
@@ -510,6 +594,8 @@ onBeforeUnmount(() => {
   demandChart.value?.dispose()
   alertChart.value?.dispose()
   annualChart.value?.dispose()
+  trendChart.value?.dispose()
+  workloadChart.value?.dispose()
 })
 </script>
 
@@ -521,6 +607,12 @@ onBeforeUnmount(() => {
 }
 
 .chart-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+
+.analysis-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 12px;
@@ -556,7 +648,8 @@ onBeforeUnmount(() => {
 }
 
 @media (max-width: 1280px) {
-  .chart-grid {
+  .chart-grid,
+  .analysis-grid {
     grid-template-columns: 1fr;
   }
 

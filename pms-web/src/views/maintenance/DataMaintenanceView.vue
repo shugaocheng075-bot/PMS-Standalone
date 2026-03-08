@@ -18,6 +18,67 @@
       </div>
     </el-card>
 
+    <el-row v-if="canManageMaintenance" :gutter="16" style="margin-bottom: 16px;">
+      <el-col :xs="24" :sm="12">
+        <el-card shadow="never">
+          <template #header>
+            <div style="display: flex; align-items: center; justify-content: space-between;">
+              <span>上传项目台账 Excel</span>
+              <el-tag type="info" size="small">支持 .xlsx / .xls</el-tag>
+            </div>
+          </template>
+          <el-upload
+            drag
+            :auto-upload="false"
+            :limit="1"
+            accept=".xlsx,.xls,.xlsm"
+            :on-change="onProjectFileChange"
+            :on-remove="() => projectFile = null"
+            :file-list="projectFileList"
+          >
+            <el-icon style="font-size: 40px; color: var(--el-text-color-placeholder);"><Upload /></el-icon>
+            <div style="margin-top: 8px;">将 Excel 文件拖到此处，或 <em>点击选择</em></div>
+          </el-upload>
+          <div style="margin-top: 12px; display: flex; align-items: center; gap: 8px;">
+            <el-input v-model="projectSheetName" placeholder="工作表名（默认：维护项目明细）" clearable style="flex: 1;" />
+            <el-button type="primary" :loading="loading.uploadProject" :disabled="!projectFile" @click="onUploadProject">导入</el-button>
+          </div>
+          <div v-if="uploadProjectResult" style="margin-top: 8px; color: var(--el-color-success); font-size: 13px;">
+            {{ uploadProjectResult }}
+          </div>
+        </el-card>
+      </el-col>
+      <el-col :xs="24" :sm="12">
+        <el-card shadow="never">
+          <template #header>
+            <div style="display: flex; align-items: center; justify-content: space-between;">
+              <span>上传重大需求 Excel</span>
+              <el-tag type="info" size="small">支持 .xlsx / .xls</el-tag>
+            </div>
+          </template>
+          <el-upload
+            drag
+            :auto-upload="false"
+            :limit="1"
+            accept=".xlsx,.xls,.xlsm"
+            :on-change="onDemandFileChange"
+            :on-remove="() => demandFile = null"
+            :file-list="demandFileList"
+          >
+            <el-icon style="font-size: 40px; color: var(--el-text-color-placeholder);"><Upload /></el-icon>
+            <div style="margin-top: 8px;">将 Excel 文件拖到此处，或 <em>点击选择</em></div>
+          </el-upload>
+          <div style="margin-top: 12px; display: flex; align-items: center; gap: 8px;">
+            <el-input v-model="demandSheetName" placeholder="工作表名（默认：重大需求明细）" clearable style="flex: 1;" />
+            <el-button type="primary" :loading="loading.uploadDemand" :disabled="!demandFile" @click="onUploadDemand">导入</el-button>
+          </div>
+          <div v-if="uploadDemandResult" style="margin-top: 8px; color: var(--el-color-success); font-size: 13px;">
+            {{ uploadDemandResult }}
+          </div>
+        </el-card>
+      </el-col>
+    </el-row>
+
     <el-card shadow="never" class="filter-card">
       <el-form :model="form" inline class="filter-form" @submit.prevent="onReassign">
         <el-form-item label="医院">
@@ -55,10 +116,12 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { fetchOwnershipAudit, reassignOwnership, runAutoImport, runCleanup } from '../../api/modules/maintenance'
+import { Upload } from '@element-plus/icons-vue'
+import { fetchOwnershipAudit, reassignOwnership, runAutoImport, runCleanup, uploadProjectLedger, uploadMajorDemand } from '../../api/modules/maintenance'
 import { getErrorMessage } from '../../utils/error'
 import { useLinkedRealtimeRefresh } from '../../composables/useLinkedRealtimeRefresh'
 import { useAccessControl } from '../../composables/useAccessControl'
+import type { UploadFile } from 'element-plus'
 
 const auditRows = ref<Array<{ hospitalName: string; productName: string; groupName: string; hospitalLevel: string; province: string; amount: number }>>([])
 const lastResult = ref('')
@@ -67,7 +130,65 @@ const loading = reactive({
   cleaning: false,
   audit: false,
   reassign: false,
+  uploadProject: false,
+  uploadDemand: false,
 })
+
+// Upload state
+const projectFile = ref<File | null>(null)
+const projectFileList = ref<UploadFile[]>([])
+const projectSheetName = ref('')
+const uploadProjectResult = ref('')
+
+const demandFile = ref<File | null>(null)
+const demandFileList = ref<UploadFile[]>([])
+const demandSheetName = ref('')
+const uploadDemandResult = ref('')
+
+const onProjectFileChange = (uploadFile: UploadFile) => {
+  projectFile.value = uploadFile.raw ?? null
+}
+
+const onDemandFileChange = (uploadFile: UploadFile) => {
+  demandFile.value = uploadFile.raw ?? null
+}
+
+const onUploadProject = async () => {
+  if (!projectFile.value) return
+  loading.uploadProject = true
+  uploadProjectResult.value = ''
+  try {
+    const res = await uploadProjectLedger(projectFile.value, projectSheetName.value || undefined)
+    uploadProjectResult.value = `导入成功：${res.data.importedRowCount} 行 — ${res.data.message}`
+    ElMessage.success('项目台账导入成功')
+    projectFile.value = null
+    projectFileList.value = []
+    await loadAudit()
+    notifyDataChanged('global')
+  } catch (error) {
+    ElMessage.error(getErrorMessage(error, '项目台账上传导入失败'))
+  } finally {
+    loading.uploadProject = false
+  }
+}
+
+const onUploadDemand = async () => {
+  if (!demandFile.value) return
+  loading.uploadDemand = true
+  uploadDemandResult.value = ''
+  try {
+    const res = await uploadMajorDemand(demandFile.value, demandSheetName.value || undefined)
+    uploadDemandResult.value = `导入成功：${res.data.importedRowCount} 行（${res.data.importedColumnCount} 列） — ${res.data.message}`
+    ElMessage.success('重大需求导入成功')
+    demandFile.value = null
+    demandFileList.value = []
+    notifyDataChanged('global')
+  } catch (error) {
+    ElMessage.error(getErrorMessage(error, '重大需求上传导入失败'))
+  } finally {
+    loading.uploadDemand = false
+  }
+}
 
 const form = reactive({
   hospitalName: '',

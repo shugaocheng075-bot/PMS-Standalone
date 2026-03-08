@@ -1,3 +1,4 @@
+using System.Text;
 using Microsoft.AspNetCore.Mvc;
 using PMS.API.Models;
 using PMS.Application.Contracts.Hospital;
@@ -100,5 +101,57 @@ public class HospitalsController(IHospitalService hospitalService) : ControllerB
         }
 
         return Ok(new { code = 200, message = "success" });
+    }
+
+    [HttpGet("export")]
+    public async Task<IActionResult> Export(
+        [FromQuery] string? hospitalName,
+        [FromQuery] string? tier,
+        [FromQuery] string? province,
+        [FromQuery] string? city,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await hospitalService.QueryHospitalsAsync(new HospitalQuery
+        {
+            HospitalName = hospitalName,
+            Tier = tier,
+            Province = province,
+            City = city,
+            Page = 1,
+            Size = 50000
+        }, cancellationToken);
+
+        var sb = new StringBuilder();
+        sb.AppendLine("\uFEFFID,医院名称,等级,省份,城市,地址,联系人,联系电话,科室数,产品数,合同数,EMR评级,互联互通评级");
+        foreach (var item in result.Items)
+        {
+            sb.AppendLine(string.Join(",",
+                EscapeCsv(item.Id.ToString()),
+                EscapeCsv(item.HospitalName),
+                EscapeCsv(item.Tier),
+                EscapeCsv(item.Province),
+                EscapeCsv(item.City),
+                EscapeCsv(item.Address),
+                EscapeCsv(item.ContactPerson),
+                EscapeCsv(item.ContactPhone),
+                EscapeCsv(item.DepartmentCount),
+                EscapeCsv(item.ProductCount.ToString()),
+                EscapeCsv(item.ContractCount.ToString()),
+                EscapeCsv(item.EmrRatingLevel ?? ""),
+                EscapeCsv(item.InteropRatingLevel ?? "")));
+        }
+
+        var bytes = Encoding.UTF8.GetBytes(sb.ToString());
+        return File(bytes, "text/csv; charset=utf-8", $"医院信息-{DateTime.Now:yyyyMMddHHmmss}.csv");
+    }
+
+    private static string EscapeCsv(string value)
+    {
+        var text = value ?? string.Empty;
+        if (text.Contains('"') || text.Contains(',') || text.Contains('\n') || text.Contains('\r'))
+        {
+            return $"\"{text.Replace("\"", "\"\"")}\"";
+        }
+        return text;
     }
 }

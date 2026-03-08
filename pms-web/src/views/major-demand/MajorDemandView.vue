@@ -208,6 +208,7 @@ import { getErrorMessage } from '../../utils/error'
 import { useLinkedRealtimeRefresh } from '../../composables/useLinkedRealtimeRefresh'
 import { useAccessControl } from '../../composables/useAccessControl'
 import { useFilterStatePersist } from '../../composables/useFilterStatePersist'
+import { useResilientLoad } from '../../composables/useResilientLoad'
 import { normalizeStatusText, resolveMajorDemandStatusTag } from '../../utils/statusTag'
 
 const columns = ref<string[]>([])
@@ -432,6 +433,8 @@ const { notifyDataChanged } = useLinkedRealtimeRefresh({
   scope: 'major-demand',
   intervalMs: 60000,
 })
+
+const { runInitialLoad } = useResilientLoad()
 
 const loadData = async () => {
   loading.fetching = true
@@ -667,7 +670,9 @@ onMounted(async () => {
   await access.ensureAccessProfileLoaded()
   restoreFilterState()
   applyRouteFilters()
-  await loadData()
+  await runInitialLoad({
+    tasks: [loadData],
+  })
   syncPanelFromRoute()
 })
 

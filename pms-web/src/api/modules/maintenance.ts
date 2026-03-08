@@ -16,3 +16,17 @@ export function fetchOwnershipAudit() {
 export function reassignOwnership(data: { hospitalName: string; productName: string; groupName: string }) {
   return request.post<any, ApiResponse<any>>('/admin/import/ownership/reassign', data)
 }
+
+export function uploadProjectLedger(file: File, sheetName?: string) {
+  const formData = new FormData()
+  formData.append('file', file)
+  if (sheetName) formData.append('sheetName', sheetName)
+  return request.post<any, ApiResponse<{ fileName: string; sheetName: string; importedRowCount: number; message: string }>>('/admin/import/upload/project-ledger', formData)
+}
+
+export function uploadMajorDemand(file: File, sheetName?: string) {
+  const formData = new FormData()
+  formData.append('file', file)
+  if (sheetName) formData.append('sheetName', sheetName)
+  return request.post<any, ApiResponse<{ fileName: string; sheetName: string; importedColumnCount: number; importedRowCount: number; message: string }>>('/admin/import/upload/major-demand', formData)
+}

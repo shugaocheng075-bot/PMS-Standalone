@@ -30,6 +30,14 @@ export function updateHospitalRating(id: number, data: HospitalRating) {
   return request.put<any, ApiResponse<HospitalItem>>(`/hospitals/${id}/rating`, data)
 }
 
+export function exportHospitals(params: HospitalQuery) {
+  return request.get<any, Blob>('/hospitals/export', {
+    params,
+    responseType: 'blob',
+  })
+
+}
+
 export function deleteHospital(id: number) {
   return request.delete<any, { code: number; message: string }>(`/hospitals/${id}`)
 }

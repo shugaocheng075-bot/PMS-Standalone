@@ -25,3 +25,10 @@ export function updateRepairRecord(id: number, data: RepairRecordUpsert) {
 export function deleteRepairRecord(id: number) {
   return request.delete<any, ApiResponse<any>>(`/repair-records/${id}`)
 }
+
+export function exportRepairRecords(params: RepairRecordQuery) {
+  return request.get<any, Blob>('/repair-records/export', {
+    params,
+    responseType: 'blob',
+  })
+}

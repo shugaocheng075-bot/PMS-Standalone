@@ -36,6 +36,7 @@
         <el-form-item class="filter-actions">
           <el-button type="primary" @click="onSearch">查询</el-button>
           <el-button @click="onReset">重置</el-button>
+          <el-button :loading="exporting" @click="onExport">导出CSV</el-button>
         </el-form-item>
       </el-form>
     </el-card>
@@ -174,6 +175,7 @@ import {
   fetchHospitalSummary,
   updateHospital,
   updateHospitalRating,
+  exportHospitals,
 } from '../../api/modules/hospital'
 import type { HospitalItem, HospitalRating, HospitalSummary, HospitalUpsert } from '../../types/hospital'
 import type { FormInstance, FormRules } from 'element-plus'
@@ -185,6 +187,7 @@ import { useLinkedRealtimeRefresh } from '../../composables/useLinkedRealtimeRef
 import { useAccessControl } from '../../composables/useAccessControl'
 
 const loading = ref(false)
+const exporting = ref(false)
 const total = ref(0)
 const tableData = ref<HospitalItem[]>([])
 const summary = ref<HospitalSummary>({
@@ -435,6 +438,24 @@ const onReset = () => {
   query.size = 15
   clearFilterState()
   loadData()
+}
+
+const onExport = async () => {
+  exporting.value = true
+  try {
+    const blob = await exportHospitals(query)
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `医院信息-${Date.now()}.csv`
+    link.click()
+    URL.revokeObjectURL(url)
+    ElMessage.success('导出成功')
+  } catch (error) {
+    ElMessage.error(getErrorMessage(error, '导出失败'))
+  } finally {
+    exporting.value = false
+  }
 }
 
 const { restore: restoreFilterState, clear: clearFilterState } = useFilterStatePersist<HospitalFilterState>({

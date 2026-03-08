@@ -31,12 +31,21 @@
         <el-form-item class="filter-actions">
           <el-button type="primary" @click="onSearch">查询</el-button>
           <el-button @click="onReset">重置</el-button>
+          <el-button
+            v-if="canManageProduct"
+            type="danger"
+            plain
+            :disabled="selectedProductIds.length === 0"
+            :loading="batchDeleting"
+            @click="onBatchDelete"
+          >批量删除（{{ selectedProductIds.length }}）</el-button>
         </el-form-item>
       </el-form>
     </el-card>
 
     <el-card shadow="never" class="table-card">
-      <el-table :data="tableData" v-loading="loading" stripe max-height="520" scrollbar-always-on empty-text="暂无符合条件的数据" @row-dblclick="onRowDoubleClick">
+      <el-table :data="tableData" v-loading="loading" stripe max-height="520" scrollbar-always-on empty-text="暂无符合条件的数据" @selection-change="onSelectionChange" @row-dblclick="onRowDoubleClick">
+        <el-table-column v-if="canManageProduct" type="selection" width="46" />
         <el-table-column prop="productName" label="产品名称" min-width="220" show-overflow-tooltip sortable />
         <el-table-column prop="version" label="版本" width="100" sortable />
         <el-table-column prop="category" label="分类" width="120" show-overflow-tooltip sortable />
@@ -130,6 +139,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import { useRoute, useRouter } from 'vue-router'
 import {
+  batchDeleteProducts,
   createProduct,
   deleteProduct,
   fetchProductById,
@@ -142,6 +152,7 @@ import { useResilientLoad } from '../../composables/useResilientLoad'
 import { getErrorMessage } from '../../utils/error'
 import { useLinkedRealtimeRefresh } from '../../composables/useLinkedRealtimeRefresh'
 import { useAccessControl } from '../../composables/useAccessControl'
+import { useFilterStatePersist } from '../../composables/useFilterStatePersist'
 import { resolveProductStatusTag } from '../../utils/statusTag'
 
 const loading = ref(false)
@@ -160,6 +171,26 @@ const categoryOptions = ref<string[]>(['EMR', '临床辅助', '管理', 'AI', '�
 const statusOptions = ref<string[]>(['运行中', '试运行', '已停用'])
 const route = useRoute()
 const router = useRouter()
+
+type ProductFilterState = {
+  productName: string
+  category: string
+  status: string
+  page: number
+  size: number
+}
+
+const { restore: restoreFilterState, clear: clearFilterState } = useFilterStatePersist<ProductFilterState>({
+  key: 'product-list',
+  getState: () => ({ productName: query.productName, category: query.category, status: query.status, page: query.page, size: query.size }),
+  applyState: (state) => {
+    query.productName = state.productName ?? ''
+    query.category = state.category ?? ''
+    query.status = state.status ?? ''
+    query.page = typeof state.page === 'number' ? state.page : 1
+    query.size = typeof state.size === 'number' ? state.size : 15
+  },
+})
 
 const readRouteQueryValue = (value: unknown): string => {
   if (typeof value === 'string') {
@@ -216,6 +247,8 @@ const editFormRef = ref<FormInstance>()
 const submitLoading = ref(false)
 const deletingId = ref<number | null>(null)
 const detailLoadingId = ref<number | null>(null)
+const selectedProductIds = ref<number[]>([])
+const batchDeleting = ref(false)
 
 const access = useAccessControl()
 const canManageProduct = computed(() => access.canPermission('product.manage'))
@@ -310,6 +343,7 @@ const onReset = () => {
   query.status = ''
   query.page = 1
   query.size = 15
+  clearFilterState()
   loadData()
 }
 
@@ -493,8 +527,41 @@ const onDelete = async (row: ProductItem) => {
   }
 }
 
+const onSelectionChange = (selection: ProductItem[]) => {
+  selectedProductIds.value = selection.map((item) => item.id)
+}
+
+const onBatchDelete = async () => {
+  if (!canManageProduct.value || selectedProductIds.value.length === 0) return
+  if (batchDeleting.value) return
+
+  try {
+    await ElMessageBox.confirm(
+      `确认删除选中的 ${selectedProductIds.value.length} 条产品吗？此操作不可恢复。`,
+      '批量删除确认',
+      { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' },
+    )
+  } catch {
+    return
+  }
+
+  batchDeleting.value = true
+  try {
+    await batchDeleteProducts(selectedProductIds.value)
+    ElMessage.success(`批量删除成功`)
+    selectedProductIds.value = []
+    await Promise.all([loadSummary(), loadData()])
+    notifyDataChanged('global')
+  } catch (error) {
+    ElMessage.error(getErrorMessage(error, '批量删除失败，请稍后重试'))
+  } finally {
+    batchDeleting.value = false
+  }
+}
+
 onMounted(async () => {
   await access.ensureAccessProfileLoaded()
+  restoreFilterState()
   applyDrillQuery()
   await runInitialLoad({
     tasks: [loadSummary, loadFilterOptions, loadData],

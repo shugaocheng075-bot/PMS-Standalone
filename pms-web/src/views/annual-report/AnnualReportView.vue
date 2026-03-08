@@ -39,6 +39,7 @@
         <el-form-item class="filter-actions">
           <el-button type="primary" @click="onSearch">查询</el-button>
           <el-button @click="onReset">重置</el-button>
+          <el-button :loading="exporting" @click="onExport">导出CSV</el-button>
         </el-form-item>
       </el-form>
     </el-card>
@@ -208,7 +209,7 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useRoute, useRouter } from 'vue-router'
-import { fetchAnnualReportList, fetchAnnualReportSummary, updateAnnualReport } from '../../api/modules/annual-report'
+import { fetchAnnualReportList, fetchAnnualReportSummary, updateAnnualReport, exportAnnualReports } from '../../api/modules/annual-report'
 import type { AnnualReportItem, AnnualReportSummary } from '../../types/annual-report'
 import { useResilientLoad } from '../../composables/useResilientLoad'
 import { getErrorMessage } from '../../utils/error'
@@ -222,6 +223,7 @@ import { normalizeStatusText, resolveAnnualReportStatusTag } from '../../utils/s
 const vFocus = { mounted: (el: HTMLElement) => { const input = el.querySelector('input') || el.querySelector('textarea'); input?.focus() } }
 
 const loading = ref(false)
+const exporting = ref(false)
 const total = ref(0)
 const tableData = ref<AnnualReportItem[]>([])
 const allRows = ref<AnnualReportItem[]>([])
@@ -560,6 +562,24 @@ const onReset = () => {
   clearFilterState()
   void updateRouteQuery({ hospitalName: undefined, action: undefined, id: undefined, dueMonth: undefined })
   loadData()
+}
+
+const onExport = async () => {
+  exporting.value = true
+  try {
+    const blob = await exportAnnualReports(query)
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `年度报告-${Date.now()}.csv`
+    link.click()
+    URL.revokeObjectURL(url)
+    ElMessage.success('导出成功')
+  } catch (error) {
+    ElMessage.error(getErrorMessage(error, '导出失败'))
+  } finally {
+    exporting.value = false
+  }
 }
 
 const { restore: restoreFilterState, clear: clearFilterState } = useFilterStatePersist<AnnualReportFilterState>({

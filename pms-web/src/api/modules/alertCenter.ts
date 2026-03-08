@@ -46,3 +46,10 @@ export function fetchAlertCenter(params: AlertCenterQuery) {
     params,
   })
 }
+
+export function exportAlertCenter(params: AlertCenterQuery) {
+  return request.get<any, Blob>('/alerts/center/export', {
+    params,
+    responseType: 'blob',
+  })
+}

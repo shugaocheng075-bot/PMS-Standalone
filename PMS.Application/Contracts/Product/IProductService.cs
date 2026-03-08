@@ -11,6 +11,7 @@ public interface IProductService
     Task<ProductItemDto> CreateAsync(ProductUpsertDto dto, CancellationToken cancellationToken = default);
     Task<ProductItemDto?> UpdateAsync(int id, ProductUpsertDto dto, CancellationToken cancellationToken = default);
     Task<bool> DeleteAsync(int id, CancellationToken cancellationToken = default);
+    Task<int> BatchDeleteAsync(IReadOnlyList<int> ids, CancellationToken cancellationToken = default);
 }
 
 public class ProductQuery

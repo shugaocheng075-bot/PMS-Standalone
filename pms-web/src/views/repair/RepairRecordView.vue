@@ -33,6 +33,7 @@
         <el-form-item class="filter-actions">
           <el-button type="primary" @click="onSearch">查询</el-button>
           <el-button @click="onReset">重置</el-button>
+          <el-button :loading="exporting" @click="onExport">导出CSV</el-button>
         </el-form-item>
       </el-form>
     </el-card>
@@ -168,6 +169,7 @@ import {
   createRepairRecord,
   updateRepairRecord,
   deleteRepairRecord,
+  exportRepairRecords,
 } from '../../api/modules/repair'
 import { fetchDataScope } from '../../api/modules/access'
 import { useAccessControl } from '../../composables/useAccessControl'
@@ -189,6 +191,7 @@ const canCreate = computed(() => {
 const canEditOrDelete = computed(() => access.isManager() && access.canPermission('repair.manage'))
 
 const loading = ref(false)
+const exporting = ref(false)
 const submitLoading = ref(false)
 const dialogVisible = ref(false)
 const editingId = ref<number | null>(null)
@@ -399,6 +402,24 @@ const onReset = () => {
   query.size = 15
   filterPersist.clear()
   loadData()
+}
+
+const onExport = async () => {
+  exporting.value = true
+  try {
+    const blob = await exportRepairRecords(query)
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `报修记录-${Date.now()}.csv`
+    link.click()
+    URL.revokeObjectURL(url)
+    ElMessage.success('导出成功')
+  } catch (error) {
+    ElMessage.error(getErrorMessage(error, '导出失败'))
+  } finally {
+    exporting.value = false
+  }
 }
 
 const onStatClick = (status: string) => {

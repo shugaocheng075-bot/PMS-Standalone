@@ -182,6 +182,7 @@ import { GROUP_OPTIONS, PROVINCE_OPTIONS } from '../../constants/filterOptions'
 import { useFilterStatePersist } from '../../composables/useFilterStatePersist'
 import { useLinkedRealtimeRefresh } from '../../composables/useLinkedRealtimeRefresh'
 import { useAccessControl } from '../../composables/useAccessControl'
+import { useResilientLoad } from '../../composables/useResilientLoad'
 
 const loading = ref(false)
 const exporting = ref(false)
@@ -775,6 +776,8 @@ const { notifyDataChanged } = useLinkedRealtimeRefresh({
   intervalMs: 60000,
 })
 
+const { runInitialLoad } = useResilientLoad()
+
 watch(editVisible, (visible) => {
   if (!visible) {
     void clearRouteActionQuery()
@@ -789,7 +792,12 @@ watch(() => route.fullPath, () => {
 onMounted(async () => {
   restoreFilterState()
   applyDrillQuery()
-  await refreshLinkedData()
+  await runInitialLoad({
+    tasks: [() => refreshLinkedData()],
+    retryChecks: [
+      { when: () => total.value === 0 && tableData.value.length === 0, task: loadData },
+    ],
+  })
   syncEditDialogFromRoute()
 })
 </script>

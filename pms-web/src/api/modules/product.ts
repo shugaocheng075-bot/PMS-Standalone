@@ -25,3 +25,7 @@ export function updateProduct(id: number, data: ProductUpsert) {
 export function deleteProduct(id: number) {
   return request.delete<any, { code: number; message: string }>(`/products/${id}`)
 }
+
+export function batchDeleteProducts(ids: number[]) {
+  return request.post<any, { code: number; message: string }>('/products/batch-delete', { ids })
+}

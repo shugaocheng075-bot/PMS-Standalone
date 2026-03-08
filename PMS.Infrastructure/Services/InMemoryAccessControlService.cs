@@ -50,6 +50,7 @@ public class InMemoryAccessControlService(IPersonnelService personnelService) : 
         new() { Key = "monthly-report.manage", Name = "维护月报", Module = "运营管理", Description = "可新增/编辑/删除月报" },
         new() { Key = "maintenance.manage", Name = "数据维护", Module = "运维", Description = "可使用数据维护中心导入能力" },
         new() { Key = "permission.manage", Name = "权限管理", Module = "系统", Description = "可配置人员权限" },
+        new() { Key = "audit.view", Name = "查看操作日志", Module = "系统", Description = "可查看系统操作日志" },
     ];
 
     private static readonly HashSet<string> PermissionKeySet = PermissionCatalog

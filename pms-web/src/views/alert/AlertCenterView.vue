@@ -68,6 +68,7 @@
         <el-form-item class="filter-actions">
           <el-button type="primary" @click="onSearch">查询</el-button>
           <el-button @click="onReset">重置</el-button>
+          <el-button :loading="exporting" @click="onExport">导出CSV</el-button>
         </el-form-item>
       </el-form>
     </el-card>
@@ -111,13 +112,17 @@
 import { onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { fetchAlertCenter, type AlertCenterItem } from '../../api/modules/alertCenter'
+import { fetchAlertCenter, exportAlertCenter, type AlertCenterItem } from '../../api/modules/alertCenter'
 import { getErrorMessage } from '../../utils/error'
+import { useFilterStatePersist } from '../../composables/useFilterStatePersist'
+import { useLinkedRealtimeRefresh } from '../../composables/useLinkedRealtimeRefresh'
+import { useResilientLoad } from '../../composables/useResilientLoad'
 
 const router = useRouter()
 const route = useRoute()
 
 const loading = ref(false)
+const exporting = ref(false)
 const tableData = ref<AlertCenterItem[]>([])
 const total = ref(0)
 const summary = reactive({
@@ -137,6 +142,34 @@ const query = reactive({
   page: 1,
   size: 15,
 })
+
+type AlertFilterState = {
+  source: string
+  level: string
+  keyword: string
+  page: number
+  size: number
+}
+
+const { restore: restoreFilterState, clear: clearFilterState } = useFilterStatePersist<AlertFilterState>({
+  key: 'alert-center',
+  getState: () => ({ source: query.source, level: query.level, keyword: query.keyword, page: query.page, size: query.size }),
+  applyState: (state) => {
+    query.source = state.source ?? ''
+    query.level = state.level ?? ''
+    query.keyword = state.keyword ?? ''
+    query.page = typeof state.page === 'number' ? state.page : 1
+    query.size = typeof state.size === 'number' ? state.size : 15
+  },
+})
+
+useLinkedRealtimeRefresh({
+  refresh: async () => { await loadData() },
+  scope: 'alert',
+  intervalMs: 60000,
+})
+
+const { runInitialLoad } = useResilientLoad()
 
 const readRouteQueryValue = (value: unknown): string => {
   if (typeof value === 'string') {
@@ -215,7 +248,26 @@ const onReset = () => {
   query.keyword = ''
   query.page = 1
   query.size = 15
+  clearFilterState()
   loadData()
+}
+
+const onExport = async () => {
+  exporting.value = true
+  try {
+    const blob = await exportAlertCenter(query)
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `预警中心-${Date.now()}.csv`
+    link.click()
+    URL.revokeObjectURL(url)
+    ElMessage.success('导出成功')
+  } catch (error) {
+    ElMessage.error(getErrorMessage(error, '导出失败'))
+  } finally {
+    exporting.value = false
+  }
 }
 
 const filterBySource = (source: string) => {
@@ -241,9 +293,15 @@ const onGoto = (row: AlertCenterItem) => {
   })
 }
 
-onMounted(() => {
+onMounted(async () => {
+  restoreFilterState()
   applyRouteFilters()
-  loadData()
+  await runInitialLoad({
+    tasks: [loadData],
+    retryChecks: [
+      { when: () => summary.total > 0 && total.value === 0, task: loadData },
+    ],
+  })
 })
 
 watch(() => route.fullPath, () => {

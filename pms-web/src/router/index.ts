@@ -22,6 +22,7 @@ const LoginView = () => import('../views/login/LoginView.vue')
 const KpiDashboardView = () => import('../views/dashboard/KpiDashboardView.vue')
 const WorkHoursReportView = () => import('../views/report/WorkHoursReportView.vue')
 const MonthlyReportGenerateView = () => import('../views/report/MonthlyReportGenerateView.vue')
+const AuditLogView = () => import('../views/audit/AuditLogView.vue')
 
 const router = createRouter({
   history: createWebHistory(),
@@ -155,6 +156,12 @@ const router = createRouter({
       name: 'report-monthly-generate',
       component: MonthlyReportGenerateView,
       meta: { title: '月度报告生成', permission: 'monthly-report.view' },
+    },
+    {
+      path: '/audit/log',
+      name: 'audit-log',
+      component: AuditLogView,
+      meta: { title: '操作日志', permission: 'audit.view' },
     },
     {
       path: '/docs/design-spec',

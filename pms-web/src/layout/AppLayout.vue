@@ -13,7 +13,46 @@
 
       <div class="nav-right">
         <div class="nav-actions">
-          <span class="nav-icon"><el-icon><Bell /></el-icon></span>
+          <el-popover
+            placement="bottom-end"
+            :width="360"
+            trigger="click"
+            popper-class="notification-popover"
+            @show="loadNotifications"
+          >
+            <template #reference>
+              <el-badge :value="unreadCount" :hidden="unreadCount === 0" :max="99" class="notification-badge">
+                <span class="nav-icon"><el-icon><Bell /></el-icon></span>
+              </el-badge>
+            </template>
+            <div class="notification-panel">
+              <div class="notification-header">
+                <span class="notification-title">通知 ({{ unreadCount }})</span>
+                <el-button v-if="unreadCount > 0" link type="primary" size="small" @click="handleMarkAllRead">全部已读</el-button>
+              </div>
+              <div v-if="notificationLoading" class="notification-loading">
+                <el-icon class="is-loading"><Loading /></el-icon>
+                <span>加载中...</span>
+              </div>
+              <div v-else-if="notifications.length === 0" class="notification-empty">暂无通知</div>
+              <div v-else class="notification-list">
+                <div
+                  v-for="item in notifications"
+                  :key="item.id"
+                  class="notification-item"
+                  :class="{ 'is-unread': !item.isRead }"
+                  @click="handleNotificationClick(item)"
+                >
+                  <div class="notification-item-title">
+                    <span v-if="!item.isRead" class="unread-dot"></span>
+                    {{ item.title }}
+                  </div>
+                  <div class="notification-item-content">{{ item.content }}</div>
+                  <div class="notification-item-time">{{ formatTime(item.createdAt) }}</div>
+                </div>
+              </div>
+            </div>
+          </el-popover>
           <span class="nav-icon"><el-icon><User /></el-icon></span>
         </div>
         <span class="nav-divider"></span>
@@ -81,10 +120,12 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter, type RouteLocationRaw } from 'vue-router'
-import { Bell, Menu, User } from '@element-plus/icons-vue'
+import { Bell, Loading, Menu, User } from '@element-plus/icons-vue'
 import { logout } from '../api/modules/auth'
+import { fetchNotificationSummary, fetchNotifications, markNotificationAsRead, markAllNotificationsAsRead } from '../api/modules/notification'
 import { useAccessControl } from '../composables/useAccessControl'
 import { clearAuthState } from '../constants/access'
+import type { NotificationItem } from '../types/notification'
 
 const route = useRoute()
 const router = useRouter()
@@ -93,6 +134,72 @@ const mobileMenuVisible = ref(false)
 const isMobileViewport = ref(false)
 
 const access = useAccessControl()
+
+// Notification state
+const unreadCount = ref(0)
+const notifications = ref<NotificationItem[]>([])
+const notificationLoading = ref(false)
+let notificationTimer: ReturnType<typeof setInterval> | null = null
+
+const loadNotificationSummary = async () => {
+  try {
+    const res = await fetchNotificationSummary()
+    unreadCount.value = res.data?.unreadCount ?? 0
+  } catch {
+    // silent
+  }
+}
+
+const loadNotifications = async () => {
+  notificationLoading.value = true
+  try {
+    const res = await fetchNotifications({ page: 1, size: 20 })
+    notifications.value = res.data?.items ?? []
+  } catch {
+    notifications.value = []
+  } finally {
+    notificationLoading.value = false
+  }
+}
+
+const handleMarkAllRead = async () => {
+  try {
+    await markAllNotificationsAsRead()
+    unreadCount.value = 0
+    notifications.value = notifications.value.map(n => ({ ...n, isRead: true }))
+  } catch {
+    // silent
+  }
+}
+
+const handleNotificationClick = async (item: NotificationItem) => {
+  if (!item.isRead) {
+    try {
+      await markNotificationAsRead(item.id)
+      item.isRead = true
+      unreadCount.value = Math.max(0, unreadCount.value - 1)
+    } catch {
+      // silent
+    }
+  }
+  if (item.relatedPath) {
+    await router.push(item.relatedPath)
+  }
+}
+
+const formatTime = (dateStr: string) => {
+  const d = new Date(dateStr)
+  const now = new Date()
+  const diffMs = now.getTime() - d.getTime()
+  const diffMin = Math.floor(diffMs / 60000)
+  if (diffMin < 1) return '刚刚'
+  if (diffMin < 60) return `${diffMin}分钟前`
+  const diffHour = Math.floor(diffMin / 60)
+  if (diffHour < 24) return `${diffHour}小时前`
+  const diffDay = Math.floor(diffHour / 24)
+  if (diffDay < 30) return `${diffDay}天前`
+  return d.toLocaleDateString('zh-CN')
+}
 
 const displayUserName = computed(() => {
   const profile = access.accessProfile.value
@@ -261,6 +368,12 @@ const sideMenuGroups: MenuGroup[] = [
     { key: 'report-monthly-generate', label: '月度报告生成', route: { path: '/report/monthly-generate' }, permission: 'monthly-report.view' },
     ],
   },
+  {
+    title: '系统管理',
+    items: [
+    { key: 'audit-log', label: '操作日志', route: { path: '/audit/log' }, permission: 'audit.view' },
+    ],
+  },
 ]
 
 const readQueryValue = (value: unknown) => {
@@ -406,11 +519,17 @@ onMounted(() => {
     await access.ensureAccessProfileLoaded()
     updateViewportState()
     window.addEventListener('resize', updateViewportState)
+    await loadNotificationSummary()
+    notificationTimer = setInterval(loadNotificationSummary, 60000)
   })()
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', updateViewportState)
+  if (notificationTimer) {
+    clearInterval(notificationTimer)
+    notificationTimer = null
+  }
 })
 
 </script>
@@ -721,5 +840,98 @@ onBeforeUnmount(() => {
   .company-sub {
     display: none;
   }
+}
+
+/* Notification styles */
+.notification-badge {
+  display: inline-flex;
+  cursor: pointer;
+}
+
+.notification-panel {
+  max-height: 400px;
+  display: flex;
+  flex-direction: column;
+}
+
+.notification-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #ebeef5;
+  margin-bottom: 8px;
+}
+
+.notification-title {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.notification-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 24px 0;
+  color: #909399;
+}
+
+.notification-empty {
+  text-align: center;
+  padding: 24px 0;
+  color: #909399;
+  font-size: 13px;
+}
+
+.notification-list {
+  overflow-y: auto;
+  max-height: 340px;
+}
+
+.notification-item {
+  padding: 8px 4px;
+  border-bottom: 1px solid #f2f6fc;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.notification-item:hover {
+  background: #f5f7fa;
+}
+
+.notification-item.is-unread {
+  background: #ecf5ff;
+}
+
+.notification-item-title {
+  font-size: 13px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.unread-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #409eff;
+  flex-shrink: 0;
+}
+
+.notification-item-content {
+  font-size: 12px;
+  color: #606266;
+  margin-top: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.notification-item-time {
+  font-size: 11px;
+  color: #909399;
+  margin-top: 4px;
 }
 </style>

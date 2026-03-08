@@ -45,6 +45,7 @@
         <el-form-item class="filter-actions">
           <el-button type="primary" @click="onSearch">查询</el-button>
           <el-button @click="onReset">重置</el-button>
+          <el-button :loading="exporting" @click="onExport">导出CSV</el-button>
         </el-form-item>
       </el-form>
     </el-card>
@@ -166,6 +167,7 @@ import {
   fetchHandoverKanban,
   fetchHandoverSummary,
   updateHandoverStage,
+  exportHandovers,
 } from '../../api/modules/handover'
 import type { HandoverItem, HandoverKanbanColumn, HandoverSummary } from '../../types/handover'
 import { useResilientLoad } from '../../composables/useResilientLoad'
@@ -176,6 +178,7 @@ import { useLinkedRealtimeRefresh } from '../../composables/useLinkedRealtimeRef
 import { useAccessControl } from '../../composables/useAccessControl'
 
 const loading = ref(false)
+const exporting = ref(false)
 const total = ref(0)
 const tableData = ref<HandoverItem[]>([])
 const allRows = ref<HandoverItem[]>([])
@@ -545,6 +548,24 @@ const onReset = () => {
   clearFilterState()
   void updateRouteQuery({ hospitalName: undefined, productName: undefined, action: undefined, id: undefined })
   loadData()
+}
+
+const onExport = async () => {
+  exporting.value = true
+  try {
+    const blob = await exportHandovers(query)
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `交接管理-${Date.now()}.csv`
+    link.click()
+    URL.revokeObjectURL(url)
+    ElMessage.success('导出成功')
+  } catch (error) {
+    ElMessage.error(getErrorMessage(error, '导出失败'))
+  } finally {
+    exporting.value = false
+  }
 }
 
 const { restore: restoreFilterState, clear: clearFilterState } = useFilterStatePersist<HandoverFilterState>({

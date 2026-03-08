@@ -1,3 +1,4 @@
+using System.Text;
 using Microsoft.AspNetCore.Mvc;
 using PMS.API.Middleware;
 using PMS.API.Models;
@@ -133,5 +134,63 @@ public class HandoversController(
         {
             return BadRequest(new { code = 400, message = ex.Message });
         }
+    }
+
+    [HttpGet("export")]
+    public async Task<IActionResult> Export(
+        [FromQuery] string? stage,
+        [FromQuery] string? batch,
+        [FromQuery] string? type,
+        [FromQuery] string? fromGroup,
+        [FromQuery] string? toOwner,
+        CancellationToken cancellationToken = default)
+    {
+        var personnelId = HttpContext.GetCurrentPersonnelId();
+        var dataScope = await accessControlService.GetDataScopeAsync(personnelId);
+
+        var allResult = await handoverService.QueryAsync(new HandoverQuery
+        {
+            Stage = stage,
+            Batch = batch,
+            Type = type,
+            FromGroup = fromGroup,
+            ToOwner = toOwner,
+            Page = 1,
+            Size = 50000
+        }, cancellationToken);
+
+        var items = HospitalScopeHelper.FilterByHospitalScope(
+            dataScope, allResult.Items, x => x.HospitalName).ToList();
+
+        var sb = new StringBuilder();
+        sb.AppendLine("\uFEFFID,交接编号,医院名称,产品名称,原组别,原负责人,新负责人,批次,阶段,类型,邮件发送日期");
+        foreach (var item in items)
+        {
+            sb.AppendLine(string.Join(",",
+                EscapeCsv(item.Id.ToString()),
+                EscapeCsv(item.HandoverNo),
+                EscapeCsv(item.HospitalName),
+                EscapeCsv(item.ProductName),
+                EscapeCsv(item.FromGroup),
+                EscapeCsv(item.FromOwner),
+                EscapeCsv(item.ToOwner),
+                EscapeCsv(item.Batch),
+                EscapeCsv(item.Stage),
+                EscapeCsv(item.Type),
+                EscapeCsv(item.EmailSentDate?.ToString("yyyy-MM-dd") ?? "")));
+        }
+
+        var bytes = Encoding.UTF8.GetBytes(sb.ToString());
+        return File(bytes, "text/csv; charset=utf-8", $"交接管理-{DateTime.Now:yyyyMMddHHmmss}.csv");
+    }
+
+    private static string EscapeCsv(string value)
+    {
+        var text = value ?? string.Empty;
+        if (text.Contains('"') || text.Contains(',') || text.Contains('\n') || text.Contains('\r'))
+        {
+            return $"\"{text.Replace("\"", "\"\"")}\"";
+        }
+        return text;
     }
 }

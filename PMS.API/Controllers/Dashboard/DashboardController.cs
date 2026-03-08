@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
+using PMS.API.Middleware;
 using PMS.API.Models;
+using PMS.Application.Contracts.Access;
 using PMS.Application.Contracts.Contract;
 using PMS.Application.Contracts.Handover;
 using PMS.Application.Contracts.Inspection;
@@ -21,7 +23,8 @@ public class DashboardController(
     IHandoverService handoverService,
     IInspectionService inspectionService,
     IPersonnelService personnelService,
-    IRepairRecordService repairRecordService) : ControllerBase
+    IRepairRecordService repairRecordService,
+    IAccessControlService accessControlService) : ControllerBase
 {
     [HttpGet("v2")]
     public async Task<IActionResult> GetV2(
@@ -33,6 +36,9 @@ public class DashboardController(
         CancellationToken cancellationToken = default)
     {
         var monthSpan = Math.Clamp(months, 1, 12);
+
+        var personnelId = HttpContext.GetCurrentPersonnelId();
+        var dataScope = await accessControlService.GetDataScopeAsync(personnelId);
 
         var contractTask = contractAlertService.QueryAlertsAsync(new ContractAlertQuery
         {
@@ -59,6 +65,10 @@ public class DashboardController(
         events.AddRange(MapContract(contractTask.Result.Items, now));
         events.AddRange(MapHandover(handoverTask.Result.Items, now));
         events.AddRange(MapInspection(inspectionTask.Result.Items, now));
+
+        // 数据范围过滤：非 manager 角色只看到自己负责的医院数据
+        events = HospitalScopeHelper.FilterByHospitalScope(
+            dataScope, events, x => x.HospitalName).ToList();
 
         if (!string.IsNullOrWhiteSpace(source))
         {
@@ -127,7 +137,11 @@ public class DashboardController(
     [HttpGet("v3")]
     public async Task<IActionResult> GetV3(CancellationToken cancellationToken = default)
     {
-        var projects = InMemoryProjectDataStore.Projects;
+        var personnelId = HttpContext.GetCurrentPersonnelId();
+        var dataScope = await accessControlService.GetDataScopeAsync(personnelId);
+
+        var projects = HospitalScopeHelper.FilterByHospitalScope(
+            dataScope, InMemoryProjectDataStore.Projects, x => x.HospitalName).ToList();
 
         // 1. 合同状态占比
         var statusGroups = projects
@@ -167,8 +181,10 @@ public class DashboardController(
             Size = 50000
         }, cancellationToken);
 
-        var repairTotal = repairResult.Items.Count;
-        var repairCompleted = repairResult.Items.Count(x =>
+        var scopedRepairs = HospitalScopeHelper.FilterByHospitalScope(
+            dataScope, repairResult.Items, x => x.HospitalName).ToList();
+        var repairTotal = scopedRepairs.Count;
+        var repairCompleted = scopedRepairs.Count(x =>
             string.Equals(x.Status, "已完成", StringComparison.OrdinalIgnoreCase)
             || string.Equals(x.Status, "已关闭", StringComparison.OrdinalIgnoreCase));
 
@@ -189,7 +205,8 @@ public class DashboardController(
         }, cancellationToken);
 
         var totalPersonnel = personnelResult.Items.Count;
-        var workHoursSnapshot = InMemoryWorkHoursService.GetSnapshot();
+        var workHoursSnapshot = HospitalScopeHelper.FilterByHospitalScope(
+            dataScope, InMemoryWorkHoursService.GetSnapshot(), x => x.HospitalName).ToList();
         var personnelWithHours = workHoursSnapshot
             .Select(x => x.PersonnelName)
             .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -211,8 +228,10 @@ public class DashboardController(
             Size = 50000
         }, cancellationToken);
 
-        var inspectionTotal = inspectionResult.Items.Count;
-        var inspectionCompleted = inspectionResult.Items.Count(x =>
+        var scopedInspections = HospitalScopeHelper.FilterByHospitalScope(
+            dataScope, inspectionResult.Items, x => x.HospitalName).ToList();
+        var inspectionTotal = scopedInspections.Count;
+        var inspectionCompleted = scopedInspections.Count(x =>
             string.Equals(x.Status, "已完成", StringComparison.OrdinalIgnoreCase));
 
         var inspectionCompletionRate = new
@@ -375,6 +394,109 @@ public class DashboardController(
         }
 
         return "提醒";
+    }
+
+    /// <summary>
+    /// 个人工作台 — 汇聚待办事项与个人统计
+    /// </summary>
+    [HttpGet("workbench")]
+    public async Task<IActionResult> GetWorkbench(CancellationToken cancellationToken = default)
+    {
+        var personnelId = HttpContext.GetCurrentPersonnelId();
+        var dataScope = await accessControlService.GetDataScopeAsync(personnelId);
+
+        var projects = HospitalScopeHelper.FilterByHospitalScope(
+            dataScope, InMemoryProjectDataStore.Projects, x => x.HospitalName).ToList();
+
+        // 临期合同：售后到期日在未来 30 天内
+        var today = DateTime.Today;
+        var horizon = today.AddDays(30);
+        var expiringContracts = projects
+            .Where(x =>
+            {
+                if (!DateTime.TryParse(x.AfterSalesEndDate, out var endDate)) return false;
+                return endDate.Date >= today && endDate.Date <= horizon;
+            })
+            .Select(x => new
+            {
+                projectId = x.Id,
+                hospitalName = x.HospitalName,
+                productName = x.ProductName,
+                afterSalesEndDate = x.AfterSalesEndDate,
+                daysRemaining = (DateTime.Parse(x.AfterSalesEndDate).Date - today).Days
+            })
+            .OrderBy(x => x.daysRemaining)
+            .Take(20)
+            .ToList();
+
+        // 待巡检
+        var inspectionResult = await inspectionService.QueryAsync(new InspectionQuery
+        {
+            Page = 1,
+            Size = 50000
+        }, cancellationToken);
+
+        var pendingInspections = HospitalScopeHelper.FilterByHospitalScope(
+                dataScope, inspectionResult.Items, x => x.HospitalName)
+            .Where(x => !string.Equals(x.Status, "已完成", StringComparison.OrdinalIgnoreCase)
+                     && !string.Equals(x.Status, "已取消", StringComparison.OrdinalIgnoreCase))
+            .OrderBy(x => x.PlanDate)
+            .Take(20)
+            .Select(x => new
+            {
+                id = x.Id,
+                hospitalName = x.HospitalName,
+                productName = x.ProductName,
+                inspector = x.Inspector,
+                planDate = x.PlanDate.ToString("yyyy-MM-dd"),
+                status = x.Status
+            })
+            .ToList();
+
+        // 未处理报修
+        var repairResult = await repairRecordService.QueryAsync(new RepairRecordQuery
+        {
+            Page = 1,
+            Size = 50000
+        }, cancellationToken);
+
+        var unresolvedRepairs = HospitalScopeHelper.FilterByHospitalScope(
+                dataScope, repairResult.Items, x => x.HospitalName)
+            .Where(x => string.Equals(x.Status, "待处理", StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(x => x.Urgency == "非常紧急" ? 0 : x.Urgency == "紧急" ? 1 : 2)
+            .ThenByDescending(x => x.ReportedAt)
+            .Take(20)
+            .Select(x => new
+            {
+                id = x.Id,
+                hospitalName = x.HospitalName,
+                productName = x.ProductName,
+                description = x.Description,
+                reportedAt = x.ReportedAt?.ToString("yyyy-MM-dd"),
+                urgency = x.Urgency
+            })
+            .ToList();
+
+        // 本月工时
+        var workHoursSnapshot = HospitalScopeHelper.FilterByHospitalScope(
+            dataScope, InMemoryWorkHoursService.GetSnapshot(), x => x.HospitalName).ToList();
+        var monthStart = new DateTime(today.Year, today.Month, 1).ToString("yyyy-MM-dd");
+        var monthEnd = today.ToString("yyyy-MM-dd");
+        var thisMonthHours = workHoursSnapshot
+            .Where(x => string.Compare(x.WorkDate, monthStart, StringComparison.Ordinal) >= 0
+                     && string.Compare(x.WorkDate, monthEnd, StringComparison.Ordinal) <= 0)
+            .Sum(x => x.Hours);
+
+        return Ok(ApiResponse<object>.Success(new
+        {
+            myProjects = projects.Count,
+            pendingRepairCount = unresolvedRepairs.Count,
+            pendingInspectionCount = pendingInspections.Count,
+            thisMonthWorkHours = thisMonthHours,
+            expiringContracts,
+            pendingInspections,
+            unresolvedRepairs
+        }));
     }
 
     private static string NormalizeLevel(string value)

@@ -56,6 +56,7 @@
             <el-form-item class="filter-actions">
               <el-button type="primary" @click="onSearch">查询</el-button>
               <el-button @click="onReset">重置</el-button>
+              <el-button :loading="exporting" @click="onExport">导出CSV</el-button>
             </el-form-item>
           </el-form>
         </el-card>
@@ -337,6 +338,7 @@ import {
   fetchInspectionSummary,
   submitInspectionResults,
   updateInspection,
+  exportInspections,
   type InspectionResultSubmitItem,
 } from '../../api/modules/inspection'
 import type { InspectionPlanItem, InspectionPlanUpsert, InspectionResult, InspectionSummary } from '../../types/inspection'
@@ -355,6 +357,7 @@ const access = useAccessControl()
 const canManageInspection = computed(() => access.isManager() && access.canPermission('inspection.view'))
 
 const loading = ref(false)
+const exporting = ref(false)
 const total = ref(0)
 const tableData = ref<InspectionPlanItem[]>([])
 const allPlanRows = ref<InspectionPlanItem[]>([])
@@ -626,6 +629,24 @@ const onReset = () => {
   clearFilterState()
   void updateRouteQuery({ hospitalName: undefined, productName: undefined, groupName: undefined, inspector: undefined, action: undefined, id: undefined, tab: 'plan' })
   loadData()
+}
+
+const onExport = async () => {
+  exporting.value = true
+  try {
+    const blob = await exportInspections(query)
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `巡检计划-${Date.now()}.csv`
+    link.click()
+    URL.revokeObjectURL(url)
+    ElMessage.success('导出成功')
+  } catch (error) {
+    ElMessage.error(getErrorMessage(error, '导出失败'))
+  } finally {
+    exporting.value = false
+  }
 }
 
 const { restore: restoreFilterState, clear: clearFilterState } = useFilterStatePersist<InspectionFilterState>({

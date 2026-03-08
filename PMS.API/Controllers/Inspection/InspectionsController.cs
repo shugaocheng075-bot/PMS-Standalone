@@ -1,3 +1,4 @@
+using System.Text;
 using Microsoft.AspNetCore.Mvc;
 using PMS.API.Middleware;
 using PMS.API.Models;
@@ -280,5 +281,62 @@ public class InspectionsController(
         }
 
         return Ok(ApiResponse<InspectionResultDto>.Success(latest));
+    }
+
+    [HttpGet("export")]
+    public async Task<IActionResult> Export(
+        [FromQuery] string? status,
+        [FromQuery] string? province,
+        [FromQuery] string? productName,
+        [FromQuery] string? groupName,
+        [FromQuery] string? inspector,
+        CancellationToken cancellationToken = default)
+    {
+        var personnelId = HttpContext.GetCurrentPersonnelId();
+        var dataScope = await accessControlService.GetDataScopeAsync(personnelId);
+
+        var allResult = await inspectionService.QueryAsync(new InspectionQuery
+        {
+            Status = status,
+            Province = province,
+            ProductName = productName,
+            GroupName = groupName,
+            Inspector = inspector,
+            Page = 1,
+            Size = 50000
+        }, cancellationToken);
+
+        var items = HospitalScopeHelper.FilterByHospitalScope(
+            dataScope, allResult.Items, x => x.HospitalName).ToList();
+
+        var sb = new StringBuilder();
+        sb.AppendLine("\uFEFFID,医院名称,产品名称,省份,组别,巡检人,计划日期,实际日期,状态,巡检类型");
+        foreach (var item in items)
+        {
+            sb.AppendLine(string.Join(",",
+                EscapeCsv(item.Id.ToString()),
+                EscapeCsv(item.HospitalName),
+                EscapeCsv(item.ProductName),
+                EscapeCsv(item.Province),
+                EscapeCsv(item.GroupName),
+                EscapeCsv(item.Inspector),
+                EscapeCsv(item.PlanDate.ToString("yyyy-MM-dd")),
+                EscapeCsv(item.ActualDate?.ToString("yyyy-MM-dd") ?? ""),
+                EscapeCsv(item.Status),
+                EscapeCsv(item.InspectionType)));
+        }
+
+        var bytes = Encoding.UTF8.GetBytes(sb.ToString());
+        return File(bytes, "text/csv; charset=utf-8", $"巡检计划-{DateTime.Now:yyyyMMddHHmmss}.csv");
+    }
+
+    private static string EscapeCsv(string value)
+    {
+        var text = value ?? string.Empty;
+        if (text.Contains('"') || text.Contains(',') || text.Contains('\n') || text.Contains('\r'))
+        {
+            return $"\"{text.Replace("\"", "\"\"")}\"";
+        }
+        return text;
     }
 }
