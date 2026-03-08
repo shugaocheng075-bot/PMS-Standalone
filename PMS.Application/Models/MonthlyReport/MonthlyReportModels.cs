@@ -87,6 +87,7 @@ public class MonthlyReportGenerateRequest
 {
     public string ReportMonth { get; set; } = string.Empty;
     public string GroupName { get; set; } = string.Empty;
+    public string? SupervisorName { get; set; }
     public string SubmittedBy { get; set; } = string.Empty;
     public MonthlyReportTeamDataSourceInput? TeamDataSource { get; set; }
 }

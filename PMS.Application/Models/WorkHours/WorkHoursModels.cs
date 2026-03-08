@@ -62,13 +62,41 @@ public class WorkHoursSummaryDto
 /// </summary>
 public class WorkHoursReportRowDto
 {
+    /// <summary>行ID</summary>
+    public long Id { get; set; }
+
+    /// <summary>机会号</summary>
+    public string OpportunityNumber { get; set; } = string.Empty;
+    /// <summary>客户名称</summary>
+    public string HospitalName { get; set; } = string.Empty;
+    /// <summary>产品名称</summary>
+    public string ProductName { get; set; } = string.Empty;
+    /// <summary>实施状态</summary>
+    public string ImplementationStatus { get; set; } = string.Empty;
+    /// <summary>工时（人天）</summary>
+    public decimal WorkHoursManDays { get; set; }
+    /// <summary>实施人员（个数）</summary>
+    public int PersonnelCount { get; set; }
+    public string Personnel1 { get; set; } = string.Empty;
+    public string Personnel2 { get; set; } = string.Empty;
+    public string Personnel3 { get; set; } = string.Empty;
+    public string Personnel4 { get; set; } = string.Empty;
+    public string Personnel5 { get; set; } = string.Empty;
+    /// <summary>维护开始时间</summary>
+    public string MaintenanceStartDate { get; set; } = string.Empty;
+    /// <summary>维护结束时间</summary>
+    public string MaintenanceEndDate { get; set; } = string.Empty;
+    /// <summary>售后项目类型</summary>
+    public string AfterSalesProjectType { get; set; } = string.Empty;
+    /// <summary>备注</summary>
+    public string Remarks { get; set; } = string.Empty;
+}
+
+public class WorkHoursReportRowUpdateDto
+{
     public string OpportunityNumber { get; set; } = string.Empty;
     public string HospitalName { get; set; } = string.Empty;
     public string ProductName { get; set; } = string.Empty;
-    public string Province { get; set; } = string.Empty;
-    public string GroupName { get; set; } = string.Empty;
-    public string SalesName { get; set; } = string.Empty;
-    public string MaintenancePersonName { get; set; } = string.Empty;
     public string ImplementationStatus { get; set; } = string.Empty;
     public decimal WorkHoursManDays { get; set; }
     public int PersonnelCount { get; set; }

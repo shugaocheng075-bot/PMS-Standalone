@@ -1,8 +1,11 @@
 export interface ProjectItem {
   id: number
+  serialNumber: string
   hospitalName: string
   productName: string
   province: string
+  serviceArea: string
+  city: string
   groupName: string
   salesName: string
   maintenancePersonName: string
@@ -24,6 +27,13 @@ export interface ProjectItem {
   personnel5: string
   afterSalesProjectType: string
   remarks: string
+  points: string
+  salesAmount: number
+  annualOutput: number
+  stationLocation: string
+  isStationedOnsite: string
+  stationedCount: string
+  acceptanceDate: string
 }
 
 export interface ProjectQuery {

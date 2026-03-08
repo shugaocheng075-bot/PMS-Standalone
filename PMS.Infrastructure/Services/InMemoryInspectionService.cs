@@ -7,13 +7,15 @@ namespace PMS.Infrastructure.Services;
 public class InMemoryInspectionService : IInspectionService
 {
     private static readonly object SyncRoot = new();
-    private const string ResultsStateKey = "inspection_results";
-    private const string PlanOverridesStateKey = "inspection_plan_overrides";
+    private const string ResultsTable = "InspectionResults";
+    private const string ResultsLegacyKey = "inspection_results";
+    private const string PlanOverridesTable = "InspectionPlanOverrides";
+    private const string PlanOverridesLegacyKey = "inspection_plan_overrides";
 
     private static readonly List<InspectionResultDto> StoredResults =
-        SqliteJsonStore.LoadOrSeed(ResultsStateKey, () => new List<InspectionResultDto>());
+        SqliteTableStore.LoadAll<InspectionResultDto>(ResultsTable, ResultsLegacyKey);
     private static readonly List<InspectionPlanItemDto> PlanOverrides =
-        SqliteJsonStore.LoadOrSeed(PlanOverridesStateKey, () => new List<InspectionPlanItemDto>());
+        SqliteTableStore.LoadAll<InspectionPlanItemDto>(PlanOverridesTable, PlanOverridesLegacyKey);
 
     private static long _nextResultId = StoredResults.Count > 0
         ? StoredResults.Max(r => r.Id) + 1
@@ -207,12 +209,12 @@ public class InMemoryInspectionService : IInspectionService
 
     private static void PersistResults()
     {
-        SqliteJsonStore.Save(ResultsStateKey, StoredResults);
+        SqliteTableStore.ReplaceAll(ResultsTable, StoredResults);
     }
 
     private static void PersistPlanOverrides()
     {
-        SqliteJsonStore.Save(PlanOverridesStateKey, PlanOverrides);
+        SqliteTableStore.ReplaceAll(PlanOverridesTable, PlanOverrides);
     }
 
     // ─── 种子数据 ───

@@ -224,7 +224,7 @@ public class ProjectsController(
 
         var headers = new[]
         {
-            "ID", "医院名称", "产品", "省份", "组别", "销售", "维护人员", "售后开始", "售后结束", "级别", "合同状态", "有效期状态", "维护金额(万)", "超期天数"
+            "序号", "服务区域", "省", "市", "销售", "服务组别", "服务人员", "医院等级", "最终用户", "维护产品", "点位", "销售合同额", "维护合同额", "年度产值", "合同状态", "维护开始日期", "维护结束日期", "是否超期", "超期天数", "机会号", "驻地", "是否驻场", "驻场人数", "备注", "验收日期"
         };
 
         var sb = new StringBuilder();
@@ -233,20 +233,31 @@ public class ProjectsController(
         {
             var row = new[]
             {
-                item.Id.ToString(),
+                item.SerialNumber,
+                item.ServiceArea,
+                item.Province,
+                item.City,
+                item.SalesName,
+                item.GroupName,
+                item.MaintenancePersonName,
+                item.HospitalLevel,
                 item.HospitalName,
                 item.ProductName,
-                item.Province,
-                item.GroupName,
-                item.SalesName,
-                item.MaintenancePersonName,
+                item.Points,
+                item.SalesAmount.ToString("0.##"),
+                item.MaintenanceAmount.ToString("0.##"),
+                item.AnnualOutput.ToString("0.##"),
+                item.ContractStatus,
                 item.AfterSalesStartDate,
                 item.AfterSalesEndDate,
-                item.HospitalLevel,
-                item.ContractStatus,
-                item.ContractValidityStatus,
-                item.MaintenanceAmount.ToString("0.##"),
-                item.OverdueDays.ToString()
+                item.OverdueDays > 0 ? "是" : "否",
+                item.OverdueDays.ToString(),
+                item.OpportunityNumber,
+                item.StationLocation,
+                item.IsStationedOnsite,
+                item.StationedCount,
+                item.Remarks,
+                item.AcceptanceDate
             };
             sb.AppendLine(string.Join(",", row.Select(EscapeCsv)));
         }

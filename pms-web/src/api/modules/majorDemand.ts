@@ -42,7 +42,7 @@ export function fetchMajorDemands() {
 export function importMajorDemandsFromDesktop() {
   return request.post<any, ApiResponse<any>>('/admin/import/major-demand', {
     filePath: 'C:\\Users\\R9000P\\Desktop\\项目明细.xlsx',
-    sheetName: '重大需求',
+    sheetName: '重大需求明细',
   })
 }
 
@@ -64,6 +64,24 @@ export function addMajorDemandComment(rowId: string, content: string) {
 
 export function exportMajorDemandCsv() {
   return request.get<any, Blob>('/major-demands/export', {
+    responseType: 'blob',
+  })
+}
+
+export function updateMajorDemandCell(rowId: string, column: string, value: string) {
+  return request.put<any, ApiResponse<any>>(`/major-demands/${encodeURIComponent(rowId)}/cell`, { column, value })
+}
+
+export function addMajorDemandRow() {
+  return request.post<any, ApiResponse<{ rowId: string }>>('/major-demands/rows')
+}
+
+export function deleteMajorDemandRows(rowIds: string[]) {
+  return request.post<any, ApiResponse<any>>('/major-demands/rows/delete', { rowIds })
+}
+
+export function exportMajorDemandExcel() {
+  return request.get<any, Blob>('/major-demands/export-excel', {
     responseType: 'blob',
   })
 }

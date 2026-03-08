@@ -1,3 +1,4 @@
+using ClosedXML.Excel;
 using Microsoft.AspNetCore.Mvc;
 using PMS.API.Middleware;
 using PMS.API.Models;
@@ -212,6 +213,132 @@ public class MajorDemandsController(
         return File(content, "text/csv; charset=utf-8", $"major-demands-{DateTime.Now:yyyyMMddHHmmss}.csv");
     }
 
+    [HttpPut("{rowId}/cell")]
+    public async Task<IActionResult> UpdateCell(string rowId, [FromBody] UpdateCellRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(rowId) || string.IsNullOrWhiteSpace(request.Column))
+        {
+            return BadRequest(ApiResponse<object>.Success(new { message = "参数不完整" }));
+        }
+
+        var allowedIds = await FilterRowIdsByHospitalScopeAsync([rowId]);
+        if (allowedIds.Count == 0)
+        {
+            return StatusCode(403, new { code = 403, message = "无权操作该行数据" });
+        }
+
+        var changed = InMemoryMajorDemandStore.UpdateCell(rowId, request.Column, request.Value);
+        return Ok(ApiResponse<object>.Success(new
+        {
+            changed,
+            message = changed ? "更新成功" : "未找到对应行"
+        }));
+    }
+
+    [HttpPost("rows")]
+    public IActionResult AddRow()
+    {
+        var rowId = InMemoryMajorDemandStore.AddEmptyRow();
+        return Ok(ApiResponse<object>.Success(new { rowId, message = "新增成功" }));
+    }
+
+    [HttpPost("rows/delete")]
+    public async Task<IActionResult> DeleteRows([FromBody] DeleteRowsRequest request)
+    {
+        if (request.RowIds.Count == 0)
+        {
+            return BadRequest(ApiResponse<object>.Success(new { message = "rowIds 不能为空" }));
+        }
+
+        var allowedIds = await FilterRowIdsByHospitalScopeAsync(request.RowIds);
+        if (allowedIds.Count == 0)
+        {
+            return StatusCode(403, new { code = 403, message = "无权操作所选行" });
+        }
+
+        var removed = InMemoryMajorDemandStore.DeleteRows(allowedIds);
+        return Ok(ApiResponse<object>.Success(new
+        {
+            removed,
+            message = removed > 0 ? "删除成功" : "未找到对应行"
+        }));
+    }
+
+    [HttpGet("export-excel")]
+    public async Task<IActionResult> ExportExcel()
+    {
+        var snapshot = InMemoryMajorDemandStore.GetSnapshot();
+
+        var personnelId = HttpContext.GetCurrentPersonnelId();
+        var dataScope = await accessControlService.GetDataScopeAsync(personnelId);
+        var allowedHospitals = await GetAccessibleHospitalSetAsync(dataScope);
+        var exportRows = snapshot.Rows;
+        if (!string.Equals(dataScope.ScopeType, "all", StringComparison.OrdinalIgnoreCase))
+        {
+            if (allowedHospitals.Count == 0)
+            {
+                exportRows = [];
+            }
+            else
+            {
+                exportRows = exportRows.Where(row =>
+                {
+                    var h = row.TryGetValue("医院名称", out var v) ? v : null;
+                    return !string.IsNullOrWhiteSpace(h) && allowedHospitals.Contains(h);
+                }).ToList();
+            }
+        }
+
+        var workflowMap = snapshot.WorkflowItems.ToDictionary(x => x.RowId, StringComparer.OrdinalIgnoreCase);
+
+        var headers = snapshot.Columns
+            .Where(x => !string.Equals(x, "_RowId", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        headers.AddRange(["状态", "负责人", "截止日期", "最新评论", "最近操作时间"]);
+
+        using var workbook = new XLWorkbook();
+        var ws = workbook.Worksheets.Add("重大需求");
+
+        for (var i = 0; i < headers.Count; i++)
+        {
+            ws.Cell(1, i + 1).Value = headers[i];
+        }
+
+        var headerRange = ws.Range(1, 1, 1, headers.Count);
+        headerRange.Style.Font.Bold = true;
+        headerRange.Style.Fill.BackgroundColor = XLColor.LightGray;
+
+        for (var r = 0; r < exportRows.Count; r++)
+        {
+            var row = exportRows[r];
+            row.TryGetValue("_RowId", out var rowId);
+            workflowMap.TryGetValue(rowId ?? string.Empty, out var workflow);
+
+            var colIdx = 1;
+            foreach (var col in snapshot.Columns.Where(x =>
+                         !string.Equals(x, "_RowId", StringComparison.OrdinalIgnoreCase)))
+            {
+                ws.Cell(r + 2, colIdx++).Value = row.TryGetValue(col, out var value) ? value ?? string.Empty : string.Empty;
+            }
+
+            ws.Cell(r + 2, colIdx++).Value = workflow?.Status ?? string.Empty;
+            ws.Cell(r + 2, colIdx++).Value = workflow?.Owner ?? string.Empty;
+            ws.Cell(r + 2, colIdx++).Value = workflow?.DueDate ?? string.Empty;
+            ws.Cell(r + 2, colIdx++).Value = workflow?.Comments.LastOrDefault()?.Content ?? string.Empty;
+            ws.Cell(r + 2, colIdx).Value = workflow?.UpdatedAt.ToString("yyyy-MM-dd HH:mm:ss") ?? string.Empty;
+        }
+
+        ws.Columns().AdjustToContents(1, 50);
+
+        using var ms = new MemoryStream();
+        workbook.SaveAs(ms);
+        ms.Position = 0;
+        return File(
+            ms.ToArray(),
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            $"major-demands-{DateTime.Now:yyyyMMddHHmmss}.xlsx");
+    }
+
     /// <summary>
     /// 根据医院范围过滤 RowId 列表，仅保留当前用户可访问医院的行
     /// </summary>
@@ -313,5 +440,16 @@ public class MajorDemandsController(
     public class AddCommentRequest
     {
         public string Content { get; set; } = string.Empty;
+    }
+
+    public class UpdateCellRequest
+    {
+        public string Column { get; set; } = string.Empty;
+        public string Value { get; set; } = string.Empty;
+    }
+
+    public class DeleteRowsRequest
+    {
+        public List<string> RowIds { get; set; } = [];
     }
 }

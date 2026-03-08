@@ -104,7 +104,7 @@
         <el-pagination
           v-model:current-page="query.page"
           v-model:page-size="query.size"
-          :page-sizes="[15]"
+          :page-sizes="[15, 30, 50, 100]"
           layout="total, sizes, prev, pager, next"
           :total="total"
           @size-change="(size: number) => { query.size = size; query.page = 1; loadData() }"
@@ -113,7 +113,7 @@
       </div>
     </el-card>
 
-    <el-dialog v-model="batchEditVisible" title="批量编辑项目台账" width="560px">
+    <el-dialog v-model="batchEditVisible" title="批量编辑项目台账" width="560px" destroy-on-close>
       <el-form label-width="110px">
         <el-form-item label="合同状态">
           <el-select v-model="batchEditForm.contractStatus" clearable placeholder="不修改" style="width: 100%">
@@ -141,7 +141,7 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="editVisible" title="编辑项目台账" width="560px">
+    <el-dialog v-model="editVisible" title="编辑项目台账" width="560px" destroy-on-close>
       <el-form label-width="110px">
         <el-form-item label="合同状态">
           <el-select v-model="editForm.contractStatus" clearable placeholder="请选择合同状态" style="width: 100%">
@@ -402,7 +402,7 @@ watch(
 
 const loadFilterOptions = async () => {
   try {
-    const res = await fetchProjectList({ page: 1, size: 1000 })
+    const res = await fetchProjectList({ page: 1, size: 100000 })
     const items = res.data.items
 
     if (!items.length) {

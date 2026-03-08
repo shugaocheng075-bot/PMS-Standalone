@@ -14,7 +14,8 @@ public sealed class ProjectDataCleanupStats
 public static class InMemoryProjectDataStore
 {
     private static readonly object SyncRoot = new();
-    private const string StateKey = "projects";
+    private const string TableName = "Projects";
+    private const string LegacyJsonKey = "projects";
     private static readonly Dictionary<string, string> OfficialHospitalNameAliases = new(StringComparer.OrdinalIgnoreCase)
     {
         ["南通口腔医院"] = "南通市口腔医院",
@@ -26,7 +27,7 @@ public static class InMemoryProjectDataStore
     private static readonly char[] ProductSeparators = [',', '，', '、', ';', '；', '+'];
 
     private static readonly List<ProjectEntity> ProjectsInternal =
-        SqliteJsonStore.LoadOrSeed(StateKey, BuildSeedData);
+        SqliteTableStore.LoadAll<ProjectEntity>(TableName, LegacyJsonKey);
 
     public static IReadOnlyList<ProjectEntity> Projects
     {
@@ -38,6 +39,7 @@ public static class InMemoryProjectDataStore
                     .Select(x => new ProjectEntity
                     {
                         Id = x.Id,
+                        SerialNumber = x.SerialNumber,
                         OpportunityNumber = x.OpportunityNumber,
                         HospitalName = x.HospitalName,
                         ProductName = x.ProductName,
@@ -61,7 +63,16 @@ public static class InMemoryProjectDataStore
                         Personnel4 = x.Personnel4,
                         Personnel5 = x.Personnel5,
                         AfterSalesProjectType = x.AfterSalesProjectType,
-                        Remarks = x.Remarks
+                        Remarks = x.Remarks,
+                        ServiceArea = x.ServiceArea,
+                        City = x.City,
+                        Points = x.Points,
+                        SalesAmount = x.SalesAmount,
+                        AnnualOutput = x.AnnualOutput,
+                        StationLocation = x.StationLocation,
+                        IsStationedOnsite = x.IsStationedOnsite,
+                        StationedCount = x.StationedCount,
+                        AcceptanceDate = x.AcceptanceDate
                     })
                     .ToList();
             }
@@ -81,6 +92,7 @@ public static class InMemoryProjectDataStore
             return new ProjectEntity
             {
                 Id = found.Id,
+                SerialNumber = found.SerialNumber,
                 OpportunityNumber = found.OpportunityNumber,
                 HospitalName = found.HospitalName,
                 ProductName = found.ProductName,
@@ -104,7 +116,16 @@ public static class InMemoryProjectDataStore
                 Personnel4 = found.Personnel4,
                 Personnel5 = found.Personnel5,
                 AfterSalesProjectType = found.AfterSalesProjectType,
-                Remarks = found.Remarks
+                Remarks = found.Remarks,
+                ServiceArea = found.ServiceArea,
+                City = found.City,
+                Points = found.Points,
+                SalesAmount = found.SalesAmount,
+                AnnualOutput = found.AnnualOutput,
+                StationLocation = found.StationLocation,
+                IsStationedOnsite = found.IsStationedOnsite,
+                StationedCount = found.StationedCount,
+                AcceptanceDate = found.AcceptanceDate
             };
         }
     }
@@ -138,6 +159,14 @@ public static class InMemoryProjectDataStore
         {
             var normalized = NormalizeProjects(projects, out _);
             ReplaceInternal(normalized);
+        }
+    }
+
+    public static void ReplaceAllRaw(IReadOnlyList<ProjectEntity> projects)
+    {
+        lock (SyncRoot)
+        {
+            ReplaceInternal(projects);
         }
     }
 
@@ -311,6 +340,20 @@ public static class InMemoryProjectDataStore
         }
     }
 
+    /// <summary>
+    /// 按 Id 更新单个项目的任意字段并持久化。
+    /// </summary>
+    public static void UpdateSingleProject(long projectId, Action<ProjectEntity> updater)
+    {
+        lock (SyncRoot)
+        {
+            var project = ProjectsInternal.FirstOrDefault(p => p.Id == projectId);
+            if (project is null) return;
+            updater(project);
+            Persist();
+        }
+    }
+
     public static int ReassignHospitalProductOwner(string hospitalName, string productName, string groupName)
     {
         if (string.IsNullOrWhiteSpace(hospitalName) || string.IsNullOrWhiteSpace(productName) || string.IsNullOrWhiteSpace(groupName))
@@ -368,7 +411,7 @@ public static class InMemoryProjectDataStore
 
     private static void Persist()
     {
-        SqliteJsonStore.Save(StateKey, ProjectsInternal);
+        SqliteTableStore.ReplaceAll(TableName, ProjectsInternal);
     }
 
     private static void ReplaceInternal(IReadOnlyList<ProjectEntity> projects)
@@ -381,20 +424,21 @@ public static class InMemoryProjectDataStore
             ProjectsInternal.Add(new ProjectEntity
             {
                 Id = nextId++,
+                SerialNumber = project.SerialNumber,
+                OpportunityNumber = project.OpportunityNumber,
                 HospitalName = project.HospitalName,
-                    ProductName = project.ProductName,
+                ProductName = project.ProductName,
                 Province = project.Province,
                 GroupName = project.GroupName,
-                    SalesName = project.SalesName,
+                SalesName = project.SalesName,
                 MaintenancePersonName = project.MaintenancePersonName,
                 AfterSalesStartDate = project.AfterSalesStartDate,
                 AfterSalesEndDate = project.AfterSalesEndDate,
-                    HospitalLevel = project.HospitalLevel,
+                HospitalLevel = project.HospitalLevel,
                 ContractStatus = project.ContractStatus,
                 ContractValidityStatus = project.ContractValidityStatus,
                 MaintenanceAmount = project.MaintenanceAmount,
                 OverdueDays = project.OverdueDays,
-                OpportunityNumber = project.OpportunityNumber,
                 ImplementationStatus = project.ImplementationStatus,
                 WorkHoursManDays = project.WorkHoursManDays,
                 PersonnelCount = project.PersonnelCount,
@@ -404,7 +448,16 @@ public static class InMemoryProjectDataStore
                 Personnel4 = project.Personnel4,
                 Personnel5 = project.Personnel5,
                 AfterSalesProjectType = project.AfterSalesProjectType,
-                Remarks = project.Remarks
+                Remarks = project.Remarks,
+                ServiceArea = project.ServiceArea,
+                City = project.City,
+                Points = project.Points,
+                SalesAmount = project.SalesAmount,
+                AnnualOutput = project.AnnualOutput,
+                StationLocation = project.StationLocation,
+                IsStationedOnsite = project.IsStationedOnsite,
+                StationedCount = project.StationedCount,
+                AcceptanceDate = project.AcceptanceDate
             });
         }
 
@@ -467,6 +520,7 @@ public static class InMemoryProjectDataStore
             {
                 cleaned.Add(new ProjectEntity
                 {
+                    SerialNumber = raw.SerialNumber,
                     HospitalName = hospitalName,
                     ProductName = productName,
                     Province = province,
@@ -489,7 +543,16 @@ public static class InMemoryProjectDataStore
                     Personnel4 = raw.Personnel4,
                     Personnel5 = raw.Personnel5,
                     AfterSalesProjectType = raw.AfterSalesProjectType,
-                    Remarks = raw.Remarks
+                    Remarks = raw.Remarks,
+                    ServiceArea = raw.ServiceArea,
+                    City = raw.City,
+                    Points = raw.Points,
+                    SalesAmount = raw.SalesAmount,
+                    AnnualOutput = raw.AnnualOutput,
+                    StationLocation = raw.StationLocation,
+                    IsStationedOnsite = raw.IsStationedOnsite,
+                    StationedCount = raw.StationedCount,
+                    AcceptanceDate = raw.AcceptanceDate
                 });
             }
         }
@@ -575,6 +638,10 @@ public static class InMemoryProjectDataStore
             .Select(x => x.OpportunityNumber)
             .FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)) ?? string.Empty;
 
+        var serialNumber = rows
+            .Select(x => x.SerialNumber)
+            .FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)) ?? string.Empty;
+
         var implementationStatus = rows
             .Where(x => !string.IsNullOrWhiteSpace(x.ImplementationStatus))
             .GroupBy(x => x.ImplementationStatus)
@@ -591,8 +658,37 @@ public static class InMemoryProjectDataStore
             .Select(x => x.Remarks)
             .FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)) ?? string.Empty;
 
+        var serviceArea = rows
+            .Select(x => x.ServiceArea)
+            .FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)) ?? string.Empty;
+
+        var city = rows
+            .Select(x => x.City)
+            .FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)) ?? string.Empty;
+
+        var points = rows
+            .Select(x => x.Points)
+            .FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)) ?? string.Empty;
+
+        var stationLocation = rows
+            .Select(x => x.StationLocation)
+            .FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)) ?? string.Empty;
+
+        var isStationedOnsite = rows
+            .Select(x => x.IsStationedOnsite)
+            .FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)) ?? string.Empty;
+
+        var stationedCount = rows
+            .Select(x => x.StationedCount)
+            .FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)) ?? string.Empty;
+
+        var acceptanceDate = rows
+            .Select(x => x.AcceptanceDate)
+            .FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)) ?? string.Empty;
+
         return new ProjectEntity
         {
+            SerialNumber = serialNumber,
             HospitalName = rows[0].HospitalName,
             ProductName = rows[0].ProductName,
             Province = province,
@@ -615,7 +711,16 @@ public static class InMemoryProjectDataStore
             Personnel4 = rows.Select(x => x.Personnel4).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)) ?? string.Empty,
             Personnel5 = rows.Select(x => x.Personnel5).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)) ?? string.Empty,
             AfterSalesProjectType = afterSalesProjectType,
-            Remarks = remarks
+            Remarks = remarks,
+            ServiceArea = serviceArea,
+            City = city,
+            Points = points,
+            SalesAmount = rows.Max(x => x.SalesAmount),
+            AnnualOutput = rows.Max(x => x.AnnualOutput),
+            StationLocation = stationLocation,
+            IsStationedOnsite = isStationedOnsite,
+            StationedCount = stationedCount,
+            AcceptanceDate = acceptanceDate
         };
     }
 

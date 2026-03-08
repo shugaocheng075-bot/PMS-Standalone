@@ -1,0 +1,1 @@
+import{n as e,t}from"./request-DH6mnD3y.js";var n=e.create({baseURL:`/api`,timeout:1e4});function r(e){return n.post(`/auth/login`,e).then(e=>e.data)}function i(){return t.post(`/auth/logout`)}export{i as n,r as t};

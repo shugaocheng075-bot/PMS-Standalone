@@ -14,8 +14,10 @@ namespace PMS.API.Controllers.Admin;
 [Route("api/admin/import")]
 public class DataImportController : ControllerBase
 {
+    private const string DefaultProjectLedgerExcelPath = @"C:\Users\R9000P\Desktop\项目明细.xlsx";
+    private const string DefaultProjectLedgerSheetName = "维护项目明细";
     private const string DefaultMajorDemandExcelPath = @"C:\Users\R9000P\Desktop\项目明细.xlsx";
-    private const string DefaultMajorDemandSheetName = "重大需求";
+    private const string DefaultMajorDemandSheetName = "重大需求明细";
 
     [HttpPost("text")]
     public IActionResult ImportFromText([FromBody] TextImportRequest request)
@@ -137,6 +139,50 @@ public class DataImportController : ControllerBase
             removedInvalidCount = 0,
             deduplicatedCount = 0,
             message = "重大需求已导入（仅更新重大需求模块，不联动其他页面）"
+        }));
+    }
+
+    [HttpPost("project-ledger")]
+    public IActionResult ImportProjectLedger([FromBody] ExcelImportRequest? request)
+    {
+        var filePath = string.IsNullOrWhiteSpace(request?.FilePath)
+            ? DefaultProjectLedgerExcelPath
+            : Path.GetFullPath(request.FilePath.Trim());
+
+        var sheetName = string.IsNullOrWhiteSpace(request?.SheetName)
+            ? DefaultProjectLedgerSheetName
+            : request.SheetName.Trim();
+
+        if (!System.IO.File.Exists(filePath))
+        {
+            return BadRequest(new ApiResponse<object>
+            {
+                Code = 400,
+                Message = $"Excel文件不存在: {filePath}"
+            });
+        }
+
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+
+        var projects = ReadProjectLedgerFromWorkbook(filePath, sheetName);
+        if (projects.Count == 0)
+        {
+            return BadRequest(new ApiResponse<object>
+            {
+                Code = 400,
+                Message = $"未在工作表“{sheetName}”中识别到有效数据"
+            });
+        }
+
+        InMemoryProjectDataStore.ReplaceAllRaw(projects);
+        InMemoryHospitalService.RebuildFromProjects(InMemoryProjectDataStore.Projects);
+
+        return Ok(ApiResponse<object>.Success(new
+        {
+            sourceFilePath = filePath,
+            sheetName,
+            importedRowCount = projects.Count,
+            message = "项目台账已按维护项目明细全量导入"
         }));
     }
 
@@ -375,6 +421,119 @@ public class DataImportController : ControllerBase
                     OverdueDays = overdueDays
                 });
             }
+        }
+        while (reader.NextResult());
+
+        return result;
+    }
+
+    private static List<ProjectEntity> ReadProjectLedgerFromWorkbook(string filePath, string sheetName)
+    {
+        var result = new List<ProjectEntity>();
+        var normalizedTargetSheet = NormalizeHeader(sheetName);
+
+        using var stream = System.IO.File.Open(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+        using var reader = ExcelReaderFactory.CreateReader(stream);
+
+        do
+        {
+            if (!reader.Read())
+            {
+                continue;
+            }
+
+            var currentSheet = NormalizeHeader(reader.Name ?? string.Empty);
+            if (!currentSheet.Equals(normalizedTargetSheet, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var headers = BuildHeaderIndex(reader);
+            var serialNumberIndex = FindIndex(headers, "序号");
+            var serviceAreaIndex = FindIndex(headers, "服务区域");
+            var provinceIndex = FindIndex(headers, "省", "省份");
+            var cityIndex = FindIndex(headers, "市");
+            var salesIndex = FindIndex(headers, "销售");
+            var groupIndex = FindIndex(headers, "服务组别", "组别");
+            var maintenancePersonIndex = FindIndex(headers, "服务人员", "维护人员");
+            var hospitalLevelIndex = FindIndex(headers, "医院等级", "医院级别");
+            var hospitalNameIndex = FindIndex(headers, "最终用户", "医院名称");
+            var productNameIndex = FindIndex(headers, "维护产品", "产品", "产品名称");
+            var pointsIndex = FindIndex(headers, "点位");
+            var salesAmountIndex = FindIndex(headers, "销售合同额");
+            var maintenanceAmountIndex = FindIndex(headers, "维护合同额", "维护金额");
+            var annualOutputIndex = FindIndex(headers, "年度产值");
+            var contractStatusIndex = FindIndex(headers, "合同状态");
+            var afterSalesStartDateIndex = FindIndex(headers, "维护开始日期", "售后开始日期");
+            var afterSalesEndDateIndex = FindIndex(headers, "维护结束日期", "售后结束日期");
+            var isOverdueIndex = FindIndex(headers, "是否超期");
+            var overdueDaysIndex = FindIndex(headers, "超期天数");
+            var opportunityNumberIndex = FindIndex(headers, "机会号");
+            var stationLocationIndex = FindIndex(headers, "驻地");
+            var isStationedOnsiteIndex = FindIndex(headers, "是否驻场");
+            var stationedCountIndex = FindIndex(headers, "驻场人数");
+            var remarksIndex = FindIndex(headers, "备注");
+            var acceptanceDateIndex = FindIndex(headers, "验收日期");
+
+            while (reader.Read())
+            {
+                var hasAnyValue = Enumerable.Range(0, reader.FieldCount).Any(index => !string.IsNullOrWhiteSpace(ReadText(reader, index)));
+                if (!hasAnyValue)
+                {
+                    continue;
+                }
+
+                var hospitalName = ReadText(reader, hospitalNameIndex);
+                var productName = ReadText(reader, productNameIndex);
+                if (string.IsNullOrWhiteSpace(hospitalName) && string.IsNullOrWhiteSpace(productName))
+                {
+                    continue;
+                }
+
+                var contractStatus = ReadText(reader, contractStatusIndex);
+                var afterSalesEndDateText = ReadText(reader, afterSalesEndDateIndex);
+                var isOverdue = ReadText(reader, isOverdueIndex);
+                var overdueDays = ReadInt(reader, overdueDaysIndex);
+                if (overdueDays <= 0 && (isOverdue is "是" or "Y" or "y" or "true" or "TRUE"))
+                {
+                    overdueDays = 1;
+                }
+
+                if (overdueDays <= 0)
+                {
+                    overdueDays = ComputeOverdueDays(afterSalesEndDateText, contractStatus);
+                }
+
+                result.Add(new ProjectEntity
+                {
+                    SerialNumber = ReadText(reader, serialNumberIndex),
+                    ServiceArea = ReadText(reader, serviceAreaIndex),
+                    Province = ReadText(reader, provinceIndex),
+                    City = ReadText(reader, cityIndex),
+                    SalesName = ReadText(reader, salesIndex),
+                    GroupName = ReadText(reader, groupIndex),
+                    MaintenancePersonName = ReadText(reader, maintenancePersonIndex),
+                    HospitalLevel = ReadText(reader, hospitalLevelIndex),
+                    HospitalName = hospitalName,
+                    ProductName = productName,
+                    Points = ReadText(reader, pointsIndex),
+                    SalesAmount = ReadDecimal(reader, salesAmountIndex),
+                    MaintenanceAmount = ReadDecimal(reader, maintenanceAmountIndex),
+                    AnnualOutput = ReadDecimal(reader, annualOutputIndex),
+                    ContractStatus = contractStatus,
+                    AfterSalesStartDate = NormalizeDateText(ReadText(reader, afterSalesStartDateIndex)),
+                    AfterSalesEndDate = NormalizeDateText(afterSalesEndDateText),
+                    OverdueDays = overdueDays,
+                    OpportunityNumber = ReadText(reader, opportunityNumberIndex),
+                    StationLocation = ReadText(reader, stationLocationIndex),
+                    IsStationedOnsite = ReadText(reader, isStationedOnsiteIndex),
+                    StationedCount = ReadText(reader, stationedCountIndex),
+                    Remarks = ReadText(reader, remarksIndex),
+                    AcceptanceDate = NormalizeDateText(ReadText(reader, acceptanceDateIndex))
+                });
+            }
+
+            return result;
         }
         while (reader.NextResult());
 

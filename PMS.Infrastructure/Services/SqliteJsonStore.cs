@@ -12,6 +12,8 @@ internal static class SqliteJsonStore
     };
 
     private static readonly string DbPath = ResolveDbPath();
+    private static readonly string ConnectionString =
+        $"Data Source={DbPath};Cache=Shared";
 
     private static bool _initialized;
 
@@ -64,15 +66,29 @@ internal static class SqliteJsonStore
         }
     }
 
-    public static void Save<T>(string key, T value)
+    /// <summary>
+    /// Saves data to SQLite. Returns true on success, false on failure.
+    /// On failure the caller's in-memory state may be inconsistent — callers
+    /// should pre-serialize or handle the false return to roll back.
+    /// </summary>
+    public static bool Save<T>(string key, T value)
     {
         lock (SyncRoot)
         {
-            EnsureInitialized();
+            try
+            {
+                EnsureInitialized();
 
-            using var connection = CreateConnection();
-            connection.Open();
-            SaveInternal(connection, key, value);
+                using var connection = CreateConnection();
+                connection.Open();
+                SaveInternal(connection, key, value);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"[SqliteJsonStore] Save failed for key '{key}': {ex.Message}");
+                return false;
+            }
         }
     }
 
@@ -94,10 +110,16 @@ ON CONFLICT(StateKey) DO UPDATE SET
         command.ExecuteNonQuery();
     }
 
-    private static SqliteConnection CreateConnection()
+    internal static SqliteConnection CreateConnection()
     {
-        return new SqliteConnection($"Data Source={DbPath}");
+        return new SqliteConnection(ConnectionString);
     }
+
+    /// <summary>
+    /// Ensures the AppState table exists and WAL mode is configured.
+    /// Called by SqliteTableStore to guarantee pragmas are applied early.
+    /// </summary>
+    internal static void EnsureReady() => EnsureInitialized();
 
     private static void EnsureInitialized()
     {
@@ -108,6 +130,13 @@ ON CONFLICT(StateKey) DO UPDATE SET
 
         using var connection = CreateConnection();
         connection.Open();
+
+        // Enable WAL mode for better concurrent read/write performance and crash recovery
+        using (var pragma = connection.CreateCommand())
+        {
+            pragma.CommandText = "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA busy_timeout=5000;";
+            pragma.ExecuteNonQuery();
+        }
 
         using var command = connection.CreateCommand();
         command.CommandText = @"

@@ -12,6 +12,6 @@ export function fetchAnnualReportList(params: AnnualReportQuery) {
   })
 }
 
-export function updateAnnualReport(id: number, payload: AnnualReportUpsert) {
+export function updateAnnualReport(id: number, payload: Partial<AnnualReportUpsert>) {
   return request.put<any, ApiResponse<AnnualReportItem>>(`/annual-reports/${id}`, payload)
 }

@@ -7,9 +7,10 @@ namespace PMS.Infrastructure.Services;
 
 public class InMemoryMonthlyReportService : IMonthlyReportService
 {
-    private const string StateKey = "monthly_reports";
+    private const string TableName = "MonthlyReports";
+    private const string LegacyJsonKey = "monthly_reports";
     private static readonly object SyncRoot = new();
-    private static readonly List<MonthlyReportEntity> Records = SqliteJsonStore.LoadOrSeed(StateKey, () => new List<MonthlyReportEntity>());
+    private static readonly List<MonthlyReportEntity> Records = SqliteTableStore.LoadAll<MonthlyReportEntity>(TableName, LegacyJsonKey);
     private static long _nextId = Records.Count > 0 ? Records.Max(x => x.Id) + 1 : 1;
 
     public Task<PagedResult<MonthlyReportItemDto>> QueryAsync(MonthlyReportQuery query, CancellationToken cancellationToken = default)
@@ -99,7 +100,7 @@ public class InMemoryMonthlyReportService : IMonthlyReportService
             };
 
             Records.Add(entity);
-            Persist();
+            SqliteTableStore.Insert(TableName, entity);
 
             return Task.FromResult(MapToDto(entity));
         }
@@ -136,7 +137,7 @@ public class InMemoryMonthlyReportService : IMonthlyReportService
             entity.Status = string.IsNullOrWhiteSpace(dto.Status) ? entity.Status : dto.Status.Trim();
             entity.UpdatedAt = DateTime.UtcNow;
 
-            Persist();
+            SqliteTableStore.Update(TableName, entity, entity.Id);
             return Task.FromResult<MonthlyReportItemDto?>(MapToDto(entity));
         }
     }
@@ -146,7 +147,7 @@ public class InMemoryMonthlyReportService : IMonthlyReportService
         lock (SyncRoot)
         {
             var removed = Records.RemoveAll(x => x.Id == id);
-            if (removed > 0) Persist();
+            if (removed > 0) SqliteTableStore.Delete(TableName, id);
             return Task.FromResult(removed > 0);
         }
     }
@@ -184,8 +185,8 @@ public class InMemoryMonthlyReportService : IMonthlyReportService
         };
     }
 
-    private static void Persist()
+    private static void PersistAll()
     {
-        SqliteJsonStore.Save(StateKey, Records);
+        SqliteTableStore.ReplaceAll(TableName, Records);
     }
 }

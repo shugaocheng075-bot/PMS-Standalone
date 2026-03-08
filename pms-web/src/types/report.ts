@@ -1,13 +1,9 @@
 export interface WorkHoursReportRow {
+  id: number
   opportunityNumber: string
   hospitalName: string
   productName: string
-  province: string
-  groupName: string
-  salesName: string
-  maintenancePersonName: string
   implementationStatus: string
-  afterSalesProjectType: string
   workHoursManDays: number
   personnelCount: number
   personnel1: string
@@ -15,16 +11,29 @@ export interface WorkHoursReportRow {
   personnel3: string
   personnel4: string
   personnel5: string
+  maintenanceStartDate: string
+  maintenanceEndDate: string
+  afterSalesProjectType: string
+  remarks: string
 }
 
+export type WorkHoursReportRowUpdatePayload = Omit<WorkHoursReportRow, 'id'>
+
 export interface WorkHoursReportQuery {
-  groupName?: string
+  reportMonth?: string
   implementationStatus?: string
+  [key: string]: string | undefined
+}
+
+export interface WorkHoursReportImportResult {
+  reportMonth: string
+  total: number
 }
 
 export interface MonthlyReportGenerateRequest {
   reportMonth: string
   groupName: string
+  supervisorName?: string
   submittedBy?: string
   teamDataSource?: MonthlyReportTeamDataSourceInput
 }
@@ -121,6 +130,7 @@ export interface MonthlyReportSourcePreview {
 
 export interface MonthlyReportExportQuery {
   reportMonth: string
-  groupName: string
+  groupName?: string
+  supervisorName?: string
   submittedBy?: string
 }

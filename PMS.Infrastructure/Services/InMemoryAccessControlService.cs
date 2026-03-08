@@ -12,14 +12,15 @@ public class InMemoryAccessControlService(IPersonnelService personnelService) : 
     private static readonly object SyncRoot = new();
     private static readonly List<PersonnelPermissionState> States = SqliteJsonStore.LoadOrSeed(StateKey, () => new List<PersonnelPermissionState>());
 
-    // ── 系统角色常量 ──
-    public const string RoleOperator = "operator";     // 普通运维人员
-    public const string RoleSupervisor = "supervisor"; // 运维主管
-    public const string RoleManager = "manager";       // 经理
+    // ── 系统角色常量（4 级层级：运维人员 → 运维服务主管 → 运维区域经理 → 运维经理）──
+    public const string RoleOperator = "operator";                 // 运维人员
+    public const string RoleSupervisor = "supervisor";             // 运维服务主管
+    public const string RoleRegionalManager = "regional_manager"; // 运维区域经理
+    public const string RoleManager = "manager";                   // 运维经理
 
     private static readonly HashSet<string> ValidSystemRoles = new(StringComparer.OrdinalIgnoreCase)
     {
-        RoleOperator, RoleSupervisor, RoleManager
+        RoleOperator, RoleSupervisor, RoleRegionalManager, RoleManager
     };
 
     private static readonly List<PermissionDefinitionDto> PermissionCatalog =
@@ -448,14 +449,16 @@ public class InMemoryAccessControlService(IPersonnelService personnelService) : 
     {
         var role = state.SystemRole ?? RoleOperator;
 
-        // admin 或 manager: 全部（不限医院）
+        // admin 或 运维经理: 全部（不限医院）
         if (state.IsAdmin || string.Equals(role, RoleManager, StringComparison.OrdinalIgnoreCase))
         {
             return new DataScopeDto { ScopeType = "all", AccessiblePersonnelNames = [], AccessibleHospitalNames = [] };
         }
 
-        // supervisor: 本人 + 所有 SupervisorId 指向自己的下属
-        if (string.Equals(role, RoleSupervisor, StringComparison.OrdinalIgnoreCase))
+        // 运维区域经理: 与主管相同逻辑（本人 + 所有下属）
+        // 运维服务主管: 本人 + 所有 SupervisorId 指向自己的下属
+        if (string.Equals(role, RoleRegionalManager, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(role, RoleSupervisor, StringComparison.OrdinalIgnoreCase))
         {
             var names = new List<string> { personnelName };
 
@@ -595,13 +598,44 @@ public class InMemoryAccessControlService(IPersonnelService personnelService) : 
     {
         var role = (systemRole ?? RoleOperator).Trim().ToLowerInvariant();
 
-        // ── 经理: 全部权限 ──
+        // ── 运维经理: 全部权限 ──
         if (string.Equals(role, RoleManager, StringComparison.OrdinalIgnoreCase))
         {
             return PermissionCatalog.Select(x => x.Key).ToList();
         }
 
-        // ── 运维主管: 管理下属项目 + 查看合同/项目 ──
+        // ── 运维区域经理: 拥有大部分管理权限 ──
+        if (string.Equals(role, RoleRegionalManager, StringComparison.OrdinalIgnoreCase))
+        {
+            return
+            [
+                "dashboard.view",
+                "alert-center.view",
+                "project.view",
+                "project.manage",
+                "contract.view",
+                "contract.manage",
+                "handover.view",
+                "handover.manage",
+                "inspection.view",
+                "inspection.manage",
+                "annual-report.view",
+                "annual-report.manage",
+                "hospital.view",
+                "hospital.manage",
+                "personnel.view",
+                "personnel.manage",
+                "product.view",
+                "major-demand.view",
+                "major-demand.manage",
+                "repair.view",
+                "repair.manage",
+                "monthly-report.view",
+                "monthly-report.manage",
+            ];
+        }
+
+        // ── 运维服务主管: 管理下属项目 + 查看合同/项目 ──
         if (string.Equals(role, RoleSupervisor, StringComparison.OrdinalIgnoreCase))
         {
             return
@@ -625,7 +659,7 @@ public class InMemoryAccessControlService(IPersonnelService personnelService) : 
             ];
         }
 
-        // ── 普通运维人员: 仅自己项目相关 ──
+        // ── 运维人员: 仅自己项目相关 ──
         return
         [
             "dashboard.view",

@@ -19,6 +19,32 @@ public class InspectionsController(
     [HttpGet("summary")]
     public async Task<IActionResult> GetSummary(CancellationToken cancellationToken = default)
     {
+        var personnelId = HttpContext.GetCurrentPersonnelId();
+        var dataScope = await accessControlService.GetDataScopeAsync(personnelId);
+        if (!string.Equals(dataScope.ScopeType, "all", StringComparison.OrdinalIgnoreCase)
+            && dataScope.AccessibleHospitalNames is { Count: > 0 })
+        {
+            var allResult = await inspectionService.QueryAsync(
+                new InspectionQuery { Page = 1, Size = int.MaxValue }, cancellationToken);
+            var scopedItems = HospitalScopeHelper.FilterByHospitalScope(
+                dataScope, allResult.Items, x => x.HospitalName).ToList();
+
+            var now = DateTime.Today;
+            var monthStart = new DateTime(now.Year, now.Month, 1);
+            var monthEnd = monthStart.AddMonths(1);
+
+            var scopedSummary = new InspectionSummaryDto
+            {
+                PlannedCount = scopedItems.Count(x => x.Status == "已计划"),
+                InProgressCount = scopedItems.Count(x => x.Status == "执行中"),
+                CompletedCount = scopedItems.Count(x => x.Status == "已完成"),
+                CancelledCount = scopedItems.Count(x => x.Status == "已取消"),
+                ThisMonthCount = scopedItems.Count(x => x.PlanDate >= monthStart && x.PlanDate < monthEnd),
+                Total = scopedItems.Count
+            };
+            return Ok(ApiResponse<InspectionSummaryDto>.Success(scopedSummary));
+        }
+
         var summary = await inspectionService.GetSummaryAsync(cancellationToken);
         return Ok(ApiResponse<InspectionSummaryDto>.Success(summary));
     }
@@ -34,6 +60,46 @@ public class InspectionsController(
         [FromQuery] int size = 20,
         CancellationToken cancellationToken = default)
     {
+        var personnelId = HttpContext.GetCurrentPersonnelId();
+        var dataScope = await accessControlService.GetDataScopeAsync(personnelId);
+        var needsHospitalScope =
+            !string.Equals(dataScope.ScopeType, "all", StringComparison.OrdinalIgnoreCase)
+            && dataScope.AccessibleHospitalNames is { Count: > 0 };
+
+        if (needsHospitalScope)
+        {
+            var allResult = await inspectionService.QueryAsync(new InspectionQuery
+            {
+                Status = status,
+                Province = province,
+                ProductName = productName,
+                GroupName = groupName,
+                Inspector = inspector,
+                Page = 1,
+                Size = int.MaxValue
+            }, cancellationToken);
+
+            var scopedItems = HospitalScopeHelper.FilterByHospitalScope(
+                dataScope, allResult.Items, x => x.HospitalName).ToList();
+
+            var totalScoped = scopedItems.Count;
+            var effectivePage = page < 1 ? 1 : page;
+            var effectiveSize = size <= 0 ? 20 : size;
+            var pagedItems = scopedItems
+                .Skip((effectivePage - 1) * effectiveSize)
+                .Take(effectiveSize)
+                .ToList();
+
+            return Ok(ApiResponse<PagedResult<InspectionPlanItemDto>>.Success(
+                new PagedResult<InspectionPlanItemDto>
+                {
+                    Items = pagedItems,
+                    Total = totalScoped,
+                    Page = effectivePage,
+                    Size = effectiveSize
+                }));
+        }
+
         var result = await inspectionService.QueryAsync(new InspectionQuery
         {
             Status = status,
@@ -44,23 +110,6 @@ public class InspectionsController(
             Page = page,
             Size = size
         }, cancellationToken);
-
-        // 医院范围过滤
-        var personnelId = HttpContext.GetCurrentPersonnelId();
-        var dataScope = await accessControlService.GetDataScopeAsync(personnelId);
-        if (!string.Equals(dataScope.ScopeType, "all", StringComparison.OrdinalIgnoreCase)
-            && dataScope.AccessibleHospitalNames is { Count: > 0 })
-        {
-            var filtered = HospitalScopeHelper.FilterByHospitalScope(
-                dataScope, result.Items, x => x.HospitalName).ToList();
-            result = new PagedResult<InspectionPlanItemDto>
-            {
-                Items = filtered,
-                Total = filtered.Count,
-                Page = result.Page,
-                Size = result.Size
-            };
-        }
 
         return Ok(ApiResponse<PagedResult<InspectionPlanItemDto>>.Success(result));
     }
@@ -153,6 +202,47 @@ public class InspectionsController(
         [FromQuery] int size = 20,
         CancellationToken cancellationToken = default)
     {
+        var personnelId = HttpContext.GetCurrentPersonnelId();
+        var dataScope = await accessControlService.GetDataScopeAsync(personnelId);
+        var needsHospitalScope =
+            !string.Equals(dataScope.ScopeType, "all", StringComparison.OrdinalIgnoreCase)
+            && dataScope.AccessibleHospitalNames is { Count: > 0 };
+
+        if (needsHospitalScope)
+        {
+            var allResult = await inspectionService.QueryResultsAsync(new InspectionResultQuery
+            {
+                HospitalName = hospitalName,
+                ProductName = productName,
+                Inspector = inspector,
+                HealthLevel = healthLevel,
+                From = from,
+                To = to,
+                Page = 1,
+                Size = int.MaxValue
+            }, cancellationToken);
+
+            var scopedItems = HospitalScopeHelper.FilterByHospitalScope(
+                dataScope, allResult.Items, x => x.HospitalName).ToList();
+
+            var totalScoped = scopedItems.Count;
+            var effectivePage = page < 1 ? 1 : page;
+            var effectiveSize = size <= 0 ? 20 : size;
+            var pagedItems = scopedItems
+                .Skip((effectivePage - 1) * effectiveSize)
+                .Take(effectiveSize)
+                .ToList();
+
+            return Ok(ApiResponse<PagedResult<InspectionResultDto>>.Success(
+                new PagedResult<InspectionResultDto>
+                {
+                    Items = pagedItems,
+                    Total = totalScoped,
+                    Page = effectivePage,
+                    Size = effectiveSize
+                }));
+        }
+
         var result = await inspectionService.QueryResultsAsync(new InspectionResultQuery
         {
             HospitalName = hospitalName,
@@ -164,23 +254,6 @@ public class InspectionsController(
             Page = page,
             Size = size
         }, cancellationToken);
-
-        // 医院范围过滤
-        var personnelId = HttpContext.GetCurrentPersonnelId();
-        var dataScope = await accessControlService.GetDataScopeAsync(personnelId);
-        if (!string.Equals(dataScope.ScopeType, "all", StringComparison.OrdinalIgnoreCase)
-            && dataScope.AccessibleHospitalNames is { Count: > 0 })
-        {
-            var filtered = HospitalScopeHelper.FilterByHospitalScope(
-                dataScope, result.Items, x => x.HospitalName).ToList();
-            result = new PagedResult<InspectionResultDto>
-            {
-                Items = filtered,
-                Total = filtered.Count,
-                Page = result.Page,
-                Size = result.Size
-            };
-        }
 
         return Ok(ApiResponse<PagedResult<InspectionResultDto>>.Success(result));
     }

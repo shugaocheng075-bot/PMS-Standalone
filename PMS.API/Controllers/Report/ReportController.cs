@@ -16,6 +16,9 @@ using PMS.Application.Models.WorkHours;
 using PMS.Infrastructure.Services;
 using System.Text.Json;
 using System.Text;
+using ClosedXML.Excel;
+using System.Globalization;
+using System.Security.Cryptography;
 
 namespace PMS.API.Controllers.Report;
 
@@ -32,15 +35,26 @@ public class ReportController(
     private static readonly char[] PersonnelSeparators = [',', '，', '、', ';', '；', '/', '\\', '|', '+', '&', '\n', '\r', '\t'];
 
     /// <summary>
-    /// 工时报表 — 从项目台账数据生成，对应工时 Excel 格式
+    /// 工时报表 — 从导入的工时报表数据读取
     /// </summary>
     [HttpGet("workhours")]
     public IActionResult GetWorkHoursReport(
-        [FromQuery] string? groupName,
+        [FromQuery] string? reportMonth,
         [FromQuery] string? implementationStatus)
     {
-        var rows = BuildWorkHoursRows(groupName, implementationStatus).ToList();
+        var resolvedMonth = ResolveReportMonth(reportMonth);
+        var allRows = InMemoryWorkHoursReportStore.GetOrCreateMonthRows(
+            resolvedMonth,
+            () => BuildAutoWorkHoursRows(resolvedMonth));
+        IEnumerable<WorkHoursReportRowDto> filtered = allRows;
 
+        if (!string.IsNullOrWhiteSpace(implementationStatus))
+        {
+            var s = implementationStatus.Trim();
+            filtered = filtered.Where(x => string.Equals((x.ImplementationStatus ?? "").Trim(), s, StringComparison.OrdinalIgnoreCase));
+        }
+
+        var rows = filtered.ToList();
         return Ok(ApiResponse<object>.Success(new
         {
             total = rows.Count,
@@ -49,17 +63,700 @@ public class ReportController(
     }
 
     /// <summary>
-    /// 导出工时报表（CSV）
+    /// 更新工时报表单行
+    /// </summary>
+    [HttpPut("workhours/{id:long}")]
+    public IActionResult UpdateWorkHoursReportRow(
+        [FromRoute] long id,
+        [FromQuery] string? reportMonth,
+        [FromBody] WorkHoursReportRowUpdateDto request)
+    {
+        if (id <= 0)
+        {
+            return BadRequest(new ApiResponse<object>
+            {
+                Code = 400,
+                Message = "无效的行ID",
+                Data = null
+            });
+        }
+
+        var resolvedMonth = ResolveReportMonth(reportMonth);
+        var updated = InMemoryWorkHoursReportStore.Update(resolvedMonth, id, row =>
+        {
+            row.OpportunityNumber = (request.OpportunityNumber ?? string.Empty).Trim();
+            row.HospitalName = (request.HospitalName ?? string.Empty).Trim();
+            row.ProductName = (request.ProductName ?? string.Empty).Trim();
+            row.ImplementationStatus = (request.ImplementationStatus ?? string.Empty).Trim();
+            row.WorkHoursManDays = Math.Round(request.WorkHoursManDays, 0, MidpointRounding.AwayFromZero);
+            row.PersonnelCount = request.PersonnelCount;
+            row.Personnel1 = (request.Personnel1 ?? string.Empty).Trim();
+            row.Personnel2 = (request.Personnel2 ?? string.Empty).Trim();
+            row.Personnel3 = (request.Personnel3 ?? string.Empty).Trim();
+            row.Personnel4 = (request.Personnel4 ?? string.Empty).Trim();
+            row.Personnel5 = (request.Personnel5 ?? string.Empty).Trim();
+            row.MaintenanceStartDate = (request.MaintenanceStartDate ?? string.Empty).Trim();
+            row.MaintenanceEndDate = (request.MaintenanceEndDate ?? string.Empty).Trim();
+            row.AfterSalesProjectType = (request.AfterSalesProjectType ?? string.Empty).Trim();
+            row.Remarks = (request.Remarks ?? string.Empty).Trim();
+        });
+
+        if (updated is null)
+        {
+            return NotFound(new ApiResponse<object>
+            {
+                Code = 404,
+                Message = "未找到对应的工时报表行",
+                Data = null
+            });
+        }
+
+        return Ok(ApiResponse<WorkHoursReportRowDto>.Success(updated));
+    }
+
+    /// <summary>
+    /// 导出工时报表（Excel .xlsx）
     /// </summary>
     [HttpGet("workhours/export")]
     public IActionResult ExportWorkHoursReport(
-        [FromQuery] string? groupName,
+        [FromQuery] string? reportMonth,
         [FromQuery] string? implementationStatus)
     {
-        var rows = BuildWorkHoursRows(groupName, implementationStatus).ToList();
-        var csv = BuildWorkHoursCsv(rows);
-        var fileName = $"workhours_{DateTime.Now:yyyyMMdd_HHmmss}.csv";
-        return File(Encoding.UTF8.GetBytes(csv), "text/csv; charset=utf-8", fileName);
+        var resolvedMonth = ResolveReportMonth(reportMonth);
+        var allRows = InMemoryWorkHoursReportStore.GetOrCreateMonthRows(
+            resolvedMonth,
+            () => BuildAutoWorkHoursRows(resolvedMonth));
+        IEnumerable<WorkHoursReportRowDto> filtered = allRows;
+
+        if (!string.IsNullOrWhiteSpace(implementationStatus))
+        {
+            var s = implementationStatus.Trim();
+            filtered = filtered.Where(x => string.Equals((x.ImplementationStatus ?? "").Trim(), s, StringComparison.OrdinalIgnoreCase));
+        }
+
+        var rows = filtered.ToList();
+        var bytes = BuildWorkHoursExcel(rows);
+        var fileName = $"工时报表_{resolvedMonth}_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
+        return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
+    }
+
+    /// <summary>
+    /// 重新计算某个月工时报表
+    /// </summary>
+    [HttpPost("workhours/regenerate")]
+    public IActionResult RegenerateWorkHoursReport([FromQuery] string? reportMonth)
+    {
+        var resolvedMonth = ResolveReportMonth(reportMonth);
+        var importedRows = InMemoryWorkHoursReportStore.GetMonthRows(resolvedMonth);
+        var rows = BuildAutoWorkHoursRows(resolvedMonth, importedRows);
+        InMemoryWorkHoursReportStore.ReplaceMonthRows(resolvedMonth, rows);
+
+        return Ok(ApiResponse<object>.Success(new
+        {
+            reportMonth = resolvedMonth,
+            total = rows.Count
+        }));
+    }
+
+    /// <summary>
+    /// 导入 Excel 文件到工时报表（清空指定月份后导入）
+    /// </summary>
+    [HttpPost("workhours/import")]
+    public IActionResult ImportWorkHoursReport(
+        IFormFile file,
+        [FromQuery] string? reportMonth,
+        [FromQuery] bool autoCalculate = true)
+    {
+        if (file is null || file.Length == 0)
+        {
+            return BadRequest(new ApiResponse<object> { Code = 400, Message = "请上传 Excel 文件", Data = null });
+        }
+
+        var resolvedMonth = ResolveReportMonth(reportMonth);
+
+        List<WorkHoursReportRowDto> importedRows;
+        try
+        {
+            using var stream = file.OpenReadStream();
+            importedRows = ParseWorkHoursExcel(stream);
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new ApiResponse<object> { Code = 400, Message = $"Excel 解析失败: {ex.Message}", Data = null });
+        }
+
+        if (autoCalculate)
+        {
+            // 先存入原始行，再基于导入行重新计算工时
+            InMemoryWorkHoursReportStore.ReplaceMonthRows(resolvedMonth, importedRows);
+            var recalculated = BuildAutoWorkHoursRows(resolvedMonth, importedRows);
+            InMemoryWorkHoursReportStore.ReplaceMonthRows(resolvedMonth, recalculated);
+            importedRows = recalculated;
+        }
+        else
+        {
+            InMemoryWorkHoursReportStore.ReplaceMonthRows(resolvedMonth, importedRows);
+        }
+
+        return Ok(ApiResponse<object>.Success(new
+        {
+            reportMonth = resolvedMonth,
+            total = importedRows.Count
+        }));
+    }
+
+    /// <summary>
+    /// 删除单行工时报表
+    /// </summary>
+    [HttpDelete("workhours/{id:long}")]
+    public IActionResult DeleteWorkHoursReportRow(
+        [FromRoute] long id,
+        [FromQuery] string? reportMonth)
+    {
+        var resolvedMonth = ResolveReportMonth(reportMonth);
+        var rows = InMemoryWorkHoursReportStore.GetMonthRows(resolvedMonth).ToList();
+        var removed = rows.RemoveAll(r => r.Id == id);
+        if (removed == 0)
+        {
+            return NotFound(new ApiResponse<object> { Code = 404, Message = "未找到对应的工时报表行", Data = null });
+        }
+
+        InMemoryWorkHoursReportStore.ReplaceMonthRows(resolvedMonth, rows);
+        return Ok(ApiResponse<object>.Success(new { message = "删除成功" }));
+    }
+
+    /// <summary>
+    /// 新增单行工时报表
+    /// </summary>
+    [HttpPost("workhours/row")]
+    public IActionResult AddWorkHoursReportRow(
+        [FromQuery] string? reportMonth,
+        [FromBody] WorkHoursReportRowUpdateDto dto)
+    {
+        var resolvedMonth = ResolveReportMonth(reportMonth);
+        var rows = InMemoryWorkHoursReportStore.GetMonthRows(resolvedMonth).ToList();
+        var newRow = new WorkHoursReportRowDto
+        {
+            OpportunityNumber = (dto.OpportunityNumber ?? string.Empty).Trim(),
+            HospitalName = (dto.HospitalName ?? string.Empty).Trim(),
+            ProductName = (dto.ProductName ?? string.Empty).Trim(),
+            ImplementationStatus = (dto.ImplementationStatus ?? string.Empty).Trim(),
+            WorkHoursManDays = Math.Round(dto.WorkHoursManDays, 0, MidpointRounding.AwayFromZero),
+            PersonnelCount = dto.PersonnelCount,
+            Personnel1 = (dto.Personnel1 ?? string.Empty).Trim(),
+            Personnel2 = (dto.Personnel2 ?? string.Empty).Trim(),
+            Personnel3 = (dto.Personnel3 ?? string.Empty).Trim(),
+            Personnel4 = (dto.Personnel4 ?? string.Empty).Trim(),
+            Personnel5 = (dto.Personnel5 ?? string.Empty).Trim(),
+            MaintenanceStartDate = (dto.MaintenanceStartDate ?? string.Empty).Trim(),
+            MaintenanceEndDate = (dto.MaintenanceEndDate ?? string.Empty).Trim(),
+            AfterSalesProjectType = (dto.AfterSalesProjectType ?? string.Empty).Trim(),
+            Remarks = (dto.Remarks ?? string.Empty).Trim()
+        };
+        rows.Add(newRow);
+        InMemoryWorkHoursReportStore.ReplaceMonthRows(resolvedMonth, rows);
+        // Return the row with assigned ID
+        var savedRows = InMemoryWorkHoursReportStore.GetMonthRows(resolvedMonth);
+        var saved = savedRows.LastOrDefault();
+        return Ok(ApiResponse<WorkHoursReportRowDto>.Success(saved!));
+    }
+
+    private static List<WorkHoursReportRowDto> ParseWorkHoursExcel(Stream stream)
+    {
+        using var wb = new XLWorkbook(stream);
+        var ws = wb.Worksheets.First();
+
+        // Find header row — scan first 5 rows for "机会号" column
+        var headerRow = 0;
+        var colMap = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        for (var r = 1; r <= Math.Min(5, ws.LastRowUsed()?.RowNumber() ?? 1); r++)
+        {
+            for (var c = 1; c <= ws.LastColumnUsed()?.ColumnNumber(); c++)
+            {
+                var val = ws.Cell(r, c).GetString().Trim();
+                if (string.Equals(val, "机会号", StringComparison.OrdinalIgnoreCase))
+                {
+                    headerRow = r;
+                    break;
+                }
+            }
+            if (headerRow > 0) break;
+        }
+
+        if (headerRow == 0)
+        {
+            throw new InvalidOperationException("未找到表头行（需包含'机会号'列）");
+        }
+
+        // Build column map
+        string[] expectedHeaders = ["机会号", "客户名称", "产品名称", "实施状态", "工时（人天）", "实施人员（个数）",
+            "人员1", "人员2", "人员3", "人员4", "人员5", "维护开始时间", "维护结束时间", "售后项目类型", "备注"];
+
+        for (var c = 1; c <= ws.LastColumnUsed()?.ColumnNumber(); c++)
+        {
+            var headerText = ws.Cell(headerRow, c).GetString().Trim();
+            if (!string.IsNullOrWhiteSpace(headerText))
+            {
+                colMap[headerText] = c;
+            }
+        }
+
+        int Col(string name) => colMap.TryGetValue(name, out var idx) ? idx : 0;
+        string CellStr(IXLRow row, string colName) {
+            var c = Col(colName);
+            return c > 0 ? row.Cell(c).GetString().Trim() : string.Empty;
+        }
+
+        var rows = new List<WorkHoursReportRowDto>();
+        var lastRow = ws.LastRowUsed()?.RowNumber() ?? headerRow;
+
+        for (var r = headerRow + 1; r <= lastRow; r++)
+        {
+            var xlRow = ws.Row(r);
+            var opportunityNumber = CellStr(xlRow, "机会号");
+            var hospitalName = CellStr(xlRow, "客户名称");
+
+            // Skip empty rows
+            if (string.IsNullOrWhiteSpace(opportunityNumber) && string.IsNullOrWhiteSpace(hospitalName))
+            {
+                continue;
+            }
+
+            // Skip summary/total rows
+            if (hospitalName.Contains("合计") || hospitalName.Contains("总计"))
+            {
+                continue;
+            }
+
+            var manDaysCol = Col("工时（人天）");
+            decimal manDays = 0;
+            if (manDaysCol > 0)
+            {
+                var cellValue = xlRow.Cell(manDaysCol).GetString().Trim();
+                decimal.TryParse(cellValue, NumberStyles.Any, CultureInfo.InvariantCulture, out manDays);
+            }
+
+            var countCol = Col("实施人员（个数）");
+            int personnelCount = 0;
+            if (countCol > 0)
+            {
+                var cellValue = xlRow.Cell(countCol).GetString().Trim();
+                int.TryParse(cellValue, out personnelCount);
+            }
+
+            rows.Add(new WorkHoursReportRowDto
+            {
+                OpportunityNumber = opportunityNumber,
+                HospitalName = hospitalName,
+                ProductName = CellStr(xlRow, "产品名称"),
+                ImplementationStatus = CellStr(xlRow, "实施状态"),
+                WorkHoursManDays = Math.Round(manDays, 0, MidpointRounding.AwayFromZero),
+                PersonnelCount = personnelCount,
+                Personnel1 = CellStr(xlRow, "人员1"),
+                Personnel2 = CellStr(xlRow, "人员2"),
+                Personnel3 = CellStr(xlRow, "人员3"),
+                Personnel4 = CellStr(xlRow, "人员4"),
+                Personnel5 = CellStr(xlRow, "人员5"),
+                MaintenanceStartDate = CellStr(xlRow, "维护开始时间"),
+                MaintenanceEndDate = CellStr(xlRow, "维护结束时间"),
+                AfterSalesProjectType = CellStr(xlRow, "售后项目类型"),
+                Remarks = CellStr(xlRow, "备注")
+            });
+        }
+
+        return rows;
+    }
+
+    private static string ResolveReportMonth(string? reportMonth)
+    {
+        if (!string.IsNullOrWhiteSpace(reportMonth)
+            && DateTime.TryParseExact(reportMonth.Trim(), "yyyy-MM", CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsed))
+        {
+            return parsed.ToString("yyyy-MM");
+        }
+
+        return DateTime.Today.ToString("yyyy-MM");
+    }
+
+    private sealed class AutoWorkHoursProjectRef
+    {
+        public string Key { get; set; } = string.Empty;
+        public Domain.Entities.ProjectEntity Project { get; set; } = new();
+    }
+
+    private sealed class AutoWorkHoursRowRef
+    {
+        public string Key { get; set; } = string.Empty;
+        public WorkHoursReportRowDto Row { get; set; } = new();
+    }
+
+    private static List<WorkHoursReportRowDto> BuildAutoWorkHoursRows(string reportMonth, IReadOnlyList<WorkHoursReportRowDto>? importedRows = null)
+    {
+        var monthDate = DateTime.ParseExact(reportMonth, "yyyy-MM", CultureInfo.InvariantCulture);
+        var cycleStart = new DateTime(monthDate.Year, monthDate.Month, 1).AddMonths(-1).AddDays(25);
+        var cycleEnd = new DateTime(monthDate.Year, monthDate.Month, 25);
+        var totalManDaysPerPerson = CountWorkdaysExcludingWeekends(cycleStart, cycleEnd);
+
+        if (importedRows is not null && importedRows.Count > 0)
+        {
+            return BuildAutoWorkHoursRowsFromImportedRows(reportMonth, totalManDaysPerPerson, importedRows);
+        }
+
+        var projects = InMemoryProjectDataStore.Projects;
+        if (projects.Count == 0)
+        {
+            // 项目主数据为空时，回退到工时报表中最新月份作为固定项目模板进行当月重算。
+            var latestTemplateRows = InMemoryWorkHoursReportStore.GetLatestMonthRows();
+            if (latestTemplateRows.Count > 0)
+            {
+                return BuildAutoWorkHoursRowsFromImportedRows(reportMonth, totalManDaysPerPerson, latestTemplateRows);
+            }
+        }
+
+        var projectByKey = new Dictionary<string, AutoWorkHoursProjectRef>(StringComparer.OrdinalIgnoreCase);
+        var assignedPeopleByProject = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
+        var projectsByPerson = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var project in projects)
+        {
+            var key = $"{project.OpportunityNumber}||{project.HospitalName}||{project.ProductName}";
+            if (!projectByKey.ContainsKey(key))
+            {
+                projectByKey[key] = new AutoWorkHoursProjectRef { Key = key, Project = project };
+            }
+
+            var names = CollectPersonnelNames(project);
+            if (!assignedPeopleByProject.TryGetValue(key, out var personSet))
+            {
+                personSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                assignedPeopleByProject[key] = personSet;
+            }
+
+            foreach (var name in names)
+            {
+                personSet.Add(name);
+                if (!projectsByPerson.TryGetValue(name, out var personProjects))
+                {
+                    personProjects = new List<string>();
+                    projectsByPerson[name] = personProjects;
+                }
+
+                if (!personProjects.Contains(key, StringComparer.OrdinalIgnoreCase))
+                {
+                    personProjects.Add(key);
+                }
+            }
+        }
+
+        var workHoursByProject = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+        foreach (var pair in projectsByPerson)
+        {
+            var personName = pair.Key;
+            var projectKeys = pair.Value;
+            if (projectKeys.Count == 0)
+            {
+                continue;
+            }
+
+            var allocations = AllocateManDays(totalManDaysPerPerson, projectKeys.Count, reportMonth, personName);
+            for (var i = 0; i < projectKeys.Count; i++)
+            {
+                var projectKey = projectKeys[i];
+                var value = allocations[i];
+                if (!workHoursByProject.TryGetValue(projectKey, out var existing))
+                {
+                    existing = 0m;
+                }
+
+                workHoursByProject[projectKey] = existing + value;
+            }
+        }
+
+        var rows = new List<WorkHoursReportRowDto>();
+        foreach (var pair in projectByKey)
+        {
+            var key = pair.Key;
+            var projectRef = pair.Value;
+            var people = assignedPeopleByProject.TryGetValue(key, out var personSet)
+                ? personSet.OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToList()
+                : new List<string>();
+
+            rows.Add(new WorkHoursReportRowDto
+            {
+                OpportunityNumber = projectRef.Project.OpportunityNumber,
+                HospitalName = projectRef.Project.HospitalName,
+                ProductName = projectRef.Project.ProductName,
+                ImplementationStatus = projectRef.Project.ImplementationStatus,
+                WorkHoursManDays = Math.Round(workHoursByProject.TryGetValue(key, out var manDays) ? manDays : 0m, 0),
+                PersonnelCount = people.Count,
+                Personnel1 = people.ElementAtOrDefault(0) ?? string.Empty,
+                Personnel2 = people.ElementAtOrDefault(1) ?? string.Empty,
+                Personnel3 = people.ElementAtOrDefault(2) ?? string.Empty,
+                Personnel4 = people.ElementAtOrDefault(3) ?? string.Empty,
+                Personnel5 = people.ElementAtOrDefault(4) ?? string.Empty,
+                MaintenanceStartDate = projectRef.Project.AfterSalesStartDate,
+                MaintenanceEndDate = projectRef.Project.AfterSalesEndDate,
+                AfterSalesProjectType = projectRef.Project.AfterSalesProjectType,
+                Remarks = projectRef.Project.Remarks
+            });
+        }
+
+        return rows
+            .OrderBy(x => x.HospitalName, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(x => x.ProductName, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static List<WorkHoursReportRowDto> BuildAutoWorkHoursRowsFromImportedRows(
+        string reportMonth,
+        int totalManDaysPerPerson,
+        IReadOnlyList<WorkHoursReportRowDto> importedRows)
+    {
+        var rowByKey = new Dictionary<string, AutoWorkHoursRowRef>(StringComparer.OrdinalIgnoreCase);
+        var assignedPeopleByProject = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
+        var projectsByPerson = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var sourceRow in importedRows)
+        {
+            var key = $"{sourceRow.OpportunityNumber}||{sourceRow.HospitalName}||{sourceRow.ProductName}";
+            if (!rowByKey.ContainsKey(key))
+            {
+                rowByKey[key] = new AutoWorkHoursRowRef
+                {
+                    Key = key,
+                    Row = sourceRow
+                };
+            }
+
+            var names = CollectPersonnelNames(sourceRow);
+            if (!assignedPeopleByProject.TryGetValue(key, out var personSet))
+            {
+                personSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                assignedPeopleByProject[key] = personSet;
+            }
+
+            foreach (var name in names)
+            {
+                personSet.Add(name);
+                if (!projectsByPerson.TryGetValue(name, out var personProjects))
+                {
+                    personProjects = new List<string>();
+                    projectsByPerson[name] = personProjects;
+                }
+
+                if (!personProjects.Contains(key, StringComparer.OrdinalIgnoreCase))
+                {
+                    personProjects.Add(key);
+                }
+            }
+        }
+
+        var workHoursByProject = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+        foreach (var pair in projectsByPerson)
+        {
+            var personName = pair.Key;
+            var projectKeys = pair.Value;
+            if (projectKeys.Count == 0)
+            {
+                continue;
+            }
+
+            var allocations = AllocateManDays(totalManDaysPerPerson, projectKeys.Count, reportMonth, personName);
+            for (var i = 0; i < projectKeys.Count; i++)
+            {
+                var projectKey = projectKeys[i];
+                var value = allocations[i];
+                if (!workHoursByProject.TryGetValue(projectKey, out var existing))
+                {
+                    existing = 0m;
+                }
+
+                workHoursByProject[projectKey] = existing + value;
+            }
+        }
+
+        var rows = new List<WorkHoursReportRowDto>();
+        foreach (var pair in rowByKey)
+        {
+            var key = pair.Key;
+            var rowRef = pair.Value;
+            var source = rowRef.Row;
+            var people = assignedPeopleByProject.TryGetValue(key, out var personSet)
+                ? personSet.OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToList()
+                : new List<string>();
+
+            rows.Add(new WorkHoursReportRowDto
+            {
+                Id = source.Id,
+                OpportunityNumber = source.OpportunityNumber,
+                HospitalName = source.HospitalName,
+                ProductName = source.ProductName,
+                ImplementationStatus = source.ImplementationStatus,
+                WorkHoursManDays = Math.Round(workHoursByProject.TryGetValue(key, out var manDays) ? manDays : 0m, 0),
+                PersonnelCount = people.Count,
+                Personnel1 = people.ElementAtOrDefault(0) ?? string.Empty,
+                Personnel2 = people.ElementAtOrDefault(1) ?? string.Empty,
+                Personnel3 = people.ElementAtOrDefault(2) ?? string.Empty,
+                Personnel4 = people.ElementAtOrDefault(3) ?? string.Empty,
+                Personnel5 = people.ElementAtOrDefault(4) ?? string.Empty,
+                MaintenanceStartDate = source.MaintenanceStartDate,
+                MaintenanceEndDate = source.MaintenanceEndDate,
+                AfterSalesProjectType = source.AfterSalesProjectType,
+                Remarks = source.Remarks
+            });
+        }
+
+        return rows
+            .OrderBy(x => x.HospitalName, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(x => x.ProductName, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static int CountWorkdaysExcludingWeekends(DateTime startInclusive, DateTime endInclusive)
+    {
+        var count = 0;
+        var cursor = startInclusive.Date;
+        var end = endInclusive.Date;
+        while (cursor <= end)
+        {
+            if (cursor.DayOfWeek != DayOfWeek.Saturday && cursor.DayOfWeek != DayOfWeek.Sunday)
+            {
+                count++;
+            }
+
+            cursor = cursor.AddDays(1);
+        }
+
+        return Math.Max(0, count);
+    }
+
+    private static List<decimal> AllocateManDays(int totalManDays, int projectCount, string reportMonth, string personName)
+    {
+        var total = Math.Max(0, totalManDays);
+        if (projectCount <= 1)
+        {
+            return [total];
+        }
+
+        var random = CreateDeterministicRandom($"{reportMonth}|{personName}");
+        var weights = new List<double>(projectCount);
+        for (var i = 0; i < projectCount; i++)
+        {
+            weights.Add(0.2 + random.NextDouble());
+        }
+
+        var weightSum = weights.Sum();
+        var floorAllocations = new int[projectCount];
+        var fractions = new List<(int index, double fraction)>(projectCount);
+        var allocated = 0;
+
+        for (var i = 0; i < projectCount; i++)
+        {
+            var raw = (weights[i] / weightSum) * total;
+            var floorValue = (int)Math.Floor(raw);
+            floorAllocations[i] = floorValue;
+            allocated += floorValue;
+            fractions.Add((i, raw - floorValue));
+        }
+
+        var remainder = total - allocated;
+        if (remainder > 0)
+        {
+            foreach (var item in fractions
+                .OrderByDescending(x => x.fraction)
+                .ThenBy(x => x.index))
+            {
+                if (remainder <= 0)
+                {
+                    break;
+                }
+
+                floorAllocations[item.index] += 1;
+                remainder--;
+            }
+        }
+
+        return floorAllocations.Select(x => (decimal)x).ToList();
+    }
+
+    private static Random CreateDeterministicRandom(string seed)
+    {
+        var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(seed));
+        var intSeed = BitConverter.ToInt32(bytes, 0);
+        return new Random(intSeed);
+    }
+
+    private static List<string> CollectPersonnelNames(Domain.Entities.ProjectEntity project)
+    {
+        var sourceValues = new[]
+        {
+            project.MaintenancePersonName,
+            project.Personnel1,
+            project.Personnel2,
+            project.Personnel3,
+            project.Personnel4,
+            project.Personnel5
+        };
+
+        var result = new List<string>();
+        foreach (var source in sourceValues)
+        {
+            if (string.IsNullOrWhiteSpace(source))
+            {
+                continue;
+            }
+
+            var tokens = source
+                .Split(PersonnelSeparators, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(x => x.Trim())
+                .Where(x => !string.IsNullOrWhiteSpace(x));
+
+            foreach (var token in tokens)
+            {
+                if (!result.Contains(token, StringComparer.OrdinalIgnoreCase))
+                {
+                    result.Add(token);
+                }
+            }
+        }
+
+        return result;
+    }
+
+    private static List<string> CollectPersonnelNames(WorkHoursReportRowDto row)
+    {
+        var sourceValues = new[]
+        {
+            row.Personnel1,
+            row.Personnel2,
+            row.Personnel3,
+            row.Personnel4,
+            row.Personnel5
+        };
+
+        var result = new List<string>();
+        foreach (var source in sourceValues)
+        {
+            if (string.IsNullOrWhiteSpace(source))
+            {
+                continue;
+            }
+
+            var tokens = source
+                .Split(PersonnelSeparators, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(x => x.Trim())
+                .Where(x => !string.IsNullOrWhiteSpace(x));
+
+            foreach (var token in tokens)
+            {
+                if (!result.Contains(token, StringComparer.OrdinalIgnoreCase))
+                {
+                    result.Add(token);
+                }
+            }
+        }
+
+        return result;
     }
 
     /// <summary>
@@ -83,12 +780,16 @@ public class ReportController(
         var computed = await BuildMonthlyReportSourceAsync(
             request.ReportMonth,
             request.GroupName,
+            request.SupervisorName,
             monthStart,
             request.TeamDataSource,
             cancellationToken);
 
+        var groupLabel = !string.IsNullOrWhiteSpace(request.SupervisorName)
+            ? $"{request.SupervisorName.Trim()}组"
+            : request.GroupName;
         var created = await monthlyReportService.CreateAsync(
-            NormalizeSubmittedBy(request.SubmittedBy, request.GroupName),
+            NormalizeSubmittedBy(request.SubmittedBy, groupLabel),
             computed.UpsertDto,
             cancellationToken);
 
@@ -96,15 +797,17 @@ public class ReportController(
     }
 
     /// <summary>
-    /// 月报数据来源预览 — 按月份与组别预览人员、项目、驻场扣减和主管归属。
+    /// 月报数据来源预览 — 按月份与组别（或主管）预览人员、项目、驻场扣减和主管归属。
+    /// 优先使用 supervisorName；若未提供则回退到 groupName。
     /// </summary>
     [HttpGet("monthly/source-preview")]
     public async Task<IActionResult> GetMonthlyReportSourcePreview(
-        [FromQuery] string reportMonth,
-        [FromQuery] string groupName,
+        [FromQuery] string? reportMonth,
+        [FromQuery] string? groupName,
+        [FromQuery] string? supervisorName,
         CancellationToken cancellationToken = default)
     {
-        if (!TryParseReportMonth(reportMonth, out var monthStart))
+        if (!TryParseReportMonth(reportMonth ?? string.Empty, out var monthStart))
         {
             return BadRequest(new ApiResponse<object>
             {
@@ -114,19 +817,20 @@ public class ReportController(
             });
         }
 
-        if (string.IsNullOrWhiteSpace(groupName))
+        if (string.IsNullOrWhiteSpace(supervisorName) && string.IsNullOrWhiteSpace(groupName))
         {
             return BadRequest(new ApiResponse<object>
             {
                 Code = 400,
-                Message = "groupName 不能为空",
+                Message = "supervisorName 或 groupName 至少提供一个",
                 Data = null
             });
         }
 
         var computed = await BuildMonthlyReportSourceAsync(
-            reportMonth,
+            reportMonth ?? string.Empty,
             groupName,
+            supervisorName,
             monthStart,
             null,
             cancellationToken);
@@ -139,12 +843,13 @@ public class ReportController(
     /// </summary>
     [HttpGet("monthly/export")]
     public async Task<IActionResult> ExportMonthlyReport(
-        [FromQuery] string reportMonth,
-        [FromQuery] string groupName,
+        [FromQuery] string? reportMonth,
+        [FromQuery] string? groupName,
+        [FromQuery] string? supervisorName,
         [FromQuery] string? submittedBy,
         CancellationToken cancellationToken = default)
     {
-        if (!TryParseReportMonth(reportMonth, out var monthStart))
+        if (!TryParseReportMonth(reportMonth ?? string.Empty, out var monthStart))
         {
             return BadRequest(new ApiResponse<object>
             {
@@ -154,20 +859,24 @@ public class ReportController(
             });
         }
 
-        if (string.IsNullOrWhiteSpace(groupName))
+        if (string.IsNullOrWhiteSpace(supervisorName) && string.IsNullOrWhiteSpace(groupName))
         {
             return BadRequest(new ApiResponse<object>
             {
                 Code = 400,
-                Message = "groupName 不能为空",
+                Message = "supervisorName 或 groupName 至少提供一个",
                 Data = null
             });
         }
 
+        var groupLabel = !string.IsNullOrWhiteSpace(supervisorName)
+            ? $"{supervisorName.Trim()}组"
+            : groupName ?? string.Empty;
+
         var reportRows = await monthlyReportService.QueryAsync(new MonthlyReportQuery
         {
-            ReportMonth = reportMonth,
-            GroupName = groupName,
+            ReportMonth = reportMonth ?? string.Empty,
+            GroupName = groupLabel,
             Page = 1,
             Size = 5000
         }, cancellationToken);
@@ -176,68 +885,109 @@ public class ReportController(
         if (items.Count == 0)
         {
             var computed = await BuildMonthlyReportSourceAsync(
-                reportMonth,
+                reportMonth ?? string.Empty,
                 groupName,
+                supervisorName,
                 monthStart,
                 null,
                 cancellationToken);
             var created = await monthlyReportService.CreateAsync(
-                NormalizeSubmittedBy(submittedBy, groupName),
+                NormalizeSubmittedBy(submittedBy, groupLabel),
                 computed.UpsertDto,
                 cancellationToken);
             items.Add(created);
         }
 
         var csv = BuildMonthlyReportCsv(items);
-        var fileName = $"monthly_report_{reportMonth}_{groupName}_{DateTime.Now:yyyyMMdd_HHmmss}.csv";
+        var fileName = $"monthly_report_{reportMonth}_{groupLabel}_{DateTime.Now:yyyyMMdd_HHmmss}.csv";
         return File(Encoding.UTF8.GetBytes(csv), "text/csv; charset=utf-8", fileName);
     }
 
-    private static List<WorkHoursReportRowDto> BuildWorkHoursRows(string? groupName, string? implementationStatus)
+    private static byte[] BuildWorkHoursExcel(IReadOnlyList<WorkHoursReportRowDto> rows)
     {
-        var projects = InMemoryProjectDataStore.Projects;
+        using var wb = new XLWorkbook();
+        var ws = wb.Worksheets.Add("工时报表");
 
-        IEnumerable<Domain.Entities.ProjectEntity> filtered = projects;
+        // Headers matching Excel exactly
+        string[] headers = ["机会号", "客户名称", "产品名称", "实施状态", "工时（人天）", "实施人员（个数）",
+            "人员1", "人员2", "人员3", "人员4", "人员5", "维护开始时间", "维护结束时间", "售后项目类型", "备注"];
 
-        if (!string.IsNullOrWhiteSpace(groupName))
+        for (var i = 0; i < headers.Length; i++)
         {
-            var normalizedGroup = groupName.Trim();
-            filtered = filtered.Where(x => x.GroupName.Contains(normalizedGroup, StringComparison.OrdinalIgnoreCase));
+            var cell = ws.Cell(1, i + 1);
+            cell.Value = headers[i];
+            cell.Style.Font.Bold = true;
         }
 
-        if (!string.IsNullOrWhiteSpace(implementationStatus))
+        for (var r = 0; r < rows.Count; r++)
         {
-            var normalizedStatus = implementationStatus.Trim();
-            filtered = filtered.Where(x => string.Equals((x.ImplementationStatus ?? string.Empty).Trim(), normalizedStatus, StringComparison.OrdinalIgnoreCase));
+            var row = rows[r];
+            var rowNum = r + 2;
+            ws.Cell(rowNum, 1).Value = row.OpportunityNumber;
+            ws.Cell(rowNum, 2).Value = row.HospitalName;
+            ws.Cell(rowNum, 3).Value = row.ProductName;
+            ws.Cell(rowNum, 4).Value = row.ImplementationStatus;
+            ws.Cell(rowNum, 5).Value = (double)row.WorkHoursManDays;
+            ws.Cell(rowNum, 6).Value = row.PersonnelCount;
+            ws.Cell(rowNum, 7).Value = row.Personnel1;
+            ws.Cell(rowNum, 8).Value = row.Personnel2;
+            ws.Cell(rowNum, 9).Value = row.Personnel3;
+            ws.Cell(rowNum, 10).Value = row.Personnel4;
+            ws.Cell(rowNum, 11).Value = row.Personnel5;
+            ws.Cell(rowNum, 12).Value = NormalizeDateForExport(row.MaintenanceStartDate);
+            ws.Cell(rowNum, 13).Value = NormalizeDateForExport(row.MaintenanceEndDate);
+            ws.Cell(rowNum, 14).Value = row.AfterSalesProjectType;
+            ws.Cell(rowNum, 15).Value = row.Remarks;
         }
 
-        return filtered.Select(p => new WorkHoursReportRowDto
+        // "合计" summary row
+        var totalManDays = rows.Sum(r => r.WorkHoursManDays);
+        var summaryRow1 = rows.Count + 2;
+        ws.Cell(summaryRow1, 1).Value = "合计";
+        ws.Cell(summaryRow1, 1).Style.Font.Bold = true;
+        ws.Cell(summaryRow1, 5).Value = (double)totalManDays;
+        ws.Cell(summaryRow1, 5).Style.Font.Bold = true;
+
+        // "事业部实施人员考勤工时总计" summary row
+        var summaryRow2 = summaryRow1 + 1;
+        ws.Cell(summaryRow2, 1).Value = "事业部实施人员考勤工时总计";
+        ws.Cell(summaryRow2, 1).Style.Font.Bold = true;
+        ws.Cell(summaryRow2, 5).Value = (double)totalManDays;
+        ws.Cell(summaryRow2, 5).Style.Font.Bold = true;
+
+        ws.Columns().AdjustToContents();
+        // Enforce a reasonable minimum width so narrow columns remain readable
+        foreach (var col in ws.ColumnsUsed())
         {
-            OpportunityNumber = p.OpportunityNumber,
-            HospitalName = p.HospitalName,
-            ProductName = p.ProductName,
-            Province = p.Province,
-            GroupName = p.GroupName,
-            SalesName = p.SalesName,
-            MaintenancePersonName = p.MaintenancePersonName,
-            ImplementationStatus = p.ImplementationStatus,
-            WorkHoursManDays = p.WorkHoursManDays,
-            PersonnelCount = p.PersonnelCount,
-            Personnel1 = p.Personnel1,
-            Personnel2 = p.Personnel2,
-            Personnel3 = p.Personnel3,
-            Personnel4 = p.Personnel4,
-            Personnel5 = p.Personnel5,
-            MaintenanceStartDate = p.AfterSalesStartDate,
-            MaintenanceEndDate = p.AfterSalesEndDate,
-            AfterSalesProjectType = p.AfterSalesProjectType,
-            Remarks = p.Remarks
-        }).ToList();
+            if (col.Width < 10)
+                col.Width = 10;
+        }
+
+        using var ms = new MemoryStream();
+        wb.SaveAs(ms);
+        return ms.ToArray();
+    }
+
+    private static string NormalizeDateForExport(string? input)
+    {
+        if (string.IsNullOrWhiteSpace(input))
+        {
+            return string.Empty;
+        }
+
+        var text = input.Trim();
+        if (DateTime.TryParse(text, out var parsed))
+        {
+            return parsed.ToString("yyyy-MM-dd");
+        }
+
+        return text;
     }
 
     private async Task<MonthlyReportSourceComputationResult> BuildMonthlyReportSourceAsync(
         string reportMonth,
-        string groupName,
+        string? groupName,
+        string? supervisorNameParam,
         DateTime monthStart,
         MonthlyReportTeamDataSourceInput? sourceInput,
         CancellationToken cancellationToken)
@@ -246,13 +996,103 @@ public class ReportController(
         var nextMonthStart = monthEnd;
         var nextMonthEnd = nextMonthStart.AddMonths(1);
 
-        var normalizedGroup = (groupName ?? string.Empty).Trim();
+        // 获取全部权限用户（supervisor 模式和 groupName 模式都需要）
+        var accessResult = await accessControlService.QueryUsersAsync(new PersonnelAccessQuery
+        {
+            Page = 1,
+            Size = 5000
+        }, cancellationToken);
+        var accessById = accessResult.Items.ToDictionary(x => x.PersonnelId);
+
+        IReadOnlyList<PersonnelItemDto> personnelItems;
+        string supervisorName;
+        string groupLabel;
+
+        if (!string.IsNullOrWhiteSpace(supervisorNameParam))
+        {
+            // ── 按主管姓名筛选 ──
+            var normalizedSupervisor = supervisorNameParam.Trim();
+
+            // 找到主管对应的 personnelId
+            var supervisorAccess = accessResult.Items.FirstOrDefault(a =>
+                string.Equals(a.PersonnelName, normalizedSupervisor, StringComparison.OrdinalIgnoreCase)
+                && (string.Equals(a.SystemRole, "supervisor", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(a.SystemRole, "regional_manager", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(a.SystemRole, "manager", StringComparison.OrdinalIgnoreCase)));
+
+            HashSet<int> subordinateIds;
+            if (supervisorAccess != null)
+            {
+                subordinateIds = accessResult.Items
+                    .Where(a => a.SupervisorId == supervisorAccess.PersonnelId)
+                    .Select(a => a.PersonnelId)
+                    .ToHashSet();
+                subordinateIds.Add(supervisorAccess.PersonnelId);
+            }
+            else
+            {
+                // Fallback: 按 supervisorName 字段匹配
+                subordinateIds = accessResult.Items
+                    .Where(a => string.Equals(a.SupervisorName, normalizedSupervisor, StringComparison.OrdinalIgnoreCase))
+                    .Select(a => a.PersonnelId)
+                    .ToHashSet();
+            }
+
+            var allPersonnel = await personnelService.QueryAsync(new PersonnelQuery
+            {
+                Page = 1,
+                Size = 5000
+            }, cancellationToken);
+            personnelItems = allPersonnel.Items.Where(p => subordinateIds.Contains(p.Id)).ToList();
+            supervisorName = normalizedSupervisor;
+            groupLabel = $"{normalizedSupervisor}组";
+        }
+        else
+        {
+            // ── 按 groupName 筛选（兼容旧逻辑）──
+            var personnelResult = await personnelService.QueryAsync(new PersonnelQuery
+            {
+                GroupName = groupName,
+                Page = 1,
+                Size = 5000
+            }, cancellationToken);
+            personnelItems = personnelResult.Items;
+            supervisorName = ResolveGroupSupervisorName(personnelItems, accessById);
+            groupLabel = (groupName ?? string.Empty).Trim();
+        }
+
+        // 项目匹配：supervisor 模式按人员姓名匹配，groupName 模式按组名匹配
+        var personnelNameSetForProjectMatch = personnelItems
+            .Select(x => x.Name?.Trim())
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
         var projectRows = InMemoryProjectDataStore.Projects;
-        var groupProjects = projectRows
-            .Where(p => !string.IsNullOrWhiteSpace(normalizedGroup)
-                ? string.Equals((p.GroupName ?? string.Empty).Trim(), normalizedGroup, StringComparison.OrdinalIgnoreCase)
-                : true)
-            .ToList();
+        List<Domain.Entities.ProjectEntity> groupProjects;
+
+        if (!string.IsNullOrWhiteSpace(supervisorNameParam))
+        {
+            // supervisor 模式：按人员姓名在项目的运维负责人/人员1-5中匹配
+            groupProjects = projectRows
+                .Where(p => personnelNameSetForProjectMatch
+                    .Any(name => IsPersonnelAssigned(p, name!)))
+                .ToList();
+        }
+        else
+        {
+            // groupName 模式：按组名匹配（兼容旧逻辑）
+            var relevantGroupNames = personnelItems
+                .Select(p => (p.GroupName ?? string.Empty).Trim())
+                .Where(g => !string.IsNullOrWhiteSpace(g))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            groupProjects = projectRows
+                .Where(p => relevantGroupNames.Count > 0
+                    ? relevantGroupNames.Contains((p.GroupName ?? string.Empty).Trim())
+                    : true)
+                .ToList();
+        }
 
         var groupProjectSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var project in groupProjects)
@@ -261,22 +1101,7 @@ public class ReportController(
             groupProjectSet.Add(key);
         }
 
-        var personnelResult = await personnelService.QueryAsync(new PersonnelQuery
-        {
-            GroupName = groupName,
-            Page = 1,
-            Size = 5000
-        }, cancellationToken);
-
-        var accessResult = await accessControlService.QueryUsersAsync(new PersonnelAccessQuery
-        {
-            Page = 1,
-            Size = 5000
-        }, cancellationToken);
-        var accessById = accessResult.Items.ToDictionary(x => x.PersonnelId);
-        var supervisorName = ResolveGroupSupervisorName(personnelResult.Items, accessById);
-
-        var personnelScopes = personnelResult.Items
+        var personnelScopes = personnelItems
             .OrderBy(x => x.Name, StringComparer.OrdinalIgnoreCase)
             .Select(person =>
             {
@@ -321,24 +1146,24 @@ public class ReportController(
             })
             .ToList();
 
-        var teamTotal = personnelResult.Items.Count;
-        var onsitePersonnelCount = personnelResult.Items.Count(x => x.IsOnsite);
-        var onsiteList = personnelResult.Items
+        var teamTotal = personnelItems.Count;
+        var onsitePersonnelCount = personnelItems.Count(x => x.IsOnsite);
+        var onsiteList = personnelItems
             .Where(x => x.IsOnsite)
             .GroupBy(x => ResolveRegionLabel(x.Department))
             .Select(g => new { region = g.Key, count = g.Count() })
             .ToList();
 
-        var centralStdAuto = personnelResult.Items.Count(x =>
+        var centralStdAuto = personnelItems.Count(x =>
             ContainsText(x.Department, "中")
             && !x.IsOnsite);
-        var centralOnsiteAuto = personnelResult.Items.Count(x =>
+        var centralOnsiteAuto = personnelItems.Count(x =>
             ContainsText(x.Department, "中")
             && x.IsOnsite);
-        var northwestStdAuto = personnelResult.Items.Count(x =>
+        var northwestStdAuto = personnelItems.Count(x =>
             (ContainsText(x.Department, "西北") || ContainsText(x.Department, "新疆"))
             && !x.IsOnsite);
-        var northwestOnsiteAuto = personnelResult.Items.Count(x =>
+        var northwestOnsiteAuto = personnelItems.Count(x =>
             (ContainsText(x.Department, "西北") || ContainsText(x.Department, "新疆"))
             && x.IsOnsite);
 
@@ -348,11 +1173,7 @@ public class ReportController(
         var northwestStandardServiceCount = PositiveOrDefault(sourceInput?.NorthwestStandardServiceCount, northwestStdAuto);
         var northwestOnsiteCount = PositiveOrDefault(sourceInput?.NorthwestOnsiteCount, northwestOnsiteAuto);
 
-        var personnelNameSet = personnelResult.Items
-            .Select(x => x.Name?.Trim())
-            .Where(x => !string.IsNullOrWhiteSpace(x))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var personnelNameSet = personnelNameSetForProjectMatch;
 
         var specialWorkHours = InMemoryWorkHoursService.GetSnapshot()
             .Where(x => personnelNameSet.Contains(x.PersonnelName))
@@ -384,7 +1205,7 @@ public class ReportController(
 
         var handoverResult = await handoverService.QueryAsync(new HandoverQuery
         {
-            FromGroup = groupName,
+            FromGroup = !string.IsNullOrWhiteSpace(supervisorNameParam) ? null : groupName,
             Page = 1,
             Size = 5000
         }, cancellationToken);
@@ -393,6 +1214,8 @@ public class ReportController(
             .Where(h => h.EmailSentDate.HasValue
                      && h.EmailSentDate.Value.Date >= monthStart
                      && h.EmailSentDate.Value.Date < monthEnd)
+            .Where(h => string.IsNullOrWhiteSpace(supervisorNameParam)
+                     || personnelNameSet.Contains((h.FromOwner ?? string.Empty).Trim()))
             .Select(h => new
             {
                 hospitalName = h.HospitalName,
@@ -405,12 +1228,17 @@ public class ReportController(
 
         var inspectionResult = await inspectionService.QueryAsync(new InspectionQuery
         {
-            GroupName = groupName,
+            GroupName = !string.IsNullOrWhiteSpace(supervisorNameParam) ? null : groupName,
             Page = 1,
             Size = 5000
         }, cancellationToken);
 
-        var inspectionInMonth = inspectionResult.Items
+        // 在 supervisor 模式下，巡检未按组筛查，需按本组项目集合过滤
+        var filteredInspectionItems = !string.IsNullOrWhiteSpace(supervisorNameParam)
+            ? inspectionResult.Items.Where(i => groupProjectSet.Contains($"{i.HospitalName}||{i.ProductName}"))
+            : inspectionResult.Items.AsEnumerable();
+
+        var inspectionInMonth = filteredInspectionItems
             .Where(i => i.PlanDate.Date >= monthStart && i.PlanDate.Date < monthEnd)
             .ToList();
 
@@ -458,7 +1286,7 @@ public class ReportController(
             string.Equals(r.Status, "已完成", StringComparison.OrdinalIgnoreCase)
             || string.Equals(r.Status, "已关闭", StringComparison.OrdinalIgnoreCase));
 
-        var nextMonthInspectionPlan = inspectionResult.Items
+        var nextMonthInspectionPlan = filteredInspectionItems
             .Where(i => i.PlanDate.Date >= nextMonthStart && i.PlanDate.Date < nextMonthEnd)
             .Where(i => !string.Equals(i.Status, "已完成", StringComparison.OrdinalIgnoreCase)
                      && !string.Equals(i.Status, "已取消", StringComparison.OrdinalIgnoreCase))
@@ -670,8 +1498,8 @@ public class ReportController(
             {
                 HospitalName = string.Empty,
                 ReportMonth = reportMonth ?? string.Empty,
-                GroupName = groupName ?? string.Empty,
-                Title = $"{groupName ?? string.Empty} {reportMonth ?? string.Empty} 月报",
+                GroupName = groupLabel,
+                Title = $"{groupLabel} {reportMonth ?? string.Empty} 月报",
                 Content = "系统自动生成",
                 TeamTotal = authorizedHeadcount,
                 TeamOnsiteJson = json(onsiteList),
@@ -720,27 +1548,6 @@ public class ReportController(
         return string.IsNullOrWhiteSpace(groupName)
             ? "系统自动生成"
             : $"{groupName.Trim()}月报自动生成";
-    }
-
-    private static string BuildWorkHoursCsv(IReadOnlyList<WorkHoursReportRowDto> rows)
-    {
-        var sb = new StringBuilder();
-        sb.Append('\uFEFF');
-        sb.AppendLine("商机编号,医院名称,产品,省份,组别,销售,运维人员,实施状态,售后项目类型,工时人天,人员数,人员1,人员2,人员3,人员4,人员5,维护开始时间,维护结束时间,备注");
-        foreach (var row in rows)
-        {
-            var cols = new[]
-            {
-                Csv(row.OpportunityNumber), Csv(row.HospitalName), Csv(row.ProductName), Csv(row.Province), Csv(row.GroupName),
-                Csv(row.SalesName), Csv(row.MaintenancePersonName), Csv(row.ImplementationStatus), Csv(row.AfterSalesProjectType),
-                row.WorkHoursManDays.ToString("0.##"), row.PersonnelCount.ToString(),
-                Csv(row.Personnel1), Csv(row.Personnel2), Csv(row.Personnel3), Csv(row.Personnel4), Csv(row.Personnel5),
-                Csv(row.MaintenanceStartDate), Csv(row.MaintenanceEndDate), Csv(row.Remarks)
-            };
-            sb.AppendLine(string.Join(',', cols));
-        }
-
-        return sb.ToString();
     }
 
     private static string BuildMonthlyReportCsv(IReadOnlyList<MonthlyReportItemDto> rows)

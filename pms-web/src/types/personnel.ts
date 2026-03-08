@@ -38,6 +38,7 @@ export interface PersonnelUpsert {
   isOnsite: boolean
   projectCount: number
   overdueCount: number
+  sourceColumns?: Record<string, string>
 }
 
 export interface ExternalSyncResult {

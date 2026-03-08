@@ -7,9 +7,10 @@ namespace PMS.Infrastructure.Services;
 
 public class InMemoryWorkHoursService : IWorkHoursService
 {
-    private const string StateKey = "work_hours";
+    private const string TableName = "WorkHours";
+    private const string LegacyJsonKey = "work_hours";
     private static readonly object SyncRoot = new();
-    private static readonly List<WorkHoursEntity> Records = SqliteJsonStore.LoadOrSeed(StateKey, () => new List<WorkHoursEntity>());
+    private static readonly List<WorkHoursEntity> Records = SqliteTableStore.LoadAll<WorkHoursEntity>(TableName, LegacyJsonKey);
     private static long _nextId = Records.Count > 0 ? Records.Max(x => x.Id) + 1 : 1;
 
     public static IReadOnlyList<WorkHoursEntity> GetSnapshot()
@@ -139,7 +140,7 @@ public class InMemoryWorkHoursService : IWorkHoursService
             };
 
             Records.Add(entity);
-            Persist();
+            SqliteTableStore.Insert(TableName, entity);
 
             return Task.FromResult(MapToDto(entity));
         }
@@ -163,7 +164,7 @@ public class InMemoryWorkHoursService : IWorkHoursService
             entity.Description = dto.Description.Trim();
             entity.UpdatedAt = DateTime.UtcNow;
 
-            Persist();
+            SqliteTableStore.Update(TableName, entity, entity.Id);
             return Task.FromResult<WorkHoursItemDto?>(MapToDto(entity));
         }
     }
@@ -173,7 +174,7 @@ public class InMemoryWorkHoursService : IWorkHoursService
         lock (SyncRoot)
         {
             var removed = Records.RemoveAll(x => x.Id == id);
-            if (removed > 0) Persist();
+            if (removed > 0) SqliteTableStore.Delete(TableName, id);
             return Task.FromResult(removed > 0);
         }
     }
@@ -198,8 +199,9 @@ public class InMemoryWorkHoursService : IWorkHoursService
         };
     }
 
-    private static void Persist()
+    /// <summary>Bulk-replace all rows (used by Excel import).</summary>
+    internal static void PersistAll()
     {
-        SqliteJsonStore.Save(StateKey, Records);
+        SqliteTableStore.ReplaceAll(TableName, Records);
     }
 }

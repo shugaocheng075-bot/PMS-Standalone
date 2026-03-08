@@ -17,6 +17,37 @@ public class AnnualReportsController(
     [HttpGet("summary")]
     public async Task<IActionResult> GetSummary(CancellationToken cancellationToken = default)
     {
+        // 检查是否需要按医院范围过滤
+        var personnelId = HttpContext.GetCurrentPersonnelId();
+        var dataScope = await accessControlService.GetDataScopeAsync(personnelId);
+        if (!string.Equals(dataScope.ScopeType, "all", StringComparison.OrdinalIgnoreCase)
+            && dataScope.AccessibleHospitalNames is { Count: > 0 })
+        {
+            // 非管理员：获取全量数据后按医院权限过滤再统计
+            var allResult = await annualReportService.QueryAsync(
+                new AnnualReportQuery { Page = 1, Size = int.MaxValue }, cancellationToken);
+            var scopedItems = HospitalScopeHelper.FilterByHospitalScope(
+                dataScope, allResult.Items, x => x.HospitalName).ToList();
+
+            var thisYear = DateTime.Today.Year;
+            var currentMonth = DateTime.Today.ToString("yyyy-MM");
+            var scopedSummary = new AnnualReportSummaryDto
+            {
+                NotStartedCount = scopedItems.Count(x => x.Status == "未开始"),
+                WritingCount = scopedItems.Count(x => x.Status == "编写中"),
+                SubmittedCount = scopedItems.Count(x => x.Status == "已提交"),
+                CompletedCount = scopedItems.Count(x => x.Status == "已完成"),
+                ThisYearCount = scopedItems.Count(x => x.ReportYear == thisYear),
+                DueThisMonthCount = scopedItems.Count(x =>
+                    string.Equals(x.DueMonth, currentMonth, StringComparison.OrdinalIgnoreCase)),
+                OverdueCount = scopedItems.Count(x =>
+                    string.Compare(x.DueMonth, currentMonth, StringComparison.Ordinal) <= 0
+                    && x.Status != "已完成"),
+                Total = scopedItems.Count
+            };
+            return Ok(ApiResponse<AnnualReportSummaryDto>.Success(scopedSummary));
+        }
+
         var summary = await annualReportService.GetSummaryAsync(cancellationToken);
         return Ok(ApiResponse<AnnualReportSummaryDto>.Success(summary));
     }
@@ -25,38 +56,65 @@ public class AnnualReportsController(
     public async Task<IActionResult> GetList(
         [FromQuery] string? status,
         [FromQuery] int? reportYear,
+        [FromQuery] string? dueMonth,
         [FromQuery] string? groupName,
         [FromQuery] string? servicePerson,
         [FromQuery] int page = 1,
         [FromQuery] int size = 20,
         CancellationToken cancellationToken = default)
     {
+        // 医院范围过滤
+        var personnelId = HttpContext.GetCurrentPersonnelId();
+        var dataScope = await accessControlService.GetDataScopeAsync(personnelId);
+        var needsHospitalScope =
+            !string.Equals(dataScope.ScopeType, "all", StringComparison.OrdinalIgnoreCase)
+            && dataScope.AccessibleHospitalNames is { Count: > 0 };
+
+        if (needsHospitalScope)
+        {
+            // 先不分页地获取全量数据，按医院权限过滤后再分页
+            var allResult = await annualReportService.QueryAsync(new AnnualReportQuery
+            {
+                Status = status,
+                ReportYear = reportYear,
+                DueMonth = dueMonth,
+                GroupName = groupName,
+                ServicePerson = servicePerson,
+                Page = 1,
+                Size = int.MaxValue
+            }, cancellationToken);
+
+            var scopedItems = HospitalScopeHelper.FilterByHospitalScope(
+                dataScope, allResult.Items, x => x.HospitalName).ToList();
+
+            var totalScoped = scopedItems.Count;
+            var effectivePage = page < 1 ? 1 : page;
+            var effectiveSize = size <= 0 ? 20 : size;
+            var pagedItems = scopedItems
+                .Skip((effectivePage - 1) * effectiveSize)
+                .Take(effectiveSize)
+                .ToList();
+
+            return Ok(ApiResponse<PagedResult<AnnualReportItemDto>>.Success(
+                new PagedResult<AnnualReportItemDto>
+                {
+                    Items = pagedItems,
+                    Total = totalScoped,
+                    Page = effectivePage,
+                    Size = effectiveSize
+                }));
+        }
+
         var result = await annualReportService.QueryAsync(new AnnualReportQuery
         {
             Status = status,
             ReportYear = reportYear,
+            DueMonth = dueMonth,
             GroupName = groupName,
             ServicePerson = servicePerson,
             Page = page,
             Size = size
         }, cancellationToken);
-
-        // 医院范围过滤
-        var personnelId = HttpContext.GetCurrentPersonnelId();
-        var dataScope = await accessControlService.GetDataScopeAsync(personnelId);
-        if (!string.Equals(dataScope.ScopeType, "all", StringComparison.OrdinalIgnoreCase)
-            && dataScope.AccessibleHospitalNames is { Count: > 0 })
-        {
-            var filtered = HospitalScopeHelper.FilterByHospitalScope(
-                dataScope, result.Items, x => x.HospitalName).ToList();
-            result = new PagedResult<AnnualReportItemDto>
-            {
-                Items = filtered,
-                Total = filtered.Count,
-                Page = result.Page,
-                Size = result.Size
-            };
-        }
 
         return Ok(ApiResponse<PagedResult<AnnualReportItemDto>>.Success(result));
     }

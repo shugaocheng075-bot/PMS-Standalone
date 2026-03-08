@@ -8,9 +8,10 @@ namespace PMS.Infrastructure.Services;
 
 public class InMemoryRepairRecordService : IRepairRecordService
 {
-    private const string StateKey = "repair_records";
+    private const string TableName = "RepairRecords";
+    private const string LegacyJsonKey = "repair_records";
     private static readonly object SyncRoot = new();
-    private static readonly List<RepairRecordEntity> Records = SqliteJsonStore.LoadOrSeed(StateKey, () => new List<RepairRecordEntity>());
+    private static readonly List<RepairRecordEntity> Records = SqliteTableStore.LoadAll<RepairRecordEntity>(TableName, LegacyJsonKey);
     private static long _nextId = Records.Count > 0 ? Records.Max(x => x.Id) + 1 : 1;
 
     public Task<RepairRecordSummaryDto> GetSummaryAsync(CancellationToken cancellationToken = default)
@@ -116,7 +117,7 @@ public class InMemoryRepairRecordService : IRepairRecordService
             };
 
             Records.Add(entity);
-            Persist();
+            SqliteTableStore.Insert(TableName, entity);
 
             return Task.FromResult(MapToDto(entity));
         }
@@ -152,7 +153,7 @@ public class InMemoryRepairRecordService : IRepairRecordService
             entity.Urgency = string.IsNullOrWhiteSpace(dto.Urgency) ? entity.Urgency : dto.Urgency.Trim();
             entity.UpdatedAt = DateTime.UtcNow;
 
-            Persist();
+            SqliteTableStore.Update(TableName, entity, entity.Id);
             var workHours = InMemoryWorkHoursService.GetSnapshot();
             return Task.FromResult<RepairRecordItemDto?>(MapToDto(entity, workHours));
         }
@@ -163,7 +164,7 @@ public class InMemoryRepairRecordService : IRepairRecordService
         lock (SyncRoot)
         {
             var removed = Records.RemoveAll(x => x.Id == id);
-            if (removed > 0) Persist();
+            if (removed > 0) SqliteTableStore.Delete(TableName, id);
             return Task.FromResult(removed > 0);
         }
     }
@@ -245,8 +246,8 @@ public class InMemoryRepairRecordService : IRepairRecordService
         return true;
     }
 
-    private static void Persist()
+    internal static void PersistAll()
     {
-        SqliteJsonStore.Save(StateKey, Records);
+        SqliteTableStore.ReplaceAll(TableName, Records);
     }
 }

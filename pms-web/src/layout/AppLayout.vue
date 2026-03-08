@@ -23,7 +23,7 @@
     </header>
 
     <div class="workspace">
-      <aside class="left-pane" v-if="!isMobileViewport">
+      <aside class="left-pane notranslate" v-if="!isMobileViewport" lang="zh-CN" translate="no">
         <div class="left-search">
           <el-input v-model="searchKeyword" placeholder="搜索功能（名称）" size="small" clearable />
         </div>
@@ -33,16 +33,7 @@
             <div class="section-title">{{ group.title }}</div>
             <el-menu :default-active="activeMenuKey" class="side-menu" @select="handleMenuSelect">
               <template v-for="item in group.items" :key="item.key">
-                <el-sub-menu v-if="item.children?.length" :index="item.key">
-                  <template #title>
-                    <el-icon class="menu-item-icon"><Menu /></el-icon>
-                    <span class="menu-item-label">{{ item.label }}</span>
-                  </template>
-                  <el-menu-item v-for="child in item.children" :key="child.key" :index="child.key">
-                    <span class="submenu-item-label">{{ child.label }}</span>
-                  </el-menu-item>
-                </el-sub-menu>
-                <el-menu-item v-else :index="item.key">
+                <el-menu-item :index="item.key" class="menu-parent-item">
                   <el-icon class="menu-item-icon"><Menu /></el-icon>
                   <span class="menu-item-label">{{ item.label }}</span>
                 </el-menu-item>
@@ -55,12 +46,16 @@
 
       <main class="main-pane">
         <div class="content-wrap">
-          <router-view />
+          <router-view v-slot="{ Component }">
+            <transition name="fade-slide" mode="out-in">
+              <component :is="Component" />
+            </transition>
+          </router-view>
         </div>
       </main>
     </div>
 
-    <el-drawer v-model="mobileMenuVisible" direction="ltr" size="82%" class="mobile-menu-drawer" :with-header="false">
+    <el-drawer v-model="mobileMenuVisible" direction="ltr" size="82%" class="mobile-menu-drawer notranslate" :with-header="false">
       <div class="left-search mobile-search">
         <el-input v-model="searchKeyword" placeholder="搜索功能（名称）" size="small" clearable />
       </div>
@@ -70,16 +65,7 @@
           <div class="section-title">{{ group.title }}</div>
           <el-menu :default-active="activeMenuKey" class="side-menu" @select="handleMobileMenuSelect">
             <template v-for="item in group.items" :key="`mobile-${item.key}`">
-              <el-sub-menu v-if="item.children?.length" :index="`mobile-${item.key}`">
-                <template #title>
-                  <el-icon class="menu-item-icon"><Menu /></el-icon>
-                  <span class="menu-item-label">{{ item.label }}</span>
-                </template>
-                <el-menu-item v-for="child in item.children" :key="`mobile-${child.key}`" :index="child.key">
-                  <span class="submenu-item-label">{{ child.label }}</span>
-                </el-menu-item>
-              </el-sub-menu>
-              <el-menu-item v-else :index="item.key">
+              <el-menu-item :index="item.key" class="menu-parent-item">
                 <el-icon class="menu-item-icon"><Menu /></el-icon>
                 <span class="menu-item-label">{{ item.label }}</span>
               </el-menu-item>
@@ -266,18 +252,6 @@ const sideMenuGroups: MenuGroup[] = [
         { key: 'workhours-special', label: '其他特殊', route: { path: '/workhours/list', query: { action: 'create', workType: '其他特殊' } }, permission: 'workhours.manage' },
       ],
     },
-    {
-      key: 'monthly-report-list',
-      label: '月度报告',
-      route: { path: '/monthly-report/list' },
-      permission: 'monthly-report.view',
-      children: [
-        { key: 'monthly-report-list-all', label: '月报列表', route: { path: '/monthly-report/list' }, permission: 'monthly-report.view' },
-        { key: 'monthly-report-create', label: '新增月报', route: { path: '/monthly-report/list', query: { action: 'create' } }, permission: 'monthly-report.manage' },
-        { key: 'monthly-report-generate', label: '月报生成', route: { path: '/report/monthly-generate' }, permission: 'monthly-report.view' },
-      ],
-    },
-    { key: 'maintenance-data', label: '数据维护中心', route: { path: '/maintenance/data' }, permission: 'maintenance.manage' },
     ],
   },
   {
@@ -301,10 +275,6 @@ const readQueryValue = (value: unknown) => {
   return ''
 }
 
-const flattenMenuEntries = (items: MenuEntry[]): MenuEntry[] => items.flatMap((item) => [item, ...(item.children ? flattenMenuEntries(item.children) : [])])
-
-const allMenuEntries = computed(() => flattenMenuEntries(sideMenuGroups.flatMap((group) => group.items)))
-
 const routeMatchesMenu = (targetRoute: RouteLocationRaw | undefined) => {
   if (!targetRoute || typeof targetRoute !== 'object' || !('path' in targetRoute)) {
     return false
@@ -318,12 +288,37 @@ const routeMatchesMenu = (targetRoute: RouteLocationRaw | undefined) => {
   return Object.entries(targetQuery).every(([key, value]) => readQueryValue(route.query[key]) === String(value ?? ''))
 }
 
+const findMatchedMenuKey = (items: MenuEntry[]): string | null => {
+  for (const item of items) {
+    if (routeMatchesMenu(item.route)) {
+      return item.key
+    }
+
+    if (item.children?.some((child) => routeMatchesMenu(child.route))) {
+      return item.key
+    }
+  }
+
+  return null
+}
+
 const activeMenuKey = computed(() => {
-  const matched = allMenuEntries.value.find((item) => routeMatchesMenu(item.route))
-  return matched?.key ?? route.path
+  for (const group of sideMenuGroups) {
+    const matchedKey = findMatchedMenuKey(group.items)
+    if (matchedKey) {
+      return matchedKey
+    }
+  }
+
+  return route.path
 })
 
-const menuRouteMap = computed(() => new Map(allMenuEntries.value.map((item) => [item.key, item.route]).filter((entry): entry is [string, RouteLocationRaw] => Boolean(entry[1]))))
+const menuRouteMap = computed(() => new Map(
+  sideMenuGroups
+    .flatMap((group) => group.items)
+    .map((item) => [item.key, item.route])
+    .filter((entry): entry is [string, RouteLocationRaw] => Boolean(entry[1])),
+))
 
 const filterMenuEntry = (item: MenuEntry, keyword: string): MenuEntry | null => {
   if (!access.canPermission(item.permission)) {
@@ -562,7 +557,10 @@ onBeforeUnmount(() => {
   background: #edf5fb;
   border-right: 1px solid #d7e6f3;
   padding: 8px 6px 12px;
-  overflow-y: auto;
+  overflow: auto;
+  font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 .left-search {
@@ -580,6 +578,7 @@ onBeforeUnmount(() => {
 .empty-menu-tip {
   padding: 8px 10px;
   font-size: 12px;
+  font-family: inherit;
   color: #5b7f9c;
 }
 
@@ -589,6 +588,7 @@ onBeforeUnmount(() => {
   padding-left: 7px;
   font-size: 12px;
   font-weight: 600;
+  font-family: inherit;
   color: #1e567f;
 }
 
@@ -606,6 +606,7 @@ onBeforeUnmount(() => {
 .side-menu {
   border: none;
   background: transparent;
+  font-family: inherit;
 }
 
 .side-menu :deep(.el-menu-item) {
@@ -617,7 +618,10 @@ onBeforeUnmount(() => {
   color: #24557e;
   height: 30px;
   line-height: 30px;
-  font-size: 12px;
+  font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  font-synthesis: none;
   padding-left: 10px !important;
 }
 
@@ -631,6 +635,8 @@ onBeforeUnmount(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  letter-spacing: 0;
+  font-family: inherit;
 }
 
 .side-menu :deep(.el-menu-item.is-active) {
@@ -648,12 +654,15 @@ onBeforeUnmount(() => {
   color: #0a5f9f;
 }
 
+.side-menu :deep(.menu-parent-item) {
+  font-weight: 600;
+}
+
 .main-pane {
   flex: 1;
   padding: 14px;
   height: calc(100vh - 48px);
-  overflow-y: auto;
-  overflow-x: hidden;
+  overflow: auto;
 }
 
 .content-wrap {
@@ -668,6 +677,12 @@ onBeforeUnmount(() => {
 
 .mobile-search {
   margin-bottom: 12px;
+}
+
+.mobile-menu-drawer :deep(.el-drawer__body) {
+  font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 @media (max-width: 992px) {

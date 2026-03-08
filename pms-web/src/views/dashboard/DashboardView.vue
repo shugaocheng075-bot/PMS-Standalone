@@ -47,6 +47,16 @@
         </template>
         <div ref="alertChartRef" class="chart-box"></div>
       </el-card>
+
+      <el-card shadow="never" class="table-card chart-card">
+        <template #header>
+          <div class="panel-head">
+            <span class="panel-title">年度报告状态</span>
+            <el-tag type="success">点击扇区跳转</el-tag>
+          </div>
+        </template>
+        <div ref="annualChartRef" class="chart-box"></div>
+      </el-card>
     </div>
 
     <el-card shadow="never" class="table-card">
@@ -119,6 +129,8 @@ import { ElMessage } from 'element-plus'
 import { fetchProjectList } from '../../api/modules/project'
 import { fetchMajorDemands, type MajorDemandSnapshot } from '../../api/modules/majorDemand'
 import { fetchAlertCenter, type AlertCenterItem } from '../../api/modules/alertCenter'
+import { fetchAnnualReportSummary } from '../../api/modules/annual-report'
+import type { AnnualReportSummary } from '../../types/annual-report'
 import { getErrorMessage } from '../../utils/error'
 import { useLinkedRealtimeRefresh } from '../../composables/useLinkedRealtimeRefresh'
 
@@ -152,10 +164,14 @@ const alertItems = ref<AlertCenterItem[]>([])
 const projectChartRef = ref<HTMLDivElement | null>(null)
 const demandChartRef = ref<HTMLDivElement | null>(null)
 const alertChartRef = ref<HTMLDivElement | null>(null)
+const annualChartRef = ref<HTMLDivElement | null>(null)
 
 const projectChart = ref<ChartInstance | null>(null)
 const demandChart = ref<ChartInstance | null>(null)
 const alertChart = ref<ChartInstance | null>(null)
+const annualChart = ref<ChartInstance | null>(null)
+
+const annualSummary = ref<AnnualReportSummary | null>(null)
 
 const cards = computed(() => {
   const totalAlerts = alertItems.value.length
@@ -237,6 +253,17 @@ const alertLevelData = computed<ChartDatum[]>(() => {
   return Array.from(counter.entries()).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value)
 })
 
+const annualReportStatusData = computed<ChartDatum[]>(() => {
+  const s = annualSummary.value
+  if (!s) return []
+  return [
+    { name: '未开始', value: s.notStartedCount },
+    { name: '编写中', value: s.writingCount },
+    { name: '已提交', value: s.submittedCount },
+    { name: '已完成', value: s.completedCount },
+  ].filter(d => d.value > 0)
+})
+
 const projectDrillRows = computed(() => {
   if (selectedProjectStatus.value === '全部') {
     return projectItems.value.slice(0, 200)
@@ -307,12 +334,14 @@ const updateCharts = () => {
   renderDonut(projectChart.value, '项目台账', projectStatusData.value, ['#3b82f6', '#14b8a6', '#f59e0b', '#ef4444', '#8b5cf6'])
   renderDonut(demandChart.value, '重大需求', demandStatusData.value, ['#0ea5e9', '#22c55e', '#f97316', '#6366f1', '#ec4899'])
   renderDonut(alertChart.value, '告警等级', alertLevelData.value, ['#ef4444', '#f59e0b', '#3b82f6', '#6b7280'])
+  renderDonut(annualChart.value, '年度报告', annualReportStatusData.value, ['#ef4444', '#f59e0b', '#0ea5e9', '#22c55e'])
 }
 
 const bindChartEvents = () => {
   projectChart.value?.off('click')
   demandChart.value?.off('click')
   alertChart.value?.off('click')
+  annualChart.value?.off('click')
 
   projectChart.value?.on('click', (params: any) => {
     selectedProjectStatus.value = params?.name || '全部'
@@ -328,6 +357,11 @@ const bindChartEvents = () => {
     selectedAlertLevel.value = params?.name || '全部'
     activeTab.value = 'alert'
   })
+
+  annualChart.value?.on('click', (params: any) => {
+    const status = params?.name || ''
+    void router.push({ path: '/annual-report/list', query: status ? { status } : {} })
+  })
 }
 
 const resetDrill = () => {
@@ -340,6 +374,7 @@ const resizeCharts = () => {
   projectChart.value?.resize()
   demandChart.value?.resize()
   alertChart.value?.resize()
+  annualChart.value?.resize()
 }
 
 const onProjectDrillGoto = (row: any) => {
@@ -411,13 +446,15 @@ const loadDashboard = async () => {
 
   loading.value = true
   try {
-    const [projectRes, alertRes] = await Promise.all([
-      fetchProjectList({ page: 1, size: 1000 }),
-      fetchAlertCenter({ page: 1, size: 1000 }),
+    const [projectRes, alertRes, annualRes] = await Promise.all([
+      fetchProjectList({ page: 1, size: 100000 }),
+      fetchAlertCenter({ page: 1, size: 100000 }),
+      fetchAnnualReportSummary(),
     ])
 
     projectItems.value = projectRes.data.items
     alertItems.value = alertRes.data.items
+    annualSummary.value = annualRes.data
 
     await nextTick()
     updateCharts()
@@ -450,6 +487,9 @@ onMounted(async () => {
   if (alertChartRef.value) {
     alertChart.value = echarts.init(alertChartRef.value)
   }
+  if (annualChartRef.value) {
+    annualChart.value = echarts.init(annualChartRef.value)
+  }
 
   window.addEventListener('resize', resizeCharts)
   await loadDashboard()
@@ -469,6 +509,7 @@ onBeforeUnmount(() => {
   projectChart.value?.dispose()
   demandChart.value?.dispose()
   alertChart.value?.dispose()
+  annualChart.value?.dispose()
 })
 </script>
 
@@ -481,7 +522,7 @@ onBeforeUnmount(() => {
 
 .chart-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: 12px;
 }
 

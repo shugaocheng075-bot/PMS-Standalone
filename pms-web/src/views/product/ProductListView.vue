@@ -78,7 +78,7 @@
         <el-pagination
           v-model:current-page="query.page"
           v-model:page-size="query.size"
-          :page-sizes="[15]"
+          :page-sizes="[15, 30, 50, 100]"
           layout="total, sizes, prev, pager, next"
           :total="total"
           @size-change="(size: number) => { query.size = size; query.page = 1; loadData() }"
@@ -87,7 +87,7 @@
       </div>
     </el-card>
 
-    <el-dialog v-model="editVisible" :title="editMode === 'create' ? '新增产品' : '编辑产品'" width="560px">
+    <el-dialog v-model="editVisible" :title="editMode === 'create' ? '新增产品' : '编辑产品'" width="560px" destroy-on-close>
       <el-form ref="editFormRef" :model="editForm" :rules="editRules" label-width="90px">
         <el-form-item label="产品名称" prop="productName"><el-input v-model="editForm.productName" /></el-form-item>
         <el-form-item label="版本" prop="version"><el-input v-model="editForm.version" /></el-form-item>
@@ -109,7 +109,7 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="detailVisible" title="产品详情" width="520px">
+    <el-dialog v-model="detailVisible" title="产品详情" width="520px" destroy-on-close>
       <el-descriptions v-if="detailItem" :column="2" border>
         <el-descriptions-item label="产品名称">{{ detailItem.productName }}</el-descriptions-item>
         <el-descriptions-item label="版本">{{ detailItem.version }}</el-descriptions-item>
@@ -142,6 +142,7 @@ import { useResilientLoad } from '../../composables/useResilientLoad'
 import { getErrorMessage } from '../../utils/error'
 import { useLinkedRealtimeRefresh } from '../../composables/useLinkedRealtimeRefresh'
 import { useAccessControl } from '../../composables/useAccessControl'
+import { resolveProductStatusTag } from '../../utils/statusTag'
 
 const loading = ref(false)
 const total = ref(0)
@@ -242,11 +243,7 @@ const editRules: FormRules<ProductUpsert> = {
   status: [{ required: true, message: '请选择状态', trigger: 'change' }],
 }
 
-const statusTag = (status: string) => {
-  if (status === '运行中') return 'success'
-  if (status === '试运行') return 'warning'
-  return 'info'
-}
+const statusTag = (status: string) => resolveProductStatusTag(status)
 
 const loadSummary = async () => {
   try {
@@ -274,7 +271,7 @@ const loadData = async () => {
 
 const loadFilterOptions = async () => {
   try {
-    const res = await fetchProducts({ page: 1, size: 1000 })
+    const res = await fetchProducts({ page: 1, size: 100000 })
     const items = res.data.items
 
     if (!items.length) {

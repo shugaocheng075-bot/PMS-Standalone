@@ -38,3 +38,10 @@ export function exportProjects(params: ProjectQuery) {
     responseType: 'blob',
   })
 }
+
+export function importProjectLedgerFromDesktop() {
+  return request.post<any, ApiResponse<any>>('/admin/import/project-ledger', {
+    filePath: 'C:\\Users\\R9000P\\Desktop\\项目明细.xlsx',
+    sheetName: '维护项目明细',
+  })
+}

@@ -83,7 +83,7 @@
               <template #default="scope">
                 <el-button v-if="canManageInspection" link type="primary" @click="onOpenPlanEdit(scope.row)">编辑</el-button>
                 <el-button link type="primary" @click="onOpenPlanDetail(scope.row)">详情</el-button>
-                <el-button v-if="scope.row.status === '已完成'" link @click="goToResultTab(scope.row)">查看结果</el-button>
+                <el-button v-if="isSameStatus(scope.row.status, '已完成')" link @click="goToResultTab(scope.row)">查看结果</el-button>
               </template>
             </el-table-column>
           </el-table>
@@ -92,7 +92,7 @@
         <el-pagination
           v-model:current-page="query.page"
           v-model:page-size="query.size"
-          :page-sizes="[15]"
+          :page-sizes="[15, 30, 50, 100]"
           layout="total, sizes, prev, pager, next"
           :total="total"
           @size-change="(size: number) => { query.size = size; query.page = 1; loadData() }"
@@ -209,7 +209,7 @@
             <el-pagination
               v-model:current-page="resultQuery.page"
               v-model:page-size="resultQuery.size"
-              :page-sizes="[15]"
+              :page-sizes="[15, 30, 50, 100]"
               layout="total, sizes, prev, pager, next"
               :total="resultTotal"
               @size-change="(size: number) => { resultQuery.size = size; resultQuery.page = 1; loadResults() }"
@@ -262,67 +262,68 @@
           </template>
         </el-dialog>
 
-        <el-dialog v-model="planDetailVisible" title="巡检计划详情" width="680px" destroy-on-close>
-          <template v-if="planDetailRow">
-            <el-descriptions :column="2" border size="small" class="result-desc">
-              <el-descriptions-item label="医院">{{ planDetailRow.hospitalName }}</el-descriptions-item>
-              <el-descriptions-item label="产品">{{ planDetailRow.productName }}</el-descriptions-item>
-              <el-descriptions-item label="省份">{{ planDetailRow.province }}</el-descriptions-item>
-              <el-descriptions-item label="组别">{{ planDetailRow.groupName }}</el-descriptions-item>
-              <el-descriptions-item label="巡检人">{{ planDetailRow.inspector }}</el-descriptions-item>
-              <el-descriptions-item label="方式">{{ planDetailRow.inspectionType }}</el-descriptions-item>
-              <el-descriptions-item label="计划日期">{{ formatDate(planDetailRow.planDate) }}</el-descriptions-item>
-              <el-descriptions-item label="实际日期">{{ planDetailRow.actualDate ? formatDate(planDetailRow.actualDate) : '-' }}</el-descriptions-item>
-              <el-descriptions-item label="状态">
-                <el-tag :type="statusTag(planDetailRow.status)">{{ planDetailRow.status }}</el-tag>
-              </el-descriptions-item>
-            </el-descriptions>
-
-            <div class="detail-actions">
-              <el-button v-if="canManageInspection" plain type="primary" @click="onOpenPlanEdit(planDetailRow)">编辑计划</el-button>
-              <el-button plain @click="goToProjectPage(planDetailRow)">去项目台账</el-button>
-              <el-button plain @click="goToResultTab(planDetailRow)">去巡检结果</el-button>
-            </div>
-          </template>
-        </el-dialog>
-
-        <el-dialog v-model="planEditVisible" title="编辑巡检计划" width="620px" destroy-on-close>
-          <el-form label-width="100px">
-            <el-form-item label="组别">
-              <el-select v-model="planEditForm.groupName" clearable filterable style="width: 100%">
-                <el-option v-for="group in filteredGroupOptions" :key="`edit-${group}`" :label="group" :value="group" />
-              </el-select>
-            </el-form-item>
-            <el-form-item label="巡检人">
-              <el-select v-model="planEditForm.inspector" clearable filterable style="width: 100%">
-                <el-option v-for="person in inspectorOptions" :key="`edit-person-${person}`" :label="person" :value="person" />
-              </el-select>
-            </el-form-item>
-            <el-form-item label="计划日期">
-              <el-date-picker v-model="planEditForm.planDate" type="date" value-format="YYYY-MM-DD" style="width: 100%" />
-            </el-form-item>
-            <el-form-item label="实际日期">
-              <el-date-picker v-model="planEditForm.actualDate" type="date" value-format="YYYY-MM-DD" clearable style="width: 100%" />
-            </el-form-item>
-            <el-form-item label="状态">
-              <el-select v-model="planEditForm.status" style="width: 100%">
-                <el-option v-for="status in statusOptions" :key="`edit-status-${status}`" :label="status" :value="status" />
-              </el-select>
-            </el-form-item>
-            <el-form-item label="方式">
-              <el-select v-model="planEditForm.inspectionType" style="width: 100%">
-                <el-option label="现场" value="现场" />
-                <el-option label="远程" value="远程" />
-              </el-select>
-            </el-form-item>
-          </el-form>
-          <template #footer>
-            <el-button @click="planEditVisible = false">取消</el-button>
-            <el-button type="primary" :loading="planSubmitting" @click="submitPlanEdit">保存</el-button>
-          </template>
-        </el-dialog>
       </el-tab-pane>
     </el-tabs>
+
+    <el-dialog v-model="planDetailVisible" title="巡检计划详情" width="680px" destroy-on-close>
+      <template v-if="planDetailRow">
+        <el-descriptions :column="2" border size="small" class="result-desc">
+          <el-descriptions-item label="医院">{{ planDetailRow.hospitalName }}</el-descriptions-item>
+          <el-descriptions-item label="产品">{{ planDetailRow.productName }}</el-descriptions-item>
+          <el-descriptions-item label="省份">{{ planDetailRow.province }}</el-descriptions-item>
+          <el-descriptions-item label="组别">{{ planDetailRow.groupName }}</el-descriptions-item>
+          <el-descriptions-item label="巡检人">{{ planDetailRow.inspector }}</el-descriptions-item>
+          <el-descriptions-item label="方式">{{ planDetailRow.inspectionType }}</el-descriptions-item>
+          <el-descriptions-item label="计划日期">{{ formatDate(planDetailRow.planDate) }}</el-descriptions-item>
+          <el-descriptions-item label="实际日期">{{ planDetailRow.actualDate ? formatDate(planDetailRow.actualDate) : '-' }}</el-descriptions-item>
+          <el-descriptions-item label="状态">
+            <el-tag :type="statusTag(planDetailRow.status)">{{ planDetailRow.status }}</el-tag>
+          </el-descriptions-item>
+        </el-descriptions>
+
+        <div class="detail-actions">
+          <el-button v-if="canManageInspection" plain type="primary" @click="onOpenPlanEdit(planDetailRow)">编辑计划</el-button>
+          <el-button plain @click="goToProjectPage(planDetailRow)">去项目台账</el-button>
+          <el-button plain @click="goToResultTab(planDetailRow)">去巡检结果</el-button>
+        </div>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="planEditVisible" title="编辑巡检计划" width="620px" destroy-on-close>
+      <el-form label-width="100px">
+        <el-form-item label="组别">
+          <el-select v-model="planEditForm.groupName" clearable filterable style="width: 100%">
+            <el-option v-for="group in filteredGroupOptions" :key="`edit-${group}`" :label="group" :value="group" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="巡检人">
+          <el-select v-model="planEditForm.inspector" clearable filterable style="width: 100%">
+            <el-option v-for="person in inspectorOptions" :key="`edit-person-${person}`" :label="person" :value="person" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="计划日期">
+          <el-date-picker v-model="planEditForm.planDate" type="date" value-format="YYYY-MM-DD" style="width: 100%" />
+        </el-form-item>
+        <el-form-item label="实际日期">
+          <el-date-picker v-model="planEditForm.actualDate" type="date" value-format="YYYY-MM-DD" clearable style="width: 100%" />
+        </el-form-item>
+        <el-form-item label="状态">
+          <el-select v-model="planEditForm.status" style="width: 100%">
+            <el-option v-for="status in statusOptions" :key="`edit-status-${status}`" :label="status" :value="status" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="方式">
+          <el-select v-model="planEditForm.inspectionType" style="width: 100%">
+            <el-option label="现场" value="现场" />
+            <el-option label="远程" value="远程" />
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="planEditVisible = false">取消</el-button>
+        <el-button type="primary" :loading="planSubmitting" @click="submitPlanEdit">保存</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -345,6 +346,7 @@ import { GROUP_OPTIONS, PERSON_OPTIONS, PROVINCE_OPTIONS } from '../../constants
 import { useFilterStatePersist } from '../../composables/useFilterStatePersist'
 import { useLinkedRealtimeRefresh } from '../../composables/useLinkedRealtimeRefresh'
 import { useAccessControl } from '../../composables/useAccessControl'
+import { normalizeStatusText, resolveInspectionStatusTag } from '../../utils/statusTag'
 
 // ---- Tab 切换 ----
 const activeTab = ref('plan')
@@ -500,7 +502,7 @@ watch(
 
 const loadFilterOptions = async () => {
   try {
-    const res = await fetchInspections({ page: 1, size: 1000 })
+    const res = await fetchInspections({ page: 1, size: 100000 })
     const items = res.data.items
     allPlanRows.value = items
 
@@ -550,13 +552,9 @@ const loadFilterOptions = async () => {
 const { runInitialLoad } = useResilientLoad()
 
 const formatDate = (value: string) => value.slice(0, 10)
+const isSameStatus = (left: string, right: string) => normalizeStatusText(left) === normalizeStatusText(right)
 
-const statusTag = (status: string) => {
-  if (status === '已完成') return 'success'
-  if (status === '执行中') return 'warning'
-  if (status === '已取消') return 'danger'
-  return 'info'
-}
+const statusTag = (status: string) => resolveInspectionStatusTag(status)
 
 const loadSummary = async () => {
   try {
@@ -571,14 +569,14 @@ const loadData = async () => {
   loading.value = true
   try {
     if (getRoutePlanHospitalName()) {
-      const source = allPlanRows.value.length > 0 ? allPlanRows.value : (await fetchInspections({ page: 1, size: 1000 })).data.items
+      const source = allPlanRows.value.length > 0 ? allPlanRows.value : (await fetchInspections({ page: 1, size: 100000 })).data.items
       if (allPlanRows.value.length === 0) {
         allPlanRows.value = source
       }
 
       const filtered = source
         .filter((item) => item.hospitalName === getRoutePlanHospitalName())
-        .filter((item) => !query.status || item.status === query.status)
+        .filter((item) => !query.status || isSameStatus(item.status, query.status))
         .filter((item) => !query.province || item.province === query.province)
         .filter((item) => !query.productName || item.productName === query.productName)
         .filter((item) => !query.groupName || item.groupName === query.groupName)
@@ -704,7 +702,7 @@ const loadResults = async () => {
 
 const loadResultFilterOptions = async () => {
   try {
-    const res = await fetchInspectionResults({ page: 1, size: 1000 })
+    const res = await fetchInspectionResults({ page: 1, size: 100000 })
     const items = res.data.items
     if (!items.length) return
 
@@ -905,7 +903,7 @@ const syncPlanDetailFromRoute = async () => {
   }
 
   try {
-    const res = await fetchInspections({ ...query, page: 1, size: 1000 })
+    const res = await fetchInspections({ ...query, page: 1, size: 100000 })
     const found = res.data.items.find((item) => item.id === id)
     if (found) {
       if (action === 'edit' && canManageInspection.value) {
@@ -929,7 +927,7 @@ const syncSinglePlanActionFromFilters = async () => {
   const source = allPlanRows.value.length > 0 ? allPlanRows.value : tableData.value
   const filtered = source
     .filter((item) => !getRoutePlanHospitalName() || item.hospitalName === getRoutePlanHospitalName())
-    .filter((item) => !query.status || item.status === query.status)
+    .filter((item) => !query.status || isSameStatus(item.status, query.status))
     .filter((item) => !query.province || item.province === query.province)
     .filter((item) => !query.productName || item.productName === query.productName)
     .filter((item) => !query.groupName || item.groupName === query.groupName)
@@ -971,7 +969,7 @@ const syncResultDetailFromRoute = async () => {
   }
 
   try {
-    const res = await fetchInspectionResults({ ...resultQuery, page: 1, size: 1000 })
+    const res = await fetchInspectionResults({ ...resultQuery, page: 1, size: 100000 })
     const found = res.data.items.find((item) => item.id === resultId)
     if (found) {
       detailRow.value = found

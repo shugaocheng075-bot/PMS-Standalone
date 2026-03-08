@@ -39,6 +39,9 @@ builder.Services.AddSingleton<IRepairRecordService, InMemoryRepairRecordService>
 builder.Services.AddSingleton<IWorkHoursService, InMemoryWorkHoursService>();
 builder.Services.AddSingleton<IMonthlyReportService, InMemoryMonthlyReportService>();
 
+var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
+    ?? new[] { "http://localhost:5173", "http://localhost:5174" };
+
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("DevCors", policy =>
@@ -46,7 +49,7 @@ builder.Services.AddCors(options =>
         policy
             .AllowAnyHeader()
             .AllowAnyMethod()
-            .AllowAnyOrigin();
+            .WithOrigins(allowedOrigins);
     });
 });
 
@@ -58,6 +61,7 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
+app.UseMiddleware<GlobalExceptionMiddleware>();
 app.UseCors("DevCors");
 app.UseMiddleware<AuthMiddleware>();
 app.UseMiddleware<PermissionMiddleware>();

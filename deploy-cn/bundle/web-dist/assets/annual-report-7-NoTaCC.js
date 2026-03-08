@@ -1,0 +1,1 @@
+import{t as e}from"./request-DH6mnD3y.js";function t(){return e.get(`/annual-reports/summary`)}function n(t){return e.get(`/annual-reports`,{params:t})}function r(t,n){return e.put(`/annual-reports/${t}`,n)}export{t as n,r,n as t};

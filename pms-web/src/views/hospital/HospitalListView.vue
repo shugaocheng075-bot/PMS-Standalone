@@ -99,7 +99,7 @@
         <el-pagination
           v-model:current-page="query.page"
           v-model:page-size="query.size"
-          :page-sizes="[15]"
+          :page-sizes="[15, 30, 50, 100]"
           layout="total, sizes, prev, pager, next"
           :total="total"
           @size-change="(size: number) => { query.size = size; query.page = 1; loadData() }"
@@ -108,7 +108,7 @@
       </div>
     </el-card>
 
-    <el-dialog v-model="editVisible" :title="editMode === 'create' ? '新增医院' : '编辑医院'" width="620px">
+    <el-dialog v-model="editVisible" :title="editMode === 'create' ? '新增医院' : '编辑医院'" width="620px" destroy-on-close>
       <el-form ref="editFormRef" :model="editForm" :rules="editRules" label-width="90px">
         <el-form-item label="医院名称" prop="hospitalName"><el-input v-model="editForm.hospitalName" /></el-form-item>
         <el-form-item label="医院等级">
@@ -131,7 +131,7 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="ratingVisible" title="更新评级" width="460px">
+    <el-dialog v-model="ratingVisible" title="更新评级" width="460px" destroy-on-close>
       <el-form :model="ratingForm" label-width="95px">
         <el-form-item label="EMR评级"><el-input v-model="ratingForm.emrRatingLevel" /></el-form-item>
         <el-form-item label="互联互通评级"><el-input v-model="ratingForm.interopRatingLevel" /></el-form-item>
@@ -142,7 +142,7 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="detailVisible" title="医院详情" width="620px">
+    <el-dialog v-model="detailVisible" title="医院详情" width="620px" destroy-on-close>
       <el-descriptions v-if="detailItem" :column="2" border>
         <el-descriptions-item label="医院名称">{{ detailItem.hospitalName }}</el-descriptions-item>
         <el-descriptions-item label="等级">{{ detailItem.tier }}</el-descriptions-item>
@@ -291,7 +291,7 @@ watch(
 
 const loadFilterOptions = async () => {
   try {
-    const res = await fetchHospitals({ page: 1, size: 1000 })
+    const res = await fetchHospitals({ page: 1, size: 100000 })
     const items = res.data.items
 
     if (!items.length) {

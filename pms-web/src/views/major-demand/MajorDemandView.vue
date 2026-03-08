@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="page-shell">
     <div class="page-head">
       <div>
@@ -20,8 +20,8 @@
         <el-button type="primary" @click="onSearch">查询</el-button>
         <el-button @click="onReset">重置</el-button>
         <el-button :loading="loading.fetching" @click="loadData">刷新</el-button>
-        <el-button v-if="canManageMaintenance" type="primary" :loading="loading.importing" @click="onImport">从桌面导入重大需求</el-button>
-        <el-button :loading="loading.exporting" @click="onExport">导出CSV</el-button>
+        <el-button type="success" @click="onAddRow">新增</el-button>
+        <el-button :loading="loading.exporting" @click="onExport">导出Excel</el-button>
       </el-space>
 
       <el-space v-if="canManageMajorDemand" wrap style="margin-top: 10px">
@@ -43,14 +43,12 @@
         <el-button :disabled="!selectedRowIds.length" @click="onBatchDueDate">批量设置截止日期</el-button>
       </el-space>
 
-      <div v-if="summaryText" style="margin-top: 12px; color: var(--el-text-color-secondary)">
-        {{ summaryText }}
-      </div>
     </el-card>
 
     <el-card shadow="never" class="table-card">
       <el-table
-        :data="displayRows"
+        :data="pagedRows"
+        row-key="_rowId"
         v-loading="loading.fetching"
         stripe
         max-height="520"
@@ -60,35 +58,39 @@
         @row-dblclick="onRowDoubleClick"
       >
         <el-table-column type="selection" width="46" />
-        <el-table-column prop="_status" label="状态" min-width="120">
+        <el-table-column v-if="hospitalColumn" :prop="hospitalColumn" :label="hospitalColumn" min-width="180" show-overflow-tooltip />
+        <el-table-column v-if="demandNoColumn" :prop="demandNoColumn" :label="demandNoColumn" min-width="150" show-overflow-tooltip />
+        <el-table-column v-if="progressColumn" :prop="progressColumn" :label="progressColumn" min-width="160">
+          <template #default="scope">
+            <el-progress
+              v-if="progressColumn && resolveProgressPercent(scope.row[progressColumn]) !== null"
+              :percentage="resolveProgressPercent(scope.row[progressColumn]) ?? 0"
+              :stroke-width="14"
+              :status="(resolveProgressPercent(scope.row[progressColumn]) ?? 0) >= 100 ? 'success' : ''"
+              :text-inside="true"
+            />
+            <span v-else>{{ progressColumn ? scope.row[progressColumn] : '' }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="_status" label="状态" min-width="100">
           <template #default="scope">
             <el-tag :type="statusTagType(scope.row._status)">{{ scope.row._status || '待评估' }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="_owner" label="负责人" min-width="130" show-overflow-tooltip />
+        <el-table-column prop="_owner" label="负责人" min-width="100" show-overflow-tooltip />
         <el-table-column prop="_dueDate" label="截止日期" min-width="120" show-overflow-tooltip />
         <el-table-column
-          v-for="column in columns"
+          v-for="column in remainingColumns"
           :key="column"
           :prop="column"
           :label="column"
           min-width="180"
           show-overflow-tooltip
-        >
-          <template #default="scope">
-            <el-progress
-              v-if="isProgressColumn(column) && resolveProgressPercent(scope.row[column]) !== null"
-              :percentage="resolveProgressPercent(scope.row[column])!"
-              :stroke-width="14"
-              status="success"
-              :text-inside="true"
-            />
-            <span v-else>{{ scope.row[column] }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" fixed="right" width="220">
+        />
+        <el-table-column label="操作" fixed="right" width="260">
           <template #default="scope">
             <el-space>
+              <el-button link type="primary" @click="openEdit(scope.row)">编辑</el-button>
               <el-button link type="primary" @click="openDetail(scope.row)">详情</el-button>
               <el-button
                 link
@@ -101,8 +103,17 @@
         </el-table-column>
       </el-table>
 
-      <div class="pager" style="margin-top: 12px; color: var(--el-text-color-secondary)">
-        共 {{ displayRows.length }} 条（已选 {{ selectedRowIds.length }} 条），字段 {{ columns.length }} 列
+      <div class="pager" style="margin-top: 12px; display: flex; justify-content: space-between; align-items: center;">
+        <span style="color: var(--el-text-color-secondary)">
+          共 {{ displayRows.length }} 条（已选 {{ selectedRowIds.length }} 条），字段 {{ columns.length }} 列
+        </span>
+        <el-pagination
+          v-model:current-page="currentPage"
+          v-model:page-size="pageSize"
+          :page-sizes="[15, 30, 50, 100]"
+          :total="displayRows.length"
+          layout="total, sizes, prev, pager, next"
+        />
       </div>
     </el-card>
 
@@ -145,11 +156,34 @@
       </template>
     </el-drawer>
 
-    <el-dialog v-model="commentVisible" title="新增评论" width="520px">
+    <el-dialog v-model="commentVisible" title="新增评论" width="520px" destroy-on-close>
       <el-input v-model="commentContent" type="textarea" :rows="4" maxlength="500" show-word-limit />
       <template #footer>
         <el-button @click="commentVisible = false">取消</el-button>
         <el-button type="primary" :loading="loading.commenting" @click="submitComment">提交</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="editVisible" title="编辑重大需求" width="680px" destroy-on-close>
+      <el-form v-if="editForm" label-width="120px" label-position="right">
+        <el-form-item label="状态">
+          <el-select v-model="editForm._status" style="width: 100%">
+            <el-option v-for="item in statusOptions" :key="`edit-s-${item}`" :label="item" :value="item" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="负责人">
+          <el-input v-model="editForm._owner" />
+        </el-form-item>
+        <el-form-item label="截止日期">
+          <el-date-picker v-model="editForm._dueDate" type="date" value-format="YYYY-MM-DD" style="width: 100%" />
+        </el-form-item>
+        <el-form-item v-for="column in columns" :key="`edit-${column}`" :label="column">
+          <el-input v-model="editForm[column]" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="editVisible = false">取消</el-button>
+        <el-button type="primary" :loading="loading.saving" @click="submitEdit">保存</el-button>
       </template>
     </el-dialog>
   </div>
@@ -157,21 +191,24 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
 import { useRoute, useRouter } from 'vue-router'
 import {
   addMajorDemandComment,
+  addMajorDemandRow,
   batchAssignMajorDemandOwner,
   batchUpdateMajorDemandDueDate,
   batchUpdateMajorDemandStatus,
-  exportMajorDemandCsv,
+  exportMajorDemandExcel,
   fetchMajorDemands,
-  importMajorDemandsFromDesktop,
+  updateMajorDemandCell,
   type MajorDemandWorkflow,
 } from '../../api/modules/majorDemand'
 import { getErrorMessage } from '../../utils/error'
 import { useLinkedRealtimeRefresh } from '../../composables/useLinkedRealtimeRefresh'
 import { useAccessControl } from '../../composables/useAccessControl'
+import { useFilterStatePersist } from '../../composables/useFilterStatePersist'
+import { normalizeStatusText, resolveMajorDemandStatusTag } from '../../utils/statusTag'
 
 const columns = ref<string[]>([])
 const rows = ref<Array<Record<string, string>>>([])
@@ -184,6 +221,11 @@ const activeRowId = ref('')
 const commentVisible = ref(false)
 const commentTargetRowId = ref('')
 const commentContent = ref('')
+const currentPage = ref(1)
+const pageSize = ref(15)
+const editVisible = ref(false)
+const editRowId = ref('')
+const editForm = ref<Record<string, string>>({})
 const route = useRoute()
 const router = useRouter()
 
@@ -235,13 +277,29 @@ const batchForm = reactive({
 
 const loading = reactive({
   fetching: false,
-  importing: false,
   exporting: false,
   commenting: false,
+  saving: false,
 })
 
 const access = useAccessControl()
-const canManageMaintenance = computed(() => access.canPermission('maintenance.manage'))
+
+type MajorDemandFilterState = {
+  keyword: string
+  status: string
+  owner: string
+}
+
+const { restore: restoreFilterState, clear: clearFilterState } = useFilterStatePersist<MajorDemandFilterState>({
+  key: 'major-demand',
+  getState: () => ({ keyword: query.keyword, status: query.status, owner: query.owner }),
+  applyState: (state) => {
+    query.keyword = typeof state.keyword === 'string' ? state.keyword : ''
+    query.status = typeof state.status === 'string' ? state.status : ''
+    query.owner = typeof state.owner === 'string' ? state.owner : ''
+  },
+})
+
 const canManageMajorDemand = computed(() => {
   if (!access.isManager()) {
     return false
@@ -257,7 +315,7 @@ const canCommentMajorDemand = computed(() => {
   return access.isManager() || access.isOperator()
 })
 
-const statusOptions = ['待评估', '处理中', '待验证', '已完成', '已关闭']
+const statusOptions = ['待评估', '待处理', '处理中', '待验证', '已完成', '已关闭']
 
 const workflowMap = computed(() => {
   const map = new Map<string, MajorDemandWorkflow>()
@@ -272,13 +330,19 @@ const ownerOptions = computed(() => {
   return Array.from(new Set(owners))
 })
 
+const hospitalColumn = computed(() => columns.value.find((c) => c.includes('医院')))
+const demandNoColumn = computed(() => columns.value.find((c) => c.includes('编号')))
+const progressColumn = computed(() => columns.value.find((c) => isProgressColumn(c)))
+const priorityColumnSet = computed(() => new Set([hospitalColumn.value, demandNoColumn.value, progressColumn.value].filter(Boolean)))
+const remainingColumns = computed(() => columns.value.filter((c) => !priorityColumnSet.value.has(c)))
+
 const displayRows = computed(() => {
   const keyword = query.keyword.trim().toLowerCase()
   return rows.value
     .filter((row) => {
       const rowId = row._RowId ?? ''
       const workflow = workflowMap.value.get(rowId)
-      if (query.status && workflow?.status !== query.status) return false
+      if (query.status && normalizeStatusText(workflow?.status) !== normalizeStatusText(query.status)) return false
       if (query.owner && workflow?.owner !== query.owner) return false
       if (!keyword) return true
 
@@ -299,17 +363,13 @@ const displayRows = computed(() => {
     })
 })
 
+const pagedRows = computed(() => {
+  const start = (currentPage.value - 1) * pageSize.value
+  return displayRows.value.slice(start, start + pageSize.value)
+})
+
 const activeRow = computed<Record<string, string> | null>(() => rows.value.find((item) => item._RowId === activeRowId.value) ?? null)
 const activeWorkflow = computed(() => workflowMap.value.get(activeRowId.value) ?? null)
-
-const summaryText = computed(() => {
-  if (!sourceFilePath.value) {
-    return ''
-  }
-
-  const importedText = importedAt.value ? `，导入时间：${importedAt.value}` : ''
-  return `来源文件：${sourceFilePath.value}${importedText}`
-})
 
 const applyRouteFilters = () => {
   const status = readRouteQueryValue(route.query.status)
@@ -354,13 +414,7 @@ const resolveProgressPercent = (rawValue: unknown): number | null => {
   return Math.round(normalized * 100) / 100
 }
 
-const statusTagType = (status: string) => {
-  if (status === '已完成') return 'success'
-  if (status === '已关闭') return 'info'
-  if (status === '待验证') return 'warning'
-  if (status === '处理中') return 'primary'
-  return 'danger'
-}
+const statusTagType = (status: string) => resolveMajorDemandStatusTag(status)
 
 const formatTime = (value: string) => {
   if (!value) return '-'
@@ -389,6 +443,7 @@ const loadData = async () => {
     sourceFilePath.value = res.data.sourceFilePath ?? ''
     importedAt.value = res.data.importedAt ? String(res.data.importedAt) : ''
     selectedRowIds.value = selectedRowIds.value.filter((id) => rows.value.some((item) => item._RowId === id))
+    currentPage.value = 1
   } catch (error) {
     ElMessage.error(getErrorMessage(error, '加载重大需求数据失败，请稍后重试'))
   } finally {
@@ -397,12 +452,15 @@ const loadData = async () => {
 }
 
 const onSearch = () => {
+  currentPage.value = 1
 }
 
 const onReset = () => {
   query.keyword = ''
   query.status = ''
   query.owner = ''
+  currentPage.value = 1
+  clearFilterState()
 }
 
 const onSelectionChange = (selection: Array<Record<string, string>>) => {
@@ -538,14 +596,63 @@ const submitComment = async () => {
   }
 }
 
+const openEdit = (row: Record<string, string>) => {
+  editRowId.value = row._rowId ?? ''
+  editForm.value = { ...row }
+  editVisible.value = true
+}
+
+const submitEdit = async () => {
+  if (!editRowId.value) return
+  loading.saving = true
+  try {
+    const origRow = displayRows.value.find((r) => r._rowId === editRowId.value)
+    if (origRow) {
+      if (editForm.value._status !== origRow._status) {
+        await batchUpdateMajorDemandStatus({ rowIds: [editRowId.value], status: editForm.value._status ?? '' })
+      }
+      if (editForm.value._owner !== origRow._owner) {
+        await batchAssignMajorDemandOwner({ rowIds: [editRowId.value], owner: editForm.value._owner ?? '' })
+      }
+      if (editForm.value._dueDate !== origRow._dueDate) {
+        await batchUpdateMajorDemandDueDate({ rowIds: [editRowId.value], dueDate: editForm.value._dueDate ?? '' })
+      }
+      for (const column of columns.value) {
+        if (editForm.value[column] !== (origRow as Record<string, string>)[column]) {
+          await updateMajorDemandCell(editRowId.value, column, editForm.value[column] ?? '')
+        }
+      }
+    }
+    ElMessage.success('保存成功')
+    editVisible.value = false
+    await loadData()
+    notifyDataChanged('major-demand')
+  } catch (error) {
+    ElMessage.error(getErrorMessage(error, '保存失败'))
+  } finally {
+    loading.saving = false
+  }
+}
+
+const onAddRow = async () => {
+  try {
+    await addMajorDemandRow()
+    ElMessage.success('新增成功')
+    await loadData()
+    notifyDataChanged('major-demand')
+  } catch (error) {
+    ElMessage.error(getErrorMessage(error, '新增失败'))
+  }
+}
+
 const onExport = async () => {
   loading.exporting = true
   try {
-    const blob = await exportMajorDemandCsv()
+    const blob = await exportMajorDemandExcel()
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
-    link.download = `major-demands-${Date.now()}.csv`
+    link.download = `major-demands-${Date.now()}.xlsx`
     link.click()
     URL.revokeObjectURL(url)
     ElMessage.success('导出成功')
@@ -556,41 +663,9 @@ const onExport = async () => {
   }
 }
 
-const onImport = async () => {
-  if (!canManageMaintenance.value) {
-    ElMessage.warning('当前账号无导入权限')
-    return
-  }
-
-  try {
-    await ElMessageBox.confirm(
-      '将从桌面文件 C:\\Users\\R9000P\\Desktop\\项目明细.xlsx 的“重大需求”工作表导入，仅更新重大需求模块，确认继续吗？',
-      '导入确认',
-      {
-        type: 'warning',
-        confirmButtonText: '确认导入',
-        cancelButtonText: '取消',
-      },
-    )
-  } catch {
-    return
-  }
-
-  loading.importing = true
-  try {
-    const res = await importMajorDemandsFromDesktop()
-    ElMessage.success(res.data.message ?? '重大需求导入成功')
-    await loadData()
-    notifyDataChanged('major-demand')
-  } catch (error) {
-    ElMessage.error(getErrorMessage(error, '导入重大需求失败，请稍后重试'))
-  } finally {
-    loading.importing = false
-  }
-}
-
 onMounted(async () => {
   await access.ensureAccessProfileLoaded()
+  restoreFilterState()
   applyRouteFilters()
   await loadData()
   syncPanelFromRoute()

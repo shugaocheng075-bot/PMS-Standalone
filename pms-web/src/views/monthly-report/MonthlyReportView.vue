@@ -81,7 +81,7 @@
         <el-pagination
           v-model:current-page="query.page"
           v-model:page-size="query.size"
-          :page-sizes="[15]"
+          :page-sizes="[15, 30, 50, 100]"
           layout="total, sizes, prev, pager, next"
           :total="total"
           @size-change="onPageSizeChange"
@@ -140,6 +140,7 @@ import { useResilientLoad } from '../../composables/useResilientLoad'
 import { getErrorMessage } from '../../utils/error'
 import { useFilterStatePersist } from '../../composables/useFilterStatePersist'
 import { useLinkedRealtimeRefresh } from '../../composables/useLinkedRealtimeRefresh'
+import { resolveMonthlyReportStatusTag } from '../../utils/statusTag'
 
 const access = useAccessControl()
 const canManage = computed(() => access.canPermission('monthly-report.manage'))
@@ -247,11 +248,7 @@ const formRules: FormRules<MonthlyReportUpsert> = {
   title: [{ required: true, message: '请输入标题', trigger: 'blur' }],
 }
 
-const statusTag = (status: string) => {
-  if (status === 'draft') return 'info'
-  if (status === 'submitted') return 'warning'
-  return 'success'
-}
+const statusTag = (status: string) => resolveMonthlyReportStatusTag(status)
 
 const statusLabel = (status: string) => {
   if (status === 'draft') return '草稿'

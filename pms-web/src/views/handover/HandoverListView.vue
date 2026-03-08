@@ -93,7 +93,7 @@
         <el-pagination
           v-model:current-page="query.page"
           v-model:page-size="query.size"
-          :page-sizes="[15]"
+          :page-sizes="[15, 30, 50, 100]"
           layout="total, sizes, prev, pager, next"
           :total="total"
           @size-change="(size: number) => { query.size = size; query.page = 1; loadData() }"
@@ -102,7 +102,7 @@
       </div>
     </el-card>
 
-    <el-dialog v-model="detailVisible" title="交接详情" width="680px">
+    <el-dialog v-model="detailVisible" title="交接详情" width="680px" destroy-on-close>
       <template v-if="detailItem">
         <el-descriptions :column="2" border size="small">
           <el-descriptions-item label="交接单号">{{ detailItem.handoverNo }}</el-descriptions-item>
@@ -399,7 +399,7 @@ const syncDetailFromRoute = async () => {
   }
 
   try {
-    const res = await fetchHandovers({ ...query, page: 1, size: 1000 })
+    const res = await fetchHandovers({ ...query, page: 1, size: 100000 })
     const found = res.data.items.find((item) => item.id === id)
     if (found) {
       onOpenDetail(found, false)
@@ -449,7 +449,7 @@ const loadKanban = async () => {
 
 const loadFilterOptions = async () => {
   try {
-    const res = await fetchHandovers({ page: 1, size: 1000 })
+    const res = await fetchHandovers({ page: 1, size: 100000 })
     const items = res.data.items
     allRows.value = items
 
@@ -489,7 +489,7 @@ const loadData = async () => {
   loading.value = true
   try {
     if (getRouteHospitalName() || getRouteProductName()) {
-      const source = allRows.value.length > 0 ? allRows.value : (await fetchHandovers({ page: 1, size: 1000 })).data.items
+      const source = allRows.value.length > 0 ? allRows.value : (await fetchHandovers({ page: 1, size: 100000 })).data.items
       if (allRows.value.length === 0) {
         allRows.value = source
       }

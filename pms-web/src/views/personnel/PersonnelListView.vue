@@ -126,23 +126,21 @@
           <template #default="scope">
             <el-button
               v-if="canManagePersonnel"
-              plain
+              link
               type="primary"
-              size="small"
               :disabled="submitLoading || deletingId === scope.row.id"
               @click="onOpenEdit(scope.row)"
             >编辑</el-button>
             <el-button
-              plain
-              size="small"
+              link
               :loading="detailLoadingId === scope.row.id"
               :disabled="submitLoading || deletingId === scope.row.id"
               @click="onOpenDetail(scope.row.id)"
             >查看</el-button>
             <el-button
               v-if="canManagePermissions"
+              link
               type="primary"
-              size="small"
               :loading="permissionLoadingId === scope.row.id"
               :disabled="submitLoading || deletingId === scope.row.id"
               @click="onOpenPermission(scope.row)"
@@ -156,7 +154,7 @@
         <el-pagination
           v-model:current-page="query.page"
           v-model:page-size="query.size"
-          :page-sizes="[15]"
+          :page-sizes="[15, 30, 50, 100]"
           layout="sizes, prev, pager, next"
           :total="displayTotal"
           @size-change="(size: number) => { query.size = size; query.page = 1; loadData() }"
@@ -165,7 +163,7 @@
       </div>
     </el-card>
 
-    <el-dialog v-model="editVisible" :title="editMode === 'create' ? '新增人员' : '编辑人员'" width="620px">
+    <el-dialog v-model="editVisible" :title="editMode === 'create' ? '新增人员' : '编辑人员'" width="620px" destroy-on-close>
       <el-form ref="editFormRef" :model="editForm" :rules="editRules" label-width="90px">
         <el-form-item label="姓名" prop="name"><el-input v-model="editForm.name" /></el-form-item>
         <el-form-item label="部门" prop="department"><el-input v-model="editForm.department" /></el-form-item>
@@ -185,7 +183,7 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="detailVisible" title="人员详情" width="560px">
+    <el-dialog v-model="detailVisible" title="人员详情" width="560px" destroy-on-close>
       <el-descriptions v-if="detailItem" :column="2" border>
         <el-descriptions-item label="姓名">{{ detailItem.name }}</el-descriptions-item>
         <el-descriptions-item label="角色">{{ detailItem.roleType }}</el-descriptions-item>
@@ -199,7 +197,7 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="permissionVisible" title="权限配置" width="760px">
+    <el-dialog v-model="permissionVisible" title="权限配置" width="760px" destroy-on-close>
       <el-skeleton :loading="permissionLoading" animated :rows="5">
         <template #default>
           <template v-if="permissionTarget">
@@ -919,7 +917,7 @@ const updateLocalSummary = () => {
 const loadAllPersonnelRows = async () => {
   loading.value = true
   try {
-    const res = await fetchPersonnel({ page: 1, size: 1000 })
+    const res = await fetchPersonnel({ page: 1, size: 100000 })
     allPersonnelRows.value = res.data.items
     updateLocalSummary()
     refreshLinkedOptions()

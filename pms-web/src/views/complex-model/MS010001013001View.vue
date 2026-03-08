@@ -454,7 +454,7 @@ const onClickRegionRow = (row: ProvinceStats | CityStats) => {
 
 const loadData = async () => {
   try {
-    const res = await fetchProjectList({ page: 1, size: 1000 })
+    const res = await fetchProjectList({ page: 1, size: 100000 })
     allProjects.value = res.data.items
     if (!selectedProvince.value && provinceStats.value.length > 0) {
       selectedProvince.value = provinceStats.value[0]!.province
@@ -473,7 +473,7 @@ const loadHospitalCityMap = async () => {
   }
 
   try {
-    const res = await fetchHospitals({ page: 1, size: 1000 })
+    const res = await fetchHospitals({ page: 1, size: 100000 })
     for (const item of res.data.items) {
       if (!item.hospitalName || !item.city) {
         continue

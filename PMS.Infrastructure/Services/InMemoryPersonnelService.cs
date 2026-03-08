@@ -11,7 +11,8 @@ namespace PMS.Infrastructure.Services;
 
 public class InMemoryPersonnelService : IPersonnelService
 {
-    private const string StateKey = "personnel";
+    private const string TableName = "Personnel";
+    private const string LegacyJsonKey = "personnel";
     private const string ExternalSyncStateKey = "personnel_external_sync_state";
     private const string ExternalPersonnelUrlEnv = "PMS_EXTERNAL_PERSONNEL_URL";
     private const string ExternalPersonnelFileEnv = "PMS_EXTERNAL_PERSONNEL_FILE";
@@ -19,7 +20,7 @@ public class InMemoryPersonnelService : IPersonnelService
     private const string ExternalPersonnelAuthorizationEnv = "PMS_EXTERNAL_PERSONNEL_AUTHORIZATION";
     private const string ExternalPersonnelRefererEnv = "PMS_EXTERNAL_PERSONNEL_REFERER";
     private static readonly char[] NameSeparators = [',', '，', '、', ';', '；', '/', '\\', '|', '+', '&'];
-    private static readonly List<PersonnelItemDto> Personnel = SqliteJsonStore.LoadOrSeed(StateKey, BuildSeedData);
+    private static readonly List<PersonnelItemDto> Personnel = SqliteTableStore.LoadAll<PersonnelItemDto>(TableName, LegacyJsonKey);
     private static readonly ExternalPersonnelSyncState SyncState = SqliteJsonStore.LoadOrSeed(ExternalSyncStateKey, () => new ExternalPersonnelSyncState());
 
     public Task<PersonnelSummaryDto> GetSummaryAsync(CancellationToken cancellationToken = default)
@@ -274,11 +275,14 @@ public class InMemoryPersonnelService : IPersonnelService
             IsOnsite = dto.IsOnsite,
             ProjectCount = dto.ProjectCount,
             OverdueCount = dto.OverdueCount,
-            CreatedAt = DateTime.Now
+            CreatedAt = DateTime.Now,
+            SourceColumns = dto.SourceColumns is not null
+                ? new Dictionary<string, string>(dto.SourceColumns, StringComparer.OrdinalIgnoreCase)
+                : new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         };
 
         Personnel.Add(item);
-        Persist();
+        SqliteTableStore.Insert(TableName, item);
         return Task.FromResult(HydrateWorkload(item));
     }
 
@@ -298,7 +302,13 @@ public class InMemoryPersonnelService : IPersonnelService
         current.IsOnsite = dto.IsOnsite;
         current.ProjectCount = dto.ProjectCount;
         current.OverdueCount = dto.OverdueCount;
-        Persist();
+
+        if (dto.SourceColumns is not null)
+        {
+            current.SourceColumns = new Dictionary<string, string>(dto.SourceColumns, StringComparer.OrdinalIgnoreCase);
+        }
+
+        SqliteTableStore.Update(TableName, current, current.Id);
 
         return Task.FromResult<PersonnelItemDto?>(HydrateWorkload(current));
     }
@@ -312,13 +322,13 @@ public class InMemoryPersonnelService : IPersonnelService
         }
 
         Personnel.Remove(current);
-        Persist();
+        SqliteTableStore.Delete(TableName, current.Id);
         return Task.FromResult(true);
     }
 
     private static void Persist()
     {
-        SqliteJsonStore.Save(StateKey, Personnel);
+        SqliteTableStore.ReplaceAll(TableName, Personnel);
     }
 
     private static ExternalSource? ResolveExternalSource()

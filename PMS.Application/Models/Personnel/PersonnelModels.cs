@@ -33,6 +33,7 @@ public class PersonnelUpsertDto
     public bool IsOnsite { get; set; }
     public int ProjectCount { get; set; }
     public int OverdueCount { get; set; }
+    public Dictionary<string, string>? SourceColumns { get; set; }
 }
 
 public class PersonnelExternalSyncResultDto

@@ -1,26 +1,27 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import DashboardView from '../views/dashboard/DashboardView.vue'
-import AlertCenterView from '../views/alert/AlertCenterView.vue'
-import ProjectListView from '../views/project/ProjectListView.vue'
-import ContractAlertView from '../views/contract/ContractAlertView.vue'
-import HandoverListView from '../views/handover/HandoverListView.vue'
-import InspectionPlanView from '../views/inspection/InspectionPlanView.vue'
-import AnnualReportView from '../views/annual-report/AnnualReportView.vue'
-import HospitalListView from '../views/hospital/HospitalListView.vue'
-import PersonnelListView from '../views/personnel/PersonnelListView.vue'
-import ProductListView from '../views/product/ProductListView.vue'
-import DataMaintenanceView from '../views/maintenance/DataMaintenanceView.vue'
-import MajorDemandView from '../views/major-demand/MajorDemandView.vue'
-import RepairRecordView from '../views/repair/RepairRecordView.vue'
-import WorkHoursView from '../views/workhours/WorkHoursView.vue'
-import MonthlyReportView from '../views/monthly-report/MonthlyReportView.vue'
-import MS010001013001View from '../views/complex-model/MS010001013001View.vue'
-import LoginView from '../views/login/LoginView.vue'
-import KpiDashboardView from '../views/dashboard/KpiDashboardView.vue'
-import WorkHoursReportView from '../views/report/WorkHoursReportView.vue'
-import MonthlyReportGenerateView from '../views/report/MonthlyReportGenerateView.vue'
 import { clearAuthState, isAuthenticated, resolveRoutePermission } from '../constants/access'
 import { useAccessControl } from '../composables/useAccessControl'
+
+const DashboardView = () => import('../views/dashboard/DashboardView.vue')
+const AlertCenterView = () => import('../views/alert/AlertCenterView.vue')
+const ProjectListView = () => import('../views/project/ProjectListView.vue')
+const ContractAlertView = () => import('../views/contract/ContractAlertView.vue')
+const HandoverListView = () => import('../views/handover/HandoverListView.vue')
+const InspectionPlanView = () => import('../views/inspection/InspectionPlanView.vue')
+const AnnualReportView = () => import('../views/annual-report/AnnualReportView.vue')
+const HospitalListView = () => import('../views/hospital/HospitalListView.vue')
+const PersonnelListView = () => import('../views/personnel/PersonnelListView.vue')
+const ProductListView = () => import('../views/product/ProductListView.vue')
+const DataMaintenanceView = () => import('../views/maintenance/DataMaintenanceView.vue')
+const MajorDemandView = () => import('../views/major-demand/MajorDemandView.vue')
+const RepairRecordView = () => import('../views/repair/RepairRecordView.vue')
+const WorkHoursView = () => import('../views/workhours/WorkHoursView.vue')
+const MonthlyReportView = () => import('../views/monthly-report/MonthlyReportView.vue')
+const MS010001013001View = () => import('../views/complex-model/MS010001013001View.vue')
+const LoginView = () => import('../views/login/LoginView.vue')
+const KpiDashboardView = () => import('../views/dashboard/KpiDashboardView.vue')
+const WorkHoursReportView = () => import('../views/report/WorkHoursReportView.vue')
+const MonthlyReportGenerateView = () => import('../views/report/MonthlyReportGenerateView.vue')
 
 const router = createRouter({
   history: createWebHistory(),

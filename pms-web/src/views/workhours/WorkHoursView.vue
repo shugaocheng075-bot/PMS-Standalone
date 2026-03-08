@@ -100,7 +100,7 @@
         <el-pagination
           v-model:current-page="query.page"
           v-model:page-size="query.size"
-          :page-sizes="[15]"
+          :page-sizes="[15, 30, 50, 100]"
           layout="total, sizes, prev, pager, next"
           :total="total"
           @size-change="onPageSizeChange"
@@ -137,7 +137,7 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="detailVisible" title="工时详情" width="620px">
+    <el-dialog v-model="detailVisible" title="工时详情" width="620px" destroy-on-close>
       <el-descriptions v-if="detailItem" :column="2" border>
         <el-descriptions-item label="人员">{{ detailItem.personnelName || '-' }}</el-descriptions-item>
         <el-descriptions-item label="医院名称">{{ detailItem.hospitalName || '-' }}</el-descriptions-item>

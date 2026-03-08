@@ -12,6 +12,11 @@
   --el-color-success: #4ca591;
   --el-color-success-light-9: #e6f5f1;
   --el-bg-color-page: #f4f8fd;
+  --pms-scrollbar-track: #e5eaf3;
+  --pms-scrollbar-thumb: #8fa6c3;
+  --pms-scrollbar-thumb-hover: #6d88a8;
+  --pms-scrollbar-radius: 6px;
+  --pms-scrollbar-size: 12px;
 }
 
 html,
@@ -19,38 +24,45 @@ body,
 #app {
   margin: 0;
   width: 100%;
-  height: 100vh;
-  overflow: hidden;
+  min-height: 100vh;
+  overflow: auto;
 }
 
 body {
-  font-family: Inter, "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans SC", Inter, sans-serif;
+  font-synthesis: none;
   color: var(--el-text-color-primary);
   background: var(--el-bg-color-page);
 }
 
+html.notranslate,
+body.notranslate,
+.notranslate {
+  translate: no;
+}
+
 * {
-  scrollbar-width: thin;
-  scrollbar-color: var(--el-border-color) var(--el-fill-color-lighter);
+  scrollbar-width: auto;
+  scrollbar-color: var(--pms-scrollbar-thumb) var(--pms-scrollbar-track);
 }
 
 *::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: var(--pms-scrollbar-size);
+  height: var(--pms-scrollbar-size);
 }
 
 *::-webkit-scrollbar-track {
-  background: var(--el-fill-color-lighter);
-  border-radius: 3px;
+  background: var(--pms-scrollbar-track);
+  border-radius: var(--pms-scrollbar-radius);
 }
 
 *::-webkit-scrollbar-thumb {
-  background: var(--el-border-color);
-  border-radius: 3px;
+  background: var(--pms-scrollbar-thumb);
+  border-radius: var(--pms-scrollbar-radius);
 }
 
 *::-webkit-scrollbar-thumb:hover {
-  background: var(--el-border-color-dark);
+  background: var(--pms-scrollbar-thumb-hover);
 }
 
 .page-shell {
@@ -270,119 +282,86 @@ body {
   padding: 5px 8px;
 }
 
-.table-card .el-table .el-table__body-wrapper {
-  max-height: none !important;
-  height: auto !important;
-  overflow-x: auto;
-  overflow-y: hidden !important;
-}
-
-.table-card .el-table .el-table__fixed-body-wrapper,
-.table-card .el-table .el-table__fixed-right .el-table__fixed-body-wrapper {
-  max-height: none !important;
-  height: auto !important;
-  overflow-y: hidden !important;
-  scrollbar-width: none;
-}
-
-.table-card .el-table .el-table__fixed-body-wrapper::-webkit-scrollbar,
-.table-card .el-table .el-table__fixed-right .el-table__fixed-body-wrapper::-webkit-scrollbar {
-  width: 0;
-  height: 0;
-}
-
-.table-card .el-table .el-table__fixed .el-scrollbar__wrap,
-.table-card .el-table .el-table__fixed-right .el-scrollbar__wrap {
-  max-height: none !important;
-  height: auto !important;
-  overflow-y: hidden !important;
-}
-
-.table-card .el-table .el-table__body-wrapper .el-scrollbar__wrap,
-.table-card .el-table .el-table__body-wrapper .el-scrollbar__view {
-  max-height: none !important;
-  height: auto !important;
-}
-
+/* Let Element Plus manage table body height natively via max-height prop */
 .table-card .el-table .el-table__body-wrapper .el-scrollbar__wrap {
-  overflow-y: visible !important;
+  overflow: auto !important;
 }
 
 .table-card .el-table .el-table__fixed .el-scrollbar__bar.is-vertical,
 .table-card .el-table .el-table__fixed-right .el-scrollbar__bar.is-vertical,
 .table-card .el-table .el-scrollbar__bar.is-vertical {
-  display: none !important;
+  display: block !important;
 }
 
 .table-card .el-table .el-table__header-wrapper,
 .table-card .el-table .el-table__body-wrapper,
 .table-card .el-table .el-table__footer-wrapper {
-  scrollbar-width: thin;
-  scrollbar-color: var(--el-border-color) var(--el-fill-color-lighter);
+  scrollbar-width: auto;
+  scrollbar-color: var(--pms-scrollbar-thumb) var(--pms-scrollbar-track);
 }
 
 .table-card .el-table .el-scrollbar__bar {
-  opacity: var(--el-scrollbar-opacity, 0.3);
+  opacity: 1;
 }
 
 .table-card .el-table .el-scrollbar {
-  --el-scrollbar-opacity: 0.3;
-  --el-scrollbar-hover-opacity: 0.5;
-  --el-scrollbar-bg-color: var(--el-text-color-secondary);
-  --el-scrollbar-hover-bg-color: var(--el-text-color-secondary);
+  --el-scrollbar-opacity: 0.85;
+  --el-scrollbar-hover-opacity: 1;
+  --el-scrollbar-bg-color: var(--pms-scrollbar-thumb);
+  --el-scrollbar-hover-bg-color: var(--pms-scrollbar-thumb-hover);
 }
 
 .table-card .el-table .el-scrollbar__bar.is-horizontal {
-  height: 6px;
+  height: var(--pms-scrollbar-size);
   bottom: 2px;
 }
 
 .table-card .el-table .el-scrollbar__bar.is-vertical {
-  width: 6px;
+  width: var(--pms-scrollbar-size);
   right: 2px;
 }
 
 .table-card .el-table .el-scrollbar__thumb {
-  background: var(--el-text-color-secondary);
-  border-radius: 3px;
-  opacity: var(--el-scrollbar-opacity, 0.3);
+  background: var(--pms-scrollbar-thumb);
+  border-radius: var(--pms-scrollbar-radius);
+  opacity: 1;
 }
 
 .table-card .el-table .el-scrollbar__thumb:hover {
-  background: var(--el-text-color-secondary);
-  opacity: var(--el-scrollbar-hover-opacity, 0.5);
+  background: var(--pms-scrollbar-thumb-hover);
+  opacity: var(--el-scrollbar-hover-opacity, 1);
 }
 
 .table-card .el-table .el-table__header-wrapper::-webkit-scrollbar,
 .table-card .el-table .el-table__body-wrapper::-webkit-scrollbar,
 .table-card .el-table .el-table__footer-wrapper::-webkit-scrollbar,
 .table-card .el-card__body::-webkit-scrollbar {
-  height: 6px;
-  width: 6px;
+  height: var(--pms-scrollbar-size);
+  width: var(--pms-scrollbar-size);
 }
 
 .table-card .el-table .el-table__header-wrapper::-webkit-scrollbar-track,
 .table-card .el-table .el-table__body-wrapper::-webkit-scrollbar-track,
 .table-card .el-table .el-table__footer-wrapper::-webkit-scrollbar-track,
 .table-card .el-card__body::-webkit-scrollbar-track {
-  background: transparent;
-  border-radius: 3px;
+  background: var(--pms-scrollbar-track);
+  border-radius: var(--pms-scrollbar-radius);
 }
 
 .table-card .el-table .el-table__header-wrapper::-webkit-scrollbar-thumb,
 .table-card .el-table .el-table__body-wrapper::-webkit-scrollbar-thumb,
 .table-card .el-table .el-table__footer-wrapper::-webkit-scrollbar-thumb,
 .table-card .el-card__body::-webkit-scrollbar-thumb {
-  background: var(--el-text-color-secondary);
-  border-radius: 3px;
-  opacity: 0.3;
+  background: var(--pms-scrollbar-thumb);
+  border-radius: var(--pms-scrollbar-radius);
+  opacity: 0.85;
 }
 
 .table-card .el-table .el-table__header-wrapper::-webkit-scrollbar-thumb:hover,
 .table-card .el-table .el-table__body-wrapper::-webkit-scrollbar-thumb:hover,
 .table-card .el-table .el-table__footer-wrapper::-webkit-scrollbar-thumb:hover,
 .table-card .el-card__body::-webkit-scrollbar-thumb:hover {
-  background: var(--el-text-color-secondary);
+  background: var(--pms-scrollbar-thumb-hover);
 }
 
 .pager {

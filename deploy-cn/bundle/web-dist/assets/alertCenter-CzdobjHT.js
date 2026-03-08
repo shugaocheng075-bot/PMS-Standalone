@@ -1,0 +1,1 @@
+import{t as e}from"./request-DH6mnD3y.js";function t(t){return e.get(`/alerts/center`,{params:t})}export{t};

@@ -44,6 +44,17 @@ public static class InMemoryMajorDemandStore
     private static readonly object SyncRoot = new();
     private static readonly MajorDemandSnapshot Snapshot = SqliteJsonStore.LoadOrSeed(StateKey, () => new MajorDemandSnapshot());
 
+    static InMemoryMajorDemandStore()
+    {
+        lock (SyncRoot)
+        {
+            if (EnsureSnapshotIntegrityLocked())
+            {
+                Persist();
+            }
+        }
+    }
+
     public static MajorDemandSnapshot GetSnapshot()
     {
         lock (SyncRoot)
@@ -79,43 +90,37 @@ public static class InMemoryMajorDemandStore
                 .Select(NormalizeRow)
                 .ToList();
 
-            Snapshot.Columns = NormalizeColumns(columns, normalizedRows);
-
-            var workflowById = Snapshot.WorkflowItems.ToDictionary(x => x.RowId, StringComparer.OrdinalIgnoreCase);
+            var workflowById = Snapshot.WorkflowItems
+                .GroupBy(x => x.RowId ?? string.Empty, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(
+                    group => group.Key,
+                    group => new Queue<MajorDemandWorkflowItem>(group.Select(CloneWorkflowItem)),
+                    StringComparer.OrdinalIgnoreCase);
             var nextWorkflowItems = new List<MajorDemandWorkflowItem>();
             var nextRows = new List<Dictionary<string, string>>();
+            var usedRowIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
             var index = 1;
             foreach (var row in normalizedRows)
             {
                 var cloned = CloneRow(row);
-                var rowId = ResolveRowId(cloned, index++);
+                var originalRowId = ResolveRowId(cloned, index++);
+                var rowId = EnsureUniqueRowId(originalRowId, usedRowIds);
                 cloned["_RowId"] = rowId;
                 nextRows.Add(cloned);
 
-                if (!workflowById.TryGetValue(rowId, out var existingWorkflow))
+                if (!workflowById.TryGetValue(originalRowId, out var existingWorkflows) || existingWorkflows.Count == 0)
                 {
-                    existingWorkflow = new MajorDemandWorkflowItem
-                    {
-                        RowId = rowId,
-                        Status = "待评估",
-                        UpdatedAt = DateTime.UtcNow,
-                        Logs =
-                        [
-                            new MajorDemandLog
-                            {
-                                Action = "导入",
-                                Detail = "行数据已导入重大需求模块",
-                                CreatedBy = "系统",
-                                CreatedAt = DateTime.UtcNow
-                            }
-                        ]
-                    };
+                    nextWorkflowItems.Add(CreateDefaultWorkflowItem(rowId, "导入", "行数据已导入重大需求模块"));
+                    continue;
                 }
 
+                var existingWorkflow = existingWorkflows.Dequeue();
+                existingWorkflow.RowId = rowId;
                 nextWorkflowItems.Add(CloneWorkflowItem(existingWorkflow));
             }
 
+            Snapshot.Columns = NormalizeColumns(columns, nextRows);
             Snapshot.Rows = nextRows;
             Snapshot.WorkflowItems = nextWorkflowItems;
 
@@ -286,6 +291,65 @@ public static class InMemoryMajorDemandStore
         }
     }
 
+    public static bool UpdateCell(string rowId, string columnName, string value)
+    {
+        lock (SyncRoot)
+        {
+            var row = Snapshot.Rows.FirstOrDefault(r =>
+                r.TryGetValue("_RowId", out var id) && string.Equals(id, rowId, StringComparison.OrdinalIgnoreCase));
+            if (row is null) return false;
+
+            row[columnName] = value?.Trim() ?? string.Empty;
+            Persist();
+            return true;
+        }
+    }
+
+    public static string AddEmptyRow()
+    {
+        lock (SyncRoot)
+        {
+            var maxIdx = Snapshot.Rows.Count + 1;
+            var rowId = $"MD-{maxIdx:D5}";
+            while (Snapshot.Rows.Any(r =>
+                       r.TryGetValue("_RowId", out var id) &&
+                       string.Equals(id, rowId, StringComparison.OrdinalIgnoreCase)))
+            {
+                maxIdx++;
+                rowId = $"MD-{maxIdx:D5}";
+            }
+
+            var newRow = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["_RowId"] = rowId };
+            foreach (var col in Snapshot.Columns.Where(c =>
+                         !string.Equals(c, "_RowId", StringComparison.OrdinalIgnoreCase)))
+            {
+                newRow[col] = string.Empty;
+            }
+
+            Snapshot.Rows.Add(newRow);
+            Snapshot.WorkflowItems.Add(CreateDefaultWorkflowItem(rowId, "新增", "手动新增行"));
+
+            Persist();
+            return rowId;
+        }
+    }
+
+    public static int DeleteRows(IReadOnlyCollection<string> rowIds)
+    {
+        lock (SyncRoot)
+        {
+            var ids = NormalizeRowIds(rowIds);
+            if (ids.Count == 0) return 0;
+
+            var removed = Snapshot.Rows.RemoveAll(r =>
+                r.TryGetValue("_RowId", out var id) && ids.Contains(id));
+            Snapshot.WorkflowItems.RemoveAll(w => ids.Contains(w.RowId));
+
+            if (removed > 0) Persist();
+            return removed;
+        }
+    }
+
     private static Dictionary<string, string> CloneRow(IReadOnlyDictionary<string, string> row)
     {
         return row.ToDictionary(
@@ -450,6 +514,117 @@ public static class InMemoryMajorDemandStore
         }
 
         return $"MD-{index:D5}";
+    }
+
+    private static string EnsureUniqueRowId(string candidate, ISet<string> usedRowIds)
+    {
+        var normalizedCandidate = string.IsNullOrWhiteSpace(candidate)
+            ? $"MD-{usedRowIds.Count + 1:D5}"
+            : candidate.Trim();
+
+        if (usedRowIds.Add(normalizedCandidate))
+        {
+            return normalizedCandidate;
+        }
+
+        var suffix = 2;
+        while (true)
+        {
+            var nextCandidate = $"{normalizedCandidate}__{suffix}";
+            if (usedRowIds.Add(nextCandidate))
+            {
+                return nextCandidate;
+            }
+
+            suffix++;
+        }
+    }
+
+    private static MajorDemandWorkflowItem CreateDefaultWorkflowItem(string rowId, string action, string detail)
+    {
+        return new MajorDemandWorkflowItem
+        {
+            RowId = rowId,
+            Status = "待评估",
+            UpdatedAt = DateTime.UtcNow,
+            Logs =
+            [
+                new MajorDemandLog
+                {
+                    Action = action,
+                    Detail = detail,
+                    CreatedBy = "系统",
+                    CreatedAt = DateTime.UtcNow
+                }
+            ]
+        };
+    }
+
+    private static bool EnsureSnapshotIntegrityLocked()
+    {
+        var normalizedRows = Snapshot.Rows
+            .Select(NormalizeRow)
+            .ToList();
+        var workflowQueues = Snapshot.WorkflowItems
+            .GroupBy(item => item.RowId ?? string.Empty, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                group => group.Key,
+                group => new Queue<MajorDemandWorkflowItem>(group.Select(CloneWorkflowItem)),
+                StringComparer.OrdinalIgnoreCase);
+
+        var nextRows = new List<Dictionary<string, string>>(normalizedRows.Count);
+        var nextWorkflowItems = new List<MajorDemandWorkflowItem>(normalizedRows.Count);
+        var usedRowIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var changed = Snapshot.WorkflowItems.Count != normalizedRows.Count;
+
+        var index = 1;
+        foreach (var row in normalizedRows)
+        {
+            var cloned = CloneRow(row);
+            var originalRowId = ResolveRowId(cloned, index++);
+            var rowId = EnsureUniqueRowId(originalRowId, usedRowIds);
+            if (!string.Equals(originalRowId, rowId, StringComparison.OrdinalIgnoreCase)
+                || !cloned.TryGetValue("_RowId", out var currentRowId)
+                || !string.Equals(currentRowId, rowId, StringComparison.OrdinalIgnoreCase))
+            {
+                changed = true;
+            }
+
+            cloned["_RowId"] = rowId;
+            nextRows.Add(cloned);
+
+            if (!workflowQueues.TryGetValue(originalRowId, out var queue) || queue.Count == 0)
+            {
+                nextWorkflowItems.Add(CreateDefaultWorkflowItem(rowId, "修复", "自动修复重大需求行标识冲突"));
+                changed = true;
+                continue;
+            }
+
+            var workflow = queue.Dequeue();
+            if (!string.Equals(workflow.RowId, rowId, StringComparison.OrdinalIgnoreCase))
+            {
+                workflow.RowId = rowId;
+                changed = true;
+            }
+
+            nextWorkflowItems.Add(workflow);
+        }
+
+        if (workflowQueues.Values.Any(queue => queue.Count > 0))
+        {
+            changed = true;
+        }
+
+        var normalizedColumns = NormalizeColumns(Snapshot.Columns, nextRows);
+        if (!changed && Snapshot.Columns.SequenceEqual(normalizedColumns) && Snapshot.Rows.Count == nextRows.Count)
+        {
+            return false;
+        }
+
+        Snapshot.Columns = normalizedColumns;
+        Snapshot.Rows = nextRows;
+        Snapshot.WorkflowItems = nextWorkflowItems;
+        return true;
     }
 
     private static HashSet<string> NormalizeRowIds(IReadOnlyCollection<string> rowIds)

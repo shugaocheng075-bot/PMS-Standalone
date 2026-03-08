@@ -92,7 +92,7 @@
         <el-pagination
           v-model:current-page="query.page"
           v-model:page-size="query.size"
-          :page-sizes="[15]"
+          :page-sizes="[15, 30, 50, 100]"
           layout="total, sizes, prev, pager, next"
           :total="total"
           @size-change="onPageSizeChange"
@@ -135,7 +135,7 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="detailVisible" title="报修详情" width="720px">
+    <el-dialog v-model="detailVisible" title="报修详情" width="720px" destroy-on-close>
       <el-descriptions v-if="detailItem" :column="2" border>
         <el-descriptions-item label="医院名称">{{ detailItem.hospitalName }}</el-descriptions-item>
         <el-descriptions-item label="报修人">{{ detailItem.reporterName || '-' }}</el-descriptions-item>
@@ -176,6 +176,7 @@ import { useResilientLoad } from '../../composables/useResilientLoad'
 import { getErrorMessage } from '../../utils/error'
 import { useFilterStatePersist } from '../../composables/useFilterStatePersist'
 import { useLinkedRealtimeRefresh } from '../../composables/useLinkedRealtimeRefresh'
+import { resolveRepairStatusTag } from '../../utils/statusTag'
 
 const access = useAccessControl()
 const canCreate = computed(() => {
@@ -327,11 +328,7 @@ const applyRouteFilters = () => {
   }
 }
 
-const statusTag = (status: string) => {
-  if (status === '待处理') return 'danger'
-  if (status === '处理中') return 'warning'
-  return 'success'
-}
+const statusTag = (status: string) => resolveRepairStatusTag(status)
 
 const urgencyTag = (urgency: string) => {
   if (urgency === '非常紧急') return 'danger'

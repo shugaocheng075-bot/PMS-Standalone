@@ -4,6 +4,9 @@ public class ProjectEntity
 {
     public long Id { get; set; }
 
+    /// <summary>序号</summary>
+    public string SerialNumber { get; set; } = string.Empty;
+
     /// <summary>机会号</summary>
     public string OpportunityNumber { get; set; } = string.Empty;
 
@@ -46,4 +49,31 @@ public class ProjectEntity
 
     /// <summary>备注</summary>
     public string Remarks { get; set; } = string.Empty;
+
+    /// <summary>服务区域</summary>
+    public string ServiceArea { get; set; } = string.Empty;
+
+    /// <summary>市</summary>
+    public string City { get; set; } = string.Empty;
+
+    /// <summary>点位</summary>
+    public string Points { get; set; } = string.Empty;
+
+    /// <summary>销售合同额</summary>
+    public decimal SalesAmount { get; set; }
+
+    /// <summary>年度产值</summary>
+    public decimal AnnualOutput { get; set; }
+
+    /// <summary>驻地</summary>
+    public string StationLocation { get; set; } = string.Empty;
+
+    /// <summary>是否驻场</summary>
+    public string IsStationedOnsite { get; set; } = string.Empty;
+
+    /// <summary>驻场人数</summary>
+    public string StationedCount { get; set; } = string.Empty;
+
+    /// <summary>验收日期</summary>
+    public string AcceptanceDate { get; set; } = string.Empty;
 }

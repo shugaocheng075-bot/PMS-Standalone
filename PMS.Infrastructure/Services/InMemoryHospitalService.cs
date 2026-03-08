@@ -7,8 +7,9 @@ namespace PMS.Infrastructure.Services;
 
 public class InMemoryHospitalService : IHospitalService
 {
-    private const string StateKey = "hospitals";
-    private static readonly List<HospitalItemDto> Hospitals = SqliteJsonStore.LoadOrSeed(StateKey, BuildSeedData);
+    private const string TableName = "Hospitals";
+    private const string LegacyJsonKey = "hospitals";
+    private static readonly List<HospitalItemDto> Hospitals = SqliteTableStore.LoadAll<HospitalItemDto>(TableName, LegacyJsonKey);
 
     public static void RebuildFromProjects(IReadOnlyList<ProjectEntity> projects)
     {
@@ -38,7 +39,7 @@ public class InMemoryHospitalService : IHospitalService
 
         Hospitals.Clear();
         Hospitals.AddRange(generated);
-        Persist();
+        SqliteTableStore.ReplaceAll(TableName, Hospitals);
     }
 
     public Task<HospitalSummaryDto> GetSummaryAsync(CancellationToken cancellationToken = default)
@@ -127,7 +128,7 @@ public class InMemoryHospitalService : IHospitalService
         };
 
         Hospitals.Add(item);
-        Persist();
+        SqliteTableStore.Insert(TableName, item);
         return Task.FromResult(item);
     }
 
@@ -151,7 +152,7 @@ public class InMemoryHospitalService : IHospitalService
         current.DepartmentCount = dto.DepartmentCount;
 
         InMemoryProjectDataStore.SyncHospitalInfo(oldHospitalName, current.HospitalName, current.Province);
-        Persist();
+        SqliteTableStore.Update(TableName, current, current.Id);
 
         return Task.FromResult<HospitalItemDto?>(current);
     }
@@ -166,7 +167,7 @@ public class InMemoryHospitalService : IHospitalService
 
         current.EmrRatingLevel = dto.EmrRatingLevel;
         current.InteropRatingLevel = dto.InteropRatingLevel;
-        Persist();
+        SqliteTableStore.Update(TableName, current, current.Id);
 
         return Task.FromResult<HospitalItemDto?>(current);
     }
@@ -181,13 +182,8 @@ public class InMemoryHospitalService : IHospitalService
 
         Hospitals.Remove(current);
         InMemoryProjectDataStore.RemoveByHospitalName(current.HospitalName);
-        Persist();
+        SqliteTableStore.Delete(TableName, current.Id);
         return Task.FromResult(true);
-    }
-
-    private static void Persist()
-    {
-        SqliteJsonStore.Save(StateKey, Hospitals);
     }
 
     private static List<HospitalItemDto> ApplyLinkedMetrics(IEnumerable<HospitalItemDto> hospitals)

@@ -78,7 +78,7 @@
         <el-pagination
           v-model:current-page="query.page"
           v-model:page-size="query.size"
-          :page-sizes="[15]"
+          :page-sizes="[15, 30, 50, 100]"
           layout="total, sizes, prev, pager, next"
           :total="total"
           @size-change="(size: number) => { query.size = size; query.page = 1; loadData() }"
@@ -203,7 +203,7 @@ watch(
 
 const loadFilterOptions = async () => {
   try {
-    const res = await fetchContractAlerts({ page: 1, size: 1000 })
+    const res = await fetchContractAlerts({ page: 1, size: 100000 })
     const items = res.data.items
 
     if (!items.length) {

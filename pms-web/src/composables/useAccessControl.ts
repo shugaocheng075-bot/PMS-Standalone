@@ -80,6 +80,8 @@ const isManager = (): boolean => {
   return getSystemRole() === 'manager'
 }
 
+const isRegionalManager = (): boolean => getSystemRole() === 'regional_manager'
+
 const isSupervisor = (): boolean => getSystemRole() === 'supervisor'
 
 const isOperator = (): boolean => getSystemRole() === 'operator'
@@ -101,6 +103,7 @@ export const useAccessControl = () => {
     getFirstAccessiblePath,
     getSystemRole,
     isManager,
+    isRegionalManager,
     isSupervisor,
     isOperator,
   }

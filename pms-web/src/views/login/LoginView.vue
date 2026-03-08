@@ -147,8 +147,7 @@ const onLogin = async () => {
 
 .login-card {
   position: relative;
-  width: 420px;
-  max-width: 100%;
+  width: min(420px, 90vw);
   background: #fff;
   border-radius: 8px;
   border: 1px solid #d7e6f3;

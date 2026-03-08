@@ -24,7 +24,7 @@ public class InMemoryHandoverService : IHandoverService
 
     public Task<HandoverSummaryDto> GetSummaryAsync(CancellationToken cancellationToken = default)
     {
-        var seed = BuildSeed();
+        var seed = BuildItems();
         var summary = new HandoverSummaryDto
         {
             PendingCount = seed.Count(x => x.Stage == "未发"),
@@ -39,7 +39,7 @@ public class InMemoryHandoverService : IHandoverService
 
     public Task<PagedResult<HandoverItemDto>> QueryAsync(HandoverQuery query, CancellationToken cancellationToken = default)
     {
-        IEnumerable<HandoverItemDto> filtered = BuildSeed();
+        IEnumerable<HandoverItemDto> filtered = BuildItems();
 
         if (!string.IsNullOrWhiteSpace(query.Stage))
             filtered = filtered.Where(x => SmartTextMatcher.MatchExact(x.Stage, query.Stage));
@@ -79,7 +79,7 @@ public class InMemoryHandoverService : IHandoverService
     public Task<IReadOnlyList<HandoverKanbanColumnDto>> GetKanbanAsync(CancellationToken cancellationToken = default)
     {
         var stages = new[] { "未发", "已发邮件", "交接中", "已交接" };
-        var seed = BuildSeed();
+        var seed = BuildItems();
 
         var result = stages
             .Select(stage =>
@@ -111,28 +111,54 @@ public class InMemoryHandoverService : IHandoverService
 
         lock (SyncRoot)
         {
-            var item = BuildSeed().FirstOrDefault(x => x.Id == id) ?? throw new KeyNotFoundException("交接记录不存在");
+            var item = BuildItems().FirstOrDefault(x => x.Id == id) ?? throw new KeyNotFoundException("交接记录不存在");
 
             if (!StageTransitions.TryGetValue(item.Stage, out var nextStages) || !nextStages.Contains(request.TargetStage))
             {
                 throw new InvalidOperationException($"不允许从 {item.Stage} 流转到 {request.TargetStage}");
             }
 
-            StageOverrides[id] = request.TargetStage;
+            if (request.TargetStage == "已交接")
+            {
+                StageOverrides.Remove(id);
+                EmailSentDateOverrides.Remove(id);
+            }
+            else
+            {
+                StageOverrides[id] = request.TargetStage;
+            }
 
             if (request.TargetStage == "已发邮件" && item.EmailSentDate is null)
             {
                 EmailSentDateOverrides[id] = DateTime.Today;
             }
-            else if (request.TargetStage != "已发邮件" && request.TargetStage != "交接中" && request.TargetStage != "已交接")
+            else if (request.TargetStage == "未发")
             {
                 EmailSentDateOverrides[id] = null;
             }
 
             PersistOverrides();
 
-            var refreshed = BuildSeed().First(x => x.Id == id);
-            return Task.FromResult(refreshed);
+            var refreshed = BuildItems().FirstOrDefault(x => x.Id == id);
+            if (refreshed is not null)
+            {
+                return Task.FromResult(refreshed);
+            }
+
+            return Task.FromResult(new HandoverItemDto
+            {
+                Id = item.Id,
+                HandoverNo = item.HandoverNo,
+                HospitalName = item.HospitalName,
+                ProductName = item.ProductName,
+                FromGroup = item.FromGroup,
+                FromOwner = item.FromOwner,
+                ToOwner = item.ToOwner,
+                Batch = item.Batch,
+                Stage = request.TargetStage,
+                Type = item.Type,
+                EmailSentDate = item.EmailSentDate,
+            });
         }
     }
 
@@ -142,21 +168,26 @@ public class InMemoryHandoverService : IHandoverService
         SqliteJsonStore.Save(EmailDateStateKey, EmailSentDateOverrides);
     }
 
-    private static List<HandoverItemDto> BuildSeed()
+    private static List<HandoverItemDto> BuildItems()
     {
-        var stages = new[] { "已交接", "交接中", "已发邮件", "未发" };
+        if (StageOverrides.Count == 0)
+        {
+            return [];
+        }
 
-        return InMemoryProjectDataStore.Projects
-            .OrderBy(x => x.Id)
-            .Select((project, index) =>
+        return StageOverrides
+            .Where(entry => !string.IsNullOrWhiteSpace(entry.Value) && !string.Equals(entry.Value, "已交接", StringComparison.OrdinalIgnoreCase))
+            .Select(entry =>
             {
+                var project = InMemoryProjectDataStore.Projects.FirstOrDefault(x => x.Id == entry.Key);
+                if (project is null)
+                {
+                    return null;
+                }
+
                 var id = project.Id;
-                var defaultStage = stages[index % stages.Length];
-                var stage = StageOverrides.TryGetValue(id, out var overrideStage) ? overrideStage : defaultStage;
-                DateTime? defaultEmailDate = defaultStage is "已发邮件" or "交接中" or "已交接"
-                    ? DateTime.Today.AddDays(-(index + 2) * 2)
-                    : null;
-                var emailDate = EmailSentDateOverrides.TryGetValue(id, out var overrideDate) ? overrideDate : defaultEmailDate;
+                var stage = entry.Value;
+                var emailDate = EmailSentDateOverrides.TryGetValue(id, out var overrideDate) ? overrideDate : null;
                 var fromOwner = string.IsNullOrWhiteSpace(project.SalesName)
                     ? "未分配"
                     : project.SalesName.Trim();
@@ -173,12 +204,15 @@ public class InMemoryHandoverService : IHandoverService
                     FromGroup = project.GroupName,
                     FromOwner = fromOwner,
                     ToOwner = toOwner,
-                    Batch = $"第{(index % 4) + 1}批",
+                    Batch = "当前批次",
                     Stage = stage,
-                    Type = index % 2 == 0 ? "实施→运维" : "区域/组间",
+                    Type = "实施→运维",
                     EmailSentDate = emailDate
                 };
             })
+            .Where(item => item is not null)
+            .Cast<HandoverItemDto>()
+            .OrderBy(x => x.Id)
             .ToList();
     }
 }
