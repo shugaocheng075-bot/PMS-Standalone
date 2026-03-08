@@ -195,7 +195,10 @@ public class InMemoryWorkHoursService : IWorkHoursService
             ImplementationStatus = entity.ImplementationStatus,
             Description = entity.Description,
             CreatedAt = entity.CreatedAt,
-            UpdatedAt = entity.UpdatedAt
+            UpdatedAt = entity.UpdatedAt,
+            Status = entity.Status ?? "draft",
+            ConfirmedBy = entity.ConfirmedBy,
+            ConfirmedAt = entity.ConfirmedAt
         };
     }
 
@@ -203,5 +206,48 @@ public class InMemoryWorkHoursService : IWorkHoursService
     internal static void PersistAll()
     {
         SqliteTableStore.ReplaceAll(TableName, Records);
+    }
+
+    public Task<bool> SubmitAsync(long id, CancellationToken cancellationToken = default)
+    {
+        lock (SyncRoot)
+        {
+            var entity = Records.FirstOrDefault(x => x.Id == id);
+            if (entity is null || entity.Status != "draft") return Task.FromResult(false);
+            entity.Status = "submitted";
+            entity.UpdatedAt = DateTime.UtcNow;
+            SqliteTableStore.Update(TableName, entity, entity.Id);
+            return Task.FromResult(true);
+        }
+    }
+
+    public Task<bool> ConfirmAsync(long id, string confirmedBy, CancellationToken cancellationToken = default)
+    {
+        lock (SyncRoot)
+        {
+            var entity = Records.FirstOrDefault(x => x.Id == id);
+            if (entity is null || entity.Status != "submitted") return Task.FromResult(false);
+            entity.Status = "confirmed";
+            entity.ConfirmedBy = confirmedBy;
+            entity.ConfirmedAt = DateTime.UtcNow;
+            entity.UpdatedAt = DateTime.UtcNow;
+            SqliteTableStore.Update(TableName, entity, entity.Id);
+            return Task.FromResult(true);
+        }
+    }
+
+    public Task<bool> RejectAsync(long id, string rejectedBy, CancellationToken cancellationToken = default)
+    {
+        lock (SyncRoot)
+        {
+            var entity = Records.FirstOrDefault(x => x.Id == id);
+            if (entity is null || entity.Status != "submitted") return Task.FromResult(false);
+            entity.Status = "rejected";
+            entity.ConfirmedBy = rejectedBy;
+            entity.ConfirmedAt = DateTime.UtcNow;
+            entity.UpdatedAt = DateTime.UtcNow;
+            SqliteTableStore.Update(TableName, entity, entity.Id);
+            return Task.FromResult(true);
+        }
     }
 }

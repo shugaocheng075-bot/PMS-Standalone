@@ -9,5 +9,8 @@ public interface IMonthlyReportService
     Task<MonthlyReportItemDto?> GetByIdAsync(long id, CancellationToken cancellationToken = default);
     Task<MonthlyReportItemDto> CreateAsync(string submittedBy, MonthlyReportUpsertDto dto, CancellationToken cancellationToken = default);
     Task<MonthlyReportItemDto?> UpdateAsync(long id, MonthlyReportUpsertDto dto, CancellationToken cancellationToken = default);
+    Task<MonthlyReportItemDto?> SubmitAsync(long id, CancellationToken cancellationToken = default);
+    Task<MonthlyReportItemDto?> ApproveAsync(long id, string approvedBy, CancellationToken cancellationToken = default);
+    Task<MonthlyReportItemDto?> RejectAsync(long id, string rejectedBy, string? reason, CancellationToken cancellationToken = default);
     Task<bool> DeleteAsync(long id, CancellationToken cancellationToken = default);
 }

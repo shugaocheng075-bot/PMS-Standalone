@@ -11,4 +11,7 @@ public interface IWorkHoursService
     Task<WorkHoursItemDto> CreateAsync(string personnelName, WorkHoursUpsertDto dto, CancellationToken cancellationToken = default);
     Task<WorkHoursItemDto?> UpdateAsync(long id, WorkHoursUpsertDto dto, CancellationToken cancellationToken = default);
     Task<bool> DeleteAsync(long id, CancellationToken cancellationToken = default);
+    Task<bool> SubmitAsync(long id, CancellationToken cancellationToken = default);
+    Task<bool> ConfirmAsync(long id, string confirmedBy, CancellationToken cancellationToken = default);
+    Task<bool> RejectAsync(long id, string rejectedBy, CancellationToken cancellationToken = default);
 }

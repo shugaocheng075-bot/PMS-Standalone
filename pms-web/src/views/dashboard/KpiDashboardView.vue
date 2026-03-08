@@ -1,5 +1,5 @@
 <template>
-  <div class="page-shell kpi-page">
+  <div class="page-shell kpi-page" v-loading="loading">
     <div class="page-head">
       <div>
         <h2 class="page-title">KPI 概览</h2>

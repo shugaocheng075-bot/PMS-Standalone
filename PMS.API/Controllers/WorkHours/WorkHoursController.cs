@@ -1,3 +1,4 @@
+using ClosedXML.Excel;
 using Microsoft.AspNetCore.Mvc;
 using PMS.API.Middleware;
 using PMS.API.Models;
@@ -131,5 +132,95 @@ public class WorkHoursController(
         var deleted = await workHoursService.DeleteAsync(id, cancellationToken);
         if (!deleted) return NotFound(ApiResponse<object>.Success(null));
         return Ok(ApiResponse<object>.Success(new { message = "删除成功" }));
+    }
+
+    [HttpPatch("{id:long}/submit")]
+    public async Task<IActionResult> Submit(long id, CancellationToken cancellationToken)
+    {
+        var ok = await workHoursService.SubmitAsync(id, cancellationToken);
+        if (!ok) return BadRequest(new { code = 400, message = "无法提交，记录不存在或状态不允许" });
+        return Ok(ApiResponse<object>.Success(new { message = "已提交" }));
+    }
+
+    [HttpPatch("{id:long}/confirm")]
+    public async Task<IActionResult> Confirm(long id, CancellationToken cancellationToken)
+    {
+        var personnelId = HttpContext.GetCurrentPersonnelId();
+        var profile = await accessControlService.GetUserProfileAsync(personnelId);
+        var confirmerName = profile?.PersonnelName ?? "unknown";
+        var ok = await workHoursService.ConfirmAsync(id, confirmerName, cancellationToken);
+        if (!ok) return BadRequest(new { code = 400, message = "无法确认，记录不存在或未提交" });
+        return Ok(ApiResponse<object>.Success(new { message = "已确认" }));
+    }
+
+    [HttpPatch("{id:long}/reject")]
+    public async Task<IActionResult> Reject(long id, CancellationToken cancellationToken)
+    {
+        var personnelId = HttpContext.GetCurrentPersonnelId();
+        var profile = await accessControlService.GetUserProfileAsync(personnelId);
+        var rejectorName = profile?.PersonnelName ?? "unknown";
+        var ok = await workHoursService.RejectAsync(id, rejectorName, cancellationToken);
+        if (!ok) return BadRequest(new { code = 400, message = "无法退回，记录不存在或未提交" });
+        return Ok(ApiResponse<object>.Success(new { message = "已退回" }));
+    }
+
+    [HttpGet("export")]
+    public async Task<IActionResult> Export(
+        [FromQuery] string? personnelName,
+        [FromQuery] string? hospitalName,
+        [FromQuery] string? workType,
+        [FromQuery] string? workDateFrom,
+        [FromQuery] string? workDateTo,
+        CancellationToken cancellationToken = default)
+    {
+        var personnelId = HttpContext.GetCurrentPersonnelId();
+        var dataScope = await accessControlService.GetDataScopeAsync(personnelId, cancellationToken);
+        var result = await workHoursService.QueryAsync(new WorkHoursQuery
+        {
+            PersonnelName = personnelName,
+            HospitalName = hospitalName,
+            WorkType = workType,
+            WorkDateFrom = workDateFrom,
+            WorkDateTo = workDateTo,
+            Page = 1,
+            Size = int.MaxValue
+        }, cancellationToken);
+
+        var rows = HospitalScopeHelper.FilterByHospitalScope(dataScope, result.Items, x => x.HospitalName).ToList();
+
+        string[] headers = ["人员", "机会号", "医院名称", "产品", "工作日期", "工时(h)", "工作类型", "实施状态", "描述", "状态", "确认人", "确认时间"];
+        using var wb = new XLWorkbook();
+        var ws = wb.Worksheets.Add("工时明细");
+        for (var i = 0; i < headers.Length; i++)
+        {
+            var cell = ws.Cell(1, i + 1);
+            cell.Value = headers[i];
+            cell.Style.Font.Bold = true;
+            cell.Style.Fill.BackgroundColor = XLColor.LightGray;
+        }
+
+        for (var r = 0; r < rows.Count; r++)
+        {
+            var row = rows[r];
+            var n = r + 2;
+            ws.Cell(n, 1).Value = row.PersonnelName;
+            ws.Cell(n, 2).Value = row.OpportunityNumber;
+            ws.Cell(n, 3).Value = row.HospitalName;
+            ws.Cell(n, 4).Value = row.ProductName;
+            ws.Cell(n, 5).Value = row.WorkDate;
+            ws.Cell(n, 6).Value = (double)row.Hours;
+            ws.Cell(n, 7).Value = row.WorkType;
+            ws.Cell(n, 8).Value = row.ImplementationStatus;
+            ws.Cell(n, 9).Value = row.Description;
+            ws.Cell(n, 10).Value = row.Status;
+            ws.Cell(n, 11).Value = row.ConfirmedBy;
+            ws.Cell(n, 12).Value = row.ConfirmedAt;
+        }
+
+        ws.Columns().AdjustToContents();
+        using var ms = new MemoryStream();
+        wb.SaveAs(ms);
+        var fileName = $"工时明细_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
+        return File(ms.ToArray(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
     }
 }

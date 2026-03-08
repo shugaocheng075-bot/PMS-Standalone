@@ -21,3 +21,13 @@
 2026-03-10: Task 8 (P3-b) — 操作日志。全栈实现：AuditLogEntity + IAuditLogService/InMemoryAuditLogService + AuditLogController（分页查询+汇总）；前端 AuditLogView.vue（统计卡片+筛选表单+表格+分页）；路由/权限/菜单全部注册。验证：dotnet build 0 错误 0 警告，npm run build 通过。
 2026-03-10: Task 9 (P3-c) — 移动端深度适配。style.css 新增 ~150 行全局响应式 CSS：pointer:coarse 触控优化（44px 最小触控区、触觉反馈）、768px 弹窗/抽屉/表单自适应、576px 超小屏紧凑模式。验证：npm run build 通过。
 2026-03-10: Task 10 (P3-d) — 数据分析深化。DashboardView 接入 v2 API (fetchDashboardV2)，新增"告警月度趋势"堆叠面积图（近6个月严重/警告/提醒三线）和"责任人工作量 TOP12"水平堆叠柱状图；analysis-grid 双列布局+1280px 响应式。验证：npm run build 通过。
+2026-03-10: Task 11 (P4-a) — 批量导入校验。DataImportController 新增 ImportBatchValidationResult 详情返回，前端增加导入前预检与错误明细。
+2026-03-10: Task 12 (P4-b) — Excel 导出。报修记录、巡检计划、交接记录、工时报表的 CSV 导出升级为 ClosedXML Excel 导出（.xlsx），WorkHoursReportView 导出按钮改用 downloadBlob 调用。验证：dotnet build 0 错误，vue-tsc 0 错误。
+2026-03-10: Task 13 (P4-c) — 仪表盘时间范围选择器。DashboardView 新增 el-select（1/3/6/12月），fetchDashboardV2 增加 months 参数，后端按 months 过滤事件/告警数据。验证：vue-tsc 0 错误。
+2026-03-10: Task 14 (P4-d) — 个人工作台增强。PersonalWorkbench 新增第4列统计卡片（项目总数）、stat cards 增加点击跳转。
+2026-03-10: Task 15 (P5-a) — 医院360°视图。新建 Hospital360View.vue（医院选择器+4统计卡+4 tab 数据面板：项目/告警/工时/报修），路由 /hospital/360 注册。验证：vue-tsc 0 错误，dotnet build 0 错误。
+2026-03-10: Task 16 (P5-b) — 用户资料页。新建 UserProfileView.vue（基本信息、修改密码表单、数据范围、权限列表），路由 /profile 注册，AppLayout 头部增加"资料"按钮。
+2026-03-10: Task 17 (P5-c) — 系统设置页。后端新建 SystemController（GET /api/system/info 返回版本/OS 等元数据），前端新建 SystemSettingsView.vue（系统信息+快捷入口+前端信息），路由 /settings 注册，/api/system 加入权限跳过列表。
+2026-03-10: Task 18 (P5-d) — 备份恢复。SqliteJsonStore 暴露 GetDbPath()+CreateConnection()。新建 BackupController（GET download 用 VACUUM INTO 一致快照+POST restore 校验上传 DB 有效性后替换）。前端 system.ts 增加 downloadBackup/uploadRestore，SystemSettingsView 增加备份下载/恢复上传 UI。
+2026-03-10: Task 19 (P5-e) — 打印/PDF。新建 composables/usePrint.ts（打开新窗口+注入样式+隐藏非打印元素+window.print），WorkHoursReportView、MonthlyReportGenerateView、AnnualReportView 三个报表视图均增加"打印"按钮+pageRef。
+2026-03-10: Task 20 (P5-f) — UX 加固。5个 Dashboard/Workbench 视图主容器增加 v-loading 指令消除首屏空壳闪烁；MS010001013001View（项目地图看板）新增 mapLoading 状态；Controllers/System 文件夹重命名为 Controllers/Infra 修复 C# System 命名空间冲突。验证：vue-tsc 0 错误，dotnet build 0 错误 17 警告。

@@ -1,5 +1,5 @@
 <template>
-  <div class="map-page">
+  <div class="map-page" v-loading="mapLoading">
     <div class="map-head">
       <h2 class="map-title">项目地图看板</h2>
     </div>
@@ -121,6 +121,7 @@ type DetailRow = {
 
 const mapRef = ref<HTMLDivElement | null>(null)
 const chartRef = ref<echarts.ECharts | null>(null)
+const mapLoading = ref(false)
 
 const allProjects = ref<ProjectItem[]>([])
 const selectedProvince = ref('')
@@ -511,7 +512,9 @@ onMounted(async () => {
   }
 
   await loadHospitalCityMap()
+  mapLoading.value = true
   await loadData()
+  mapLoading.value = false
   window.addEventListener('resize', resizeMap)
 })
 

@@ -1,9 +1,12 @@
 <template>
-  <div class="page-shell">
+  <div ref="pageRef" class="page-shell">
     <div class="page-head">
       <div>
         <h2 class="page-title">年度报告</h2>
         <div class="page-subtitle">跟踪年度服务报告进度与提交情况（点击单元格即可编辑）</div>
+      </div>
+      <div class="head-actions no-print">
+        <el-button size="small" @click="onPrint">打印</el-button>
       </div>
     </div>
 
@@ -209,6 +212,7 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useRoute, useRouter } from 'vue-router'
+import { usePrint } from '../../composables/usePrint'
 import { fetchAnnualReportList, fetchAnnualReportSummary, updateAnnualReport, exportAnnualReports } from '../../api/modules/annual-report'
 import type { AnnualReportItem, AnnualReportSummary } from '../../types/annual-report'
 import { useResilientLoad } from '../../composables/useResilientLoad'
@@ -218,6 +222,9 @@ import { useFilterStatePersist } from '../../composables/useFilterStatePersist'
 import { useLinkedRealtimeRefresh } from '../../composables/useLinkedRealtimeRefresh'
 import { useAccessControl } from '../../composables/useAccessControl'
 import { normalizeStatusText, resolveAnnualReportStatusTag } from '../../utils/statusTag'
+
+const { printArea } = usePrint()
+const pageRef = ref<HTMLElement | null>(null)
 
 /* ---- 自定义指令：自动聚焦 ---- */
 const vFocus = { mounted: (el: HTMLElement) => { const input = el.querySelector('input') || el.querySelector('textarea'); input?.focus() } }
@@ -623,6 +630,8 @@ watch(() => route.fullPath, async () => {
   await loadData()
   syncDetailFromRoute()
 })
+
+const onPrint = () => printArea(pageRef.value, '年度报告')
 
 onMounted(async () => {
   restoreFilterState()

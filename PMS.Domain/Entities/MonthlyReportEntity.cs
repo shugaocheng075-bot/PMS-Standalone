@@ -68,8 +68,15 @@ public class MonthlyReportEntity
     /// <summary>附件路径列表（JSON 序列化存储）</summary>
     public List<string> Attachments { get; set; } = [];
 
-    /// <summary>状态：draft / submitted / approved</summary>
+    /// <summary>状态：draft / submitted / approved / rejected</summary>
     public string Status { get; set; } = "draft";
+
+    /// <summary>审批人姓名</summary>
+    public string ApprovedBy { get; set; } = string.Empty;
+    /// <summary>审批时间</summary>
+    public DateTime? ApprovedAt { get; set; }
+    /// <summary>驳回原因</summary>
+    public string RejectionReason { get; set; } = string.Empty;
 
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }

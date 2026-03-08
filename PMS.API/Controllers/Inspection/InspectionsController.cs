@@ -4,6 +4,7 @@ using PMS.API.Middleware;
 using PMS.API.Models;
 using PMS.Application.Contracts.Access;
 using PMS.Application.Contracts.Inspection;
+using PMS.Application.Contracts.Notification;
 using PMS.Application.Models;
 using PMS.Application.Models.Inspection;
 
@@ -13,7 +14,8 @@ namespace PMS.API.Controllers.Inspection;
 [Route("api/inspections")]
 public class InspectionsController(
     IInspectionService inspectionService,
-    IAccessControlService accessControlService) : ControllerBase
+    IAccessControlService accessControlService,
+    INotificationService notificationService) : ControllerBase
 {
     // ─── 巡检计划 ───
 
@@ -155,6 +157,14 @@ public class InspectionsController(
         }
 
         await inspectionService.SubmitResultAsync(result, cancellationToken);
+
+        _ = notificationService.BroadcastToManagersAsync(
+            "inspection_completed",
+            $"巡检完成：{result.HospitalName}",
+            $"{result.HospitalName} - {result.ProductName} 巡检结果已提交，健康等级：{result.HealthLevel}",
+            "/inspection/list",
+            cancellationToken);
+
         return Ok(ApiResponse<object>.Success(new { message = "巡检结果已接收", id = result.Id }));
     }
 
@@ -282,6 +292,23 @@ public class InspectionsController(
 
         return Ok(ApiResponse<InspectionResultDto>.Success(latest));
     }
+
+    [HttpPatch("results/{resultId:long}/review")]
+    public async Task<IActionResult> ReviewResult(long resultId, [FromBody] ReviewRequest request, CancellationToken cancellationToken = default)
+    {
+        if (request.ReviewStatus is not ("approved" or "rejected"))
+            return BadRequest(new { code = 400, message = "reviewStatus 必须为 approved 或 rejected" });
+
+        var personnelId = HttpContext.GetCurrentPersonnelId();
+        var profile = await accessControlService.GetUserProfileAsync(personnelId);
+        var reviewerName = profile?.PersonnelName ?? "unknown";
+
+        var ok = await inspectionService.ReviewResultAsync(resultId, request.ReviewStatus, reviewerName, cancellationToken);
+        if (!ok) return NotFound(new { code = 404, message = "巡检结果不存在" });
+        return Ok(ApiResponse<object>.Success(new { message = "审核完成" }));
+    }
+
+    public record ReviewRequest(string ReviewStatus);
 
     [HttpGet("export")]
     public async Task<IActionResult> Export(

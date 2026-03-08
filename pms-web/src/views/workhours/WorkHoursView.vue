@@ -6,6 +6,7 @@
         <div class="page-subtitle">项目工时登记、统计与查询</div>
       </div>
       <el-button v-if="canManage" type="primary" @click="onOpenCreate">新增工时</el-button>
+      <el-button :loading="exporting" @click="onExport">导出Excel</el-button>
     </div>
 
     <el-row :gutter="16" class="stats-row">
@@ -166,6 +167,7 @@ import {
   createWorkHours,
   updateWorkHours,
   deleteWorkHours,
+  exportWorkHours,
 } from '../../api/modules/workhours'
 import { fetchDataScope } from '../../api/modules/access'
 import { useAccessControl } from '../../composables/useAccessControl'
@@ -181,6 +183,7 @@ const route = useRoute()
 const router = useRouter()
 
 const loading = ref(false)
+const exporting = ref(false)
 const submitLoading = ref(false)
 const dialogVisible = ref(false)
 const editingId = ref<number | null>(null)
@@ -368,6 +371,30 @@ const onReset = () => {
   query.size = 15
   filterPersist.clear()
   loadData()
+}
+
+const onExport = async () => {
+  exporting.value = true
+  try {
+    const blob = await exportWorkHours({
+      personnelName: query.personnelName || undefined,
+      hospitalName: query.hospitalName || undefined,
+      workType: query.workType || undefined,
+      workDateFrom: dateRange.value?.[0] || undefined,
+      workDateTo: dateRange.value?.[1] || undefined,
+    })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `工时明细_${Date.now()}.xlsx`
+    link.click()
+    URL.revokeObjectURL(url)
+    ElMessage.success('导出成功')
+  } catch (error) {
+    ElMessage.error(getErrorMessage(error, '导出工时数据失败，请稍后重试'))
+  } finally {
+    exporting.value = false
+  }
 }
 
 const onTypeClick = (workType: string) => {

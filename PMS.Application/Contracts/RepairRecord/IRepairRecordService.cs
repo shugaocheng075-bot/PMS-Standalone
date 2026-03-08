@@ -10,5 +10,7 @@ public interface IRepairRecordService
     Task<RepairRecordItemDto?> GetByIdAsync(long id, CancellationToken cancellationToken = default);
     Task<RepairRecordItemDto> CreateAsync(string reporterName, RepairRecordUpsertDto dto, CancellationToken cancellationToken = default);
     Task<RepairRecordItemDto?> UpdateAsync(long id, RepairRecordUpsertDto dto, CancellationToken cancellationToken = default);
+    Task<RepairRecordItemDto?> TransitionStatusAsync(long id, string newStatus, string? resolution, CancellationToken cancellationToken = default);
+    Task<RepairRecordItemDto?> AssignAsync(long id, string assigneeName, CancellationToken cancellationToken = default);
     Task<bool> DeleteAsync(long id, CancellationToken cancellationToken = default);
 }

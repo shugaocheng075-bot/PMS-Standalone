@@ -49,4 +49,18 @@ public class AuthController(IAuthService authService, IAccessControlService acce
 
         return Ok(ApiResponse<PersonnelAccessProfileDto>.Success(profile));
     }
+
+    [HttpPost("change-password")]
+    public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordRequest request, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(request.NewPassword) || request.NewPassword.Length < 6)
+            return BadRequest(new { code = 400, message = "新密码不能少于6个字符" });
+
+        var personnelId = HttpContext.GetCurrentPersonnelId();
+        var result = await authService.ChangePasswordAsync(personnelId, request.OldPassword, request.NewPassword, cancellationToken);
+        if (!result)
+            return BadRequest(new { code = 400, message = "原密码验证失败" });
+
+        return Ok(ApiResponse<bool>.Success(true));
+    }
 }

@@ -66,6 +66,15 @@ public class InspectionResultDto
 
     /// <summary>TOP 风险条目</summary>
     public List<InspectionRiskItemDto> TopRisks { get; set; } = [];
+
+    /// <summary>审核状态：pending/approved/rejected</summary>
+    public string ReviewStatus { get; set; } = "pending";
+
+    /// <summary>审核人</summary>
+    public string? ReviewedBy { get; set; }
+
+    /// <summary>审核时间</summary>
+    public DateTime? ReviewedAt { get; set; }
 }
 
 /// <summary>

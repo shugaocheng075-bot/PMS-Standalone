@@ -3,6 +3,7 @@ using PMS.API.Middleware;
 using PMS.API.Models;
 using PMS.Application.Contracts.Access;
 using PMS.Application.Contracts.MonthlyReport;
+using PMS.Application.Contracts.Notification;
 using PMS.Application.Models;
 using PMS.Application.Models.MonthlyReport;
 
@@ -12,7 +13,8 @@ namespace PMS.API.Controllers.MonthlyReport;
 [Route("api/monthly-reports")]
 public class MonthlyReportsController(
     IMonthlyReportService monthlyReportService,
-    IAccessControlService accessControlService) : ControllerBase
+    IAccessControlService accessControlService,
+    INotificationService notificationService) : ControllerBase
 {
     /// <summary>
     /// 查询月报列表（带医院范围过滤）
@@ -95,6 +97,14 @@ public class MonthlyReportsController(
         }
 
         var item = await monthlyReportService.CreateAsync(personnelName, dto, cancellationToken);
+
+        _ = notificationService.BroadcastToManagersAsync(
+            "monthly_report_new",
+            $"新月报：{dto.HospitalName}",
+            $"{personnelName} 提交了 {dto.HospitalName} 的月报",
+            "/monthly-report/list",
+            cancellationToken);
+
         return Ok(ApiResponse<MonthlyReportItemDto>.Success(item));
     }
 
@@ -118,6 +128,98 @@ public class MonthlyReportsController(
         var item = await monthlyReportService.UpdateAsync(id, dto, cancellationToken);
         if (item is null) return NotFound(ApiResponse<object>.Success(null));
         return Ok(ApiResponse<MonthlyReportItemDto>.Success(item));
+    }
+
+    /// <summary>
+    /// 提交月报（draft/rejected → submitted）
+    /// </summary>
+    [HttpPatch("{id:long}/submit")]
+    public async Task<IActionResult> Submit(long id, CancellationToken cancellationToken = default)
+    {
+        var personnelId = HttpContext.GetCurrentPersonnelId();
+        var dataScope = await accessControlService.GetDataScopeAsync(personnelId);
+        var existing = await monthlyReportService.GetByIdAsync(id, cancellationToken);
+        if (existing is null) return NotFound(ApiResponse<object>.Success(null));
+
+        if (!HospitalScopeHelper.IsHospitalAccessible(dataScope, existing.HospitalName))
+        {
+            return StatusCode(403, new { code = 403, message = "无权操作该月报" });
+        }
+
+        try
+        {
+            var item = await monthlyReportService.SubmitAsync(id, cancellationToken);
+            if (item is not null)
+            {
+                _ = notificationService.BroadcastToManagersAsync(
+                    "monthly_report_submitted",
+                    $"月报待审批：{existing.HospitalName}",
+                    $"{existing.SubmittedBy} 提交了 {existing.HospitalName} {existing.ReportMonth} 月报，请审批",
+                    "/monthly-report/list",
+                    cancellationToken);
+            }
+            return item is null
+                ? NotFound(ApiResponse<object>.Success(null))
+                : Ok(ApiResponse<MonthlyReportItemDto>.Success(item));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { code = 400, message = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// 审批通过月报（仅管理员）
+    /// </summary>
+    [HttpPatch("{id:long}/approve")]
+    public async Task<IActionResult> Approve(long id, CancellationToken cancellationToken = default)
+    {
+        var personnelId = HttpContext.GetCurrentPersonnelId();
+        var dataScope = await accessControlService.GetDataScopeAsync(personnelId);
+        if (!string.Equals(dataScope.ScopeType, "all", StringComparison.OrdinalIgnoreCase))
+        {
+            return StatusCode(403, new { code = 403, message = "仅管理员可审批月报" });
+        }
+
+        var profile = await accessControlService.GetUserProfileAsync(personnelId);
+        try
+        {
+            var item = await monthlyReportService.ApproveAsync(id, profile?.PersonnelName ?? "管理员", cancellationToken);
+            return item is null
+                ? NotFound(ApiResponse<object>.Success(null))
+                : Ok(ApiResponse<MonthlyReportItemDto>.Success(item));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { code = 400, message = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// 驳回月报（仅管理员）
+    /// </summary>
+    [HttpPatch("{id:long}/reject")]
+    public async Task<IActionResult> Reject(long id, [FromBody] MonthlyReportApprovalDto dto, CancellationToken cancellationToken = default)
+    {
+        var personnelId = HttpContext.GetCurrentPersonnelId();
+        var dataScope = await accessControlService.GetDataScopeAsync(personnelId);
+        if (!string.Equals(dataScope.ScopeType, "all", StringComparison.OrdinalIgnoreCase))
+        {
+            return StatusCode(403, new { code = 403, message = "仅管理员可驳回月报" });
+        }
+
+        var profile = await accessControlService.GetUserProfileAsync(personnelId);
+        try
+        {
+            var item = await monthlyReportService.RejectAsync(id, profile?.PersonnelName ?? "管理员", dto.RejectionReason, cancellationToken);
+            return item is null
+                ? NotFound(ApiResponse<object>.Success(null))
+                : Ok(ApiResponse<MonthlyReportItemDto>.Success(item));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { code = 400, message = ex.Message });
+        }
     }
 
     /// <summary>

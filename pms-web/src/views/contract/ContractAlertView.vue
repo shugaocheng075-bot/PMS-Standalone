@@ -5,6 +5,7 @@
         <h2 class="page-title">合同预警</h2>
         <div class="page-subtitle">按超期风险分级管理合同跟进任务</div>
       </div>
+      <el-button :loading="exporting" @click="onExport">导出Excel</el-button>
     </div>
 
     <el-row :gutter="16" class="stats-row">
@@ -93,7 +94,7 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useRoute, useRouter } from 'vue-router'
-import { fetchContractAlerts, fetchContractAlertSummary } from '../../api/modules/contract'
+import { fetchContractAlerts, fetchContractAlertSummary, exportContractAlerts } from '../../api/modules/contract'
 import type { ContractAlertItem, ContractAlertSummary } from '../../types/contract'
 import { useResilientLoad } from '../../composables/useResilientLoad'
 import { getErrorMessage } from '../../utils/error'
@@ -102,6 +103,7 @@ import { useFilterStatePersist } from '../../composables/useFilterStatePersist'
 import { useLinkedRealtimeRefresh } from '../../composables/useLinkedRealtimeRefresh'
 
 const loading = ref(false)
+const exporting = ref(false)
 const total = ref(0)
 const tableData = ref<ContractAlertItem[]>([])
 const summary = ref<ContractAlertSummary>({ reminderCount: 0, warningCount: 0, criticalCount: 0, total: 0 })
@@ -306,6 +308,29 @@ const onReset = () => {
   query.size = 15
   clearFilterState()
   loadData()
+}
+
+const onExport = async () => {
+  exporting.value = true
+  try {
+    const blob = await exportContractAlerts({
+      alertLevel: query.alertLevel || undefined,
+      province: query.province || undefined,
+      groupName: query.groupName || undefined,
+      salesName: query.salesName || undefined,
+    })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `合同预警_${Date.now()}.xlsx`
+    link.click()
+    URL.revokeObjectURL(url)
+    ElMessage.success('导出成功')
+  } catch (error) {
+    ElMessage.error(getErrorMessage(error, '导出合同预警失败，请稍后重试'))
+  } finally {
+    exporting.value = false
+  }
 }
 
 const onGotoProject = (row: ContractAlertItem) => {

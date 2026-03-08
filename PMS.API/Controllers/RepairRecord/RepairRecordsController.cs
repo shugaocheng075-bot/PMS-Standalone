@@ -3,6 +3,7 @@ using PMS.API.Middleware;
 using PMS.API.Models;
 using PMS.Application.Contracts;
 using PMS.Application.Contracts.Access;
+using PMS.Application.Contracts.Notification;
 using PMS.Application.Contracts.RepairRecord;
 using PMS.Application.Models;
 using PMS.Application.Models.Access;
@@ -16,7 +17,8 @@ namespace PMS.API.Controllers.RepairRecord;
 public class RepairRecordsController(
     IRepairRecordService repairRecordService,
     IProjectQueryService projectQueryService,
-    IAccessControlService accessControlService) : ControllerBase
+    IAccessControlService accessControlService,
+    INotificationService notificationService) : ControllerBase
 {
     [HttpGet("summary")]
     public async Task<IActionResult> GetSummary(CancellationToken cancellationToken)
@@ -112,6 +114,14 @@ public class RepairRecordsController(
         dto.ReporterName = reporterName;
 
         var item = await repairRecordService.CreateAsync(reporterName, dto, cancellationToken);
+
+        _ = notificationService.BroadcastToManagersAsync(
+            "repair_new",
+            $"新报修：{dto.HospitalName}",
+            $"{reporterName} 提交了报修：{dto.HospitalName} - {dto.Description}",
+            "/repair/list",
+            cancellationToken);
+
         return Ok(ApiResponse<RepairRecordItemDto>.Success(item));
     }
 
@@ -139,6 +149,50 @@ public class RepairRecordsController(
         }
 
         return Ok(ApiResponse<RepairRecordItemDto>.Success(item));
+    }
+
+    [HttpPatch("{id:long}/status")]
+    public async Task<IActionResult> TransitionStatus(long id, [FromBody] RepairRecordStatusTransitionDto dto, CancellationToken cancellationToken)
+    {
+        var personnelId = HttpContext.GetCurrentPersonnelId();
+        var dataScope = await accessControlService.GetDataScopeAsync(personnelId);
+        var existing = await repairRecordService.GetByIdAsync(id, cancellationToken);
+        if (existing is null) return NotFound(ApiResponse<object>.Success(null));
+
+        if (!await CanOperateInOwnProjectsAsync(dataScope, existing.HospitalName, cancellationToken))
+        {
+            return StatusCode(403, new { code = 403, message = "无权操作该报修记录" });
+        }
+
+        try
+        {
+            var item = await repairRecordService.TransitionStatusAsync(id, dto.Status, dto.Resolution, cancellationToken);
+            return item is null
+                ? NotFound(ApiResponse<object>.Success(null))
+                : Ok(ApiResponse<RepairRecordItemDto>.Success(item));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { code = 400, message = ex.Message });
+        }
+    }
+
+    [HttpPatch("{id:long}/assign")]
+    public async Task<IActionResult> Assign(long id, [FromBody] RepairRecordAssignDto dto, CancellationToken cancellationToken)
+    {
+        var personnelId = HttpContext.GetCurrentPersonnelId();
+        var dataScope = await accessControlService.GetDataScopeAsync(personnelId);
+
+        if (!string.Equals(dataScope.ScopeType, "all", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(dataScope.ScopeType, "subordinates", StringComparison.OrdinalIgnoreCase))
+        {
+            return StatusCode(403, new { code = 403, message = "仅管理员或主管可分配报修任务" });
+        }
+
+        var item = await repairRecordService.AssignAsync(id, dto.AssigneeName, cancellationToken);
+        return item is null
+            ? NotFound(ApiResponse<object>.Success(null))
+            : Ok(ApiResponse<RepairRecordItemDto>.Success(item));
     }
 
     [HttpDelete("{id:long}")]

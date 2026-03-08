@@ -14,6 +14,9 @@ public class MonthlyReportItemDto
     public string Content { get; set; } = string.Empty;
     public List<string> Attachments { get; set; } = [];
     public string Status { get; set; } = "draft";
+    public string ApprovedBy { get; set; } = string.Empty;
+    public DateTime? ApprovedAt { get; set; }
+    public string RejectionReason { get; set; } = string.Empty;
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
 
@@ -64,6 +67,14 @@ public class MonthlyReportUpsertDto
     public string? NextMonthInspectionPlanJson { get; set; }
     public string? NextMonthAnnualReportPlanJson { get; set; }
     public string? NextMonthOtherPlanJson { get; set; }
+}
+
+/// <summary>
+/// 月报审批请求
+/// </summary>
+public class MonthlyReportApprovalDto
+{
+    public string? RejectionReason { get; set; }
 }
 
 /// <summary>

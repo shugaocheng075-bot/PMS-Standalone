@@ -1,5 +1,5 @@
 <template>
-  <div class="page-shell report-page">
+  <div ref="pageRef" class="page-shell report-page">
     <div class="page-head">
       <div>
         <h2 class="page-title">工时报表</h2>
@@ -18,6 +18,7 @@
         <el-button size="small" type="warning" :loading="regenerating" @click="onRegenerate">重新计算工时</el-button>
         <el-button size="small" type="success" @click="triggerImport" :loading="importing">导入 Excel</el-button>
         <el-button size="small" type="primary" @click="onExportExcel" :disabled="rows.length === 0">导出 Excel</el-button>
+        <el-button size="small" @click="onPrint" :disabled="rows.length === 0">打印</el-button>
         <el-button size="small" @click="onAddRow">新增行</el-button>
         <input ref="fileInputRef" type="file" accept=".xlsx,.xls" style="display:none" @change="onFileSelected" />
       </div>
@@ -149,6 +150,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { usePrint } from '../../composables/usePrint'
 import {
   fetchWorkHoursReport,
   exportWorkHoursReport,
@@ -161,6 +163,8 @@ import {
 import type { WorkHoursReportRow, WorkHoursReportRowUpdatePayload } from '../../types/report'
 import { getErrorMessage } from '../../utils/error'
 
+const { printArea } = usePrint()
+const pageRef = ref<HTMLElement | null>(null)
 const loading = ref(false)
 const saving = ref(false)
 const importing = ref(false)
@@ -400,6 +404,8 @@ const onRegenerate = async () => {
     regenerating.value = false
   }
 }
+
+const onPrint = () => printArea(pageRef.value, '工时报表')
 
 onMounted(() => { loadReport() })
 </script>

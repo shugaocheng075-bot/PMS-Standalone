@@ -1,12 +1,22 @@
 <template>
-  <PersonalWorkbench v-if="!showManagerDashboard" />
-  <div v-else class="page-shell dashboard-page">
+  <SupervisorWorkbench v-if="dashboardRole === 'supervisor'" />
+  <RegionalManagerWorkbench v-else-if="dashboardRole === 'regional_manager'" />
+  <PersonalWorkbench v-else-if="dashboardRole === 'operator'" />
+  <div v-else class="page-shell dashboard-page" v-loading="loading">
     <div class="page-head">
       <div>
         <h2 class="page-title">首页</h2>
         <div class="page-subtitle">项目台账、重大需求、告警比例分析与下钻</div>
       </div>
-      <el-button size="small" :loading="loading" @click="loadDashboard">刷新数据</el-button>
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <el-select v-model="timeRange" size="small" style="width: 130px" @change="loadDashboard">
+          <el-option :value="1" label="最近1个月" />
+          <el-option :value="3" label="最近3个月" />
+          <el-option :value="6" label="最近6个月" />
+          <el-option :value="12" label="最近12个月" />
+        </el-select>
+        <el-button size="small" :loading="loading" @click="loadDashboard">刷新数据</el-button>
+      </div>
     </div>
 
     <el-row :gutter="16" class="stats-row">
@@ -65,7 +75,7 @@
         <template #header>
           <div class="panel-head">
             <span class="panel-title">告警月度趋势</span>
-            <el-tag type="info">近6个月</el-tag>
+            <el-tag type="info">近{{ timeRange }}个月</el-tag>
           </div>
         </template>
         <div ref="trendChartRef" class="chart-box"></div>
@@ -159,9 +169,16 @@ import { getErrorMessage } from '../../utils/error'
 import { useLinkedRealtimeRefresh } from '../../composables/useLinkedRealtimeRefresh'
 import { useAccessControl } from '../../composables/useAccessControl'
 import PersonalWorkbench from './PersonalWorkbench.vue'
+import SupervisorWorkbench from './SupervisorWorkbench.vue'
+import RegionalManagerWorkbench from './RegionalManagerWorkbench.vue'
 
 const access = useAccessControl()
-const showManagerDashboard = computed(() => access.isManager())
+const dashboardRole = computed(() => {
+  if (access.isSupervisor()) return 'supervisor'
+  if (access.isRegionalManager()) return 'regional_manager'
+  if (access.isManager()) return 'manager'
+  return 'operator'
+})
 
 type ChartDatum = { name: string; value: number }
 type ChartInstance = any
@@ -181,6 +198,7 @@ const router = useRouter()
 const activeTab = ref<'project' | 'demand' | 'alert'>('project')
 const demandLastLoadedAt = ref(0)
 const DEMAND_REFRESH_INTERVAL = 5 * 60 * 1000
+const timeRange = ref(6)
 
 const selectedProjectStatus = ref('全部')
 const selectedDemandStatus = ref('全部')
@@ -525,7 +543,7 @@ const loadDashboard = async () => {
       fetchProjectList({ page: 1, size: 100000 }),
       fetchAlertCenter({ page: 1, size: 100000 }),
       fetchAnnualReportSummary(),
-      fetchDashboardV2({ months: 6 }),
+      fetchDashboardV2({ months: timeRange.value }),
     ])
 
     projectItems.value = projectRes.data.items

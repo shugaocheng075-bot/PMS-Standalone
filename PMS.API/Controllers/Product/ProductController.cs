@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
+using PMS.API.Middleware;
 using PMS.API.Models;
+using PMS.Application.Contracts.Access;
 using PMS.Application.Contracts.Product;
 using PMS.Application.Models;
 using PMS.Application.Models.Product;
@@ -8,7 +10,9 @@ namespace PMS.API.Controllers.Product;
 
 [ApiController]
 [Route("api/products")]
-public class ProductController(IProductService productService) : ControllerBase
+public class ProductController(
+    IProductService productService,
+    IAccessControlService accessControlService) : ControllerBase
 {
     [HttpGet("summary")]
     public async Task<IActionResult> GetSummary(CancellationToken cancellationToken = default)
@@ -60,6 +64,13 @@ public class ProductController(IProductService productService) : ControllerBase
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] ProductUpsertDto dto, CancellationToken cancellationToken = default)
     {
+        var personnelId = HttpContext.GetCurrentPersonnelId();
+        var dataScope = await accessControlService.GetDataScopeAsync(personnelId, cancellationToken);
+        if (!string.Equals(dataScope.ScopeType, "all", StringComparison.OrdinalIgnoreCase))
+        {
+            return StatusCode(403, new { code = 403, message = "仅经理角色可创建产品" });
+        }
+
         var result = await productService.CreateAsync(dto, cancellationToken);
         return Ok(ApiResponse<ProductItemDto>.Success(result));
     }
@@ -67,6 +78,13 @@ public class ProductController(IProductService productService) : ControllerBase
     [HttpPut("{id:int}")]
     public async Task<IActionResult> Update(int id, [FromBody] ProductUpsertDto dto, CancellationToken cancellationToken = default)
     {
+        var personnelId = HttpContext.GetCurrentPersonnelId();
+        var dataScope = await accessControlService.GetDataScopeAsync(personnelId, cancellationToken);
+        if (!string.Equals(dataScope.ScopeType, "all", StringComparison.OrdinalIgnoreCase))
+        {
+            return StatusCode(403, new { code = 403, message = "仅经理角色可修改产品" });
+        }
+
         var result = await productService.UpdateAsync(id, dto, cancellationToken);
         if (result is null)
         {
@@ -79,6 +97,13 @@ public class ProductController(IProductService productService) : ControllerBase
     [HttpDelete("{id:int}")]
     public async Task<IActionResult> Delete(int id, CancellationToken cancellationToken = default)
     {
+        var personnelId = HttpContext.GetCurrentPersonnelId();
+        var dataScope = await accessControlService.GetDataScopeAsync(personnelId, cancellationToken);
+        if (!string.Equals(dataScope.ScopeType, "all", StringComparison.OrdinalIgnoreCase))
+        {
+            return StatusCode(403, new { code = 403, message = "仅经理角色可删除产品" });
+        }
+
         var result = await productService.DeleteAsync(id, cancellationToken);
         if (!result)
         {
@@ -91,6 +116,13 @@ public class ProductController(IProductService productService) : ControllerBase
     [HttpPost("batch-delete")]
     public async Task<IActionResult> BatchDelete([FromBody] BatchDeleteRequest request, CancellationToken cancellationToken = default)
     {
+        var personnelId = HttpContext.GetCurrentPersonnelId();
+        var dataScope = await accessControlService.GetDataScopeAsync(personnelId, cancellationToken);
+        if (!string.Equals(dataScope.ScopeType, "all", StringComparison.OrdinalIgnoreCase))
+        {
+            return StatusCode(403, new { code = 403, message = "仅经理角色可批量删除产品" });
+        }
+
         if (request.Ids is not { Count: > 0 })
         {
             return BadRequest(new { code = 400, message = "ids is required" });

@@ -30,4 +30,5 @@ public interface IInspectionService
     /// 获取指定医院+产品的最新巡检结果。
     /// </summary>
     Task<InspectionResultDto?> GetLatestResultAsync(string hospitalName, string productName, CancellationToken cancellationToken = default);
+    Task<bool> ReviewResultAsync(long resultId, string reviewStatus, string reviewedBy, CancellationToken cancellationToken = default);
 }

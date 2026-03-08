@@ -258,7 +258,8 @@ public class InMemoryAccessControlService(IPersonnelService personnelService) : 
             return null;
         }
 
-        if (path.StartsWith("/api/health") || path.StartsWith("/api/access/me") || path.StartsWith("/api/access/actors"))
+        if (path.StartsWith("/api/health") || path.StartsWith("/api/access/me") || path.StartsWith("/api/access/actors")
+            || path.StartsWith("/api/system"))
         {
             return null;
         }

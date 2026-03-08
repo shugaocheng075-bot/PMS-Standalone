@@ -142,6 +142,59 @@ public class InMemoryMonthlyReportService : IMonthlyReportService
         }
     }
 
+    public Task<MonthlyReportItemDto?> SubmitAsync(long id, CancellationToken cancellationToken = default)
+    {
+        lock (SyncRoot)
+        {
+            var entity = Records.FirstOrDefault(x => x.Id == id);
+            if (entity is null) return Task.FromResult<MonthlyReportItemDto?>(null);
+            if (entity.Status != "draft" && entity.Status != "rejected")
+                throw new InvalidOperationException($"仅草稿或已驳回的月报可以提交，当前状态：{entity.Status}");
+
+            entity.Status = "submitted";
+            entity.RejectionReason = string.Empty;
+            entity.UpdatedAt = DateTime.UtcNow;
+            SqliteTableStore.Update(TableName, entity, entity.Id);
+            return Task.FromResult<MonthlyReportItemDto?>(MapToDto(entity));
+        }
+    }
+
+    public Task<MonthlyReportItemDto?> ApproveAsync(long id, string approvedBy, CancellationToken cancellationToken = default)
+    {
+        lock (SyncRoot)
+        {
+            var entity = Records.FirstOrDefault(x => x.Id == id);
+            if (entity is null) return Task.FromResult<MonthlyReportItemDto?>(null);
+            if (entity.Status != "submitted")
+                throw new InvalidOperationException($"仅已提交的月报可以审批，当前状态：{entity.Status}");
+
+            entity.Status = "approved";
+            entity.ApprovedBy = approvedBy;
+            entity.ApprovedAt = DateTime.UtcNow;
+            entity.UpdatedAt = DateTime.UtcNow;
+            SqliteTableStore.Update(TableName, entity, entity.Id);
+            return Task.FromResult<MonthlyReportItemDto?>(MapToDto(entity));
+        }
+    }
+
+    public Task<MonthlyReportItemDto?> RejectAsync(long id, string rejectedBy, string? reason, CancellationToken cancellationToken = default)
+    {
+        lock (SyncRoot)
+        {
+            var entity = Records.FirstOrDefault(x => x.Id == id);
+            if (entity is null) return Task.FromResult<MonthlyReportItemDto?>(null);
+            if (entity.Status != "submitted")
+                throw new InvalidOperationException($"仅已提交的月报可以驳回，当前状态：{entity.Status}");
+
+            entity.Status = "rejected";
+            entity.ApprovedBy = rejectedBy;
+            entity.RejectionReason = reason?.Trim() ?? string.Empty;
+            entity.UpdatedAt = DateTime.UtcNow;
+            SqliteTableStore.Update(TableName, entity, entity.Id);
+            return Task.FromResult<MonthlyReportItemDto?>(MapToDto(entity));
+        }
+    }
+
     public Task<bool> DeleteAsync(long id, CancellationToken cancellationToken = default)
     {
         lock (SyncRoot)
@@ -180,6 +233,9 @@ public class InMemoryMonthlyReportService : IMonthlyReportService
             NextMonthOtherPlanJson = entity.NextMonthOtherPlanJson,
             Attachments = entity.Attachments,
             Status = entity.Status,
+            ApprovedBy = entity.ApprovedBy,
+            ApprovedAt = entity.ApprovedAt,
+            RejectionReason = entity.RejectionReason,
             CreatedAt = entity.CreatedAt,
             UpdatedAt = entity.UpdatedAt
         };

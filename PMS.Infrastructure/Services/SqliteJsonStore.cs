@@ -3,7 +3,7 @@ using Microsoft.Data.Sqlite;
 
 namespace PMS.Infrastructure.Services;
 
-internal static class SqliteJsonStore
+public static class SqliteJsonStore
 {
     private static readonly object SyncRoot = new();
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -12,6 +12,9 @@ internal static class SqliteJsonStore
     };
 
     private static readonly string DbPath = ResolveDbPath();
+
+    /// <summary>Returns the resolved absolute path of the SQLite database file.</summary>
+    public static string GetDbPath() => DbPath;
     private static readonly string ConnectionString =
         $"Data Source={DbPath};Cache=Shared";
 
@@ -110,7 +113,7 @@ ON CONFLICT(StateKey) DO UPDATE SET
         command.ExecuteNonQuery();
     }
 
-    internal static SqliteConnection CreateConnection()
+    public static SqliteConnection CreateConnection()
     {
         return new SqliteConnection(ConnectionString);
     }

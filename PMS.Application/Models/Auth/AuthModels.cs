@@ -30,3 +30,9 @@ public class AuthAccountDto
     public string Account { get; set; } = string.Empty;
     public string PersonnelName { get; set; } = string.Empty;
 }
+
+public class ChangePasswordRequest
+{
+    public string OldPassword { get; set; } = string.Empty;
+    public string NewPassword { get; set; } = string.Empty;
+}

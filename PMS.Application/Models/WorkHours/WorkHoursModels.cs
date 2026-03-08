@@ -15,6 +15,11 @@ public class WorkHoursItemDto
     public string Description { get; set; } = string.Empty;
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
+
+    /// <summary>状态：draft/submitted/confirmed/rejected</summary>
+    public string Status { get; set; } = "draft";
+    public string? ConfirmedBy { get; set; }
+    public DateTime? ConfirmedAt { get; set; }
 }
 
 public class WorkHoursUpsertDto

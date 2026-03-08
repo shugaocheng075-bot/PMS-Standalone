@@ -10,6 +10,7 @@ const HandoverListView = () => import('../views/handover/HandoverListView.vue')
 const InspectionPlanView = () => import('../views/inspection/InspectionPlanView.vue')
 const AnnualReportView = () => import('../views/annual-report/AnnualReportView.vue')
 const HospitalListView = () => import('../views/hospital/HospitalListView.vue')
+const Hospital360View = () => import('../views/hospital/Hospital360View.vue')
 const PersonnelListView = () => import('../views/personnel/PersonnelListView.vue')
 const ProductListView = () => import('../views/product/ProductListView.vue')
 const DataMaintenanceView = () => import('../views/maintenance/DataMaintenanceView.vue')
@@ -23,6 +24,8 @@ const KpiDashboardView = () => import('../views/dashboard/KpiDashboardView.vue')
 const WorkHoursReportView = () => import('../views/report/WorkHoursReportView.vue')
 const MonthlyReportGenerateView = () => import('../views/report/MonthlyReportGenerateView.vue')
 const AuditLogView = () => import('../views/audit/AuditLogView.vue')
+const UserProfileView = () => import('../views/profile/UserProfileView.vue')
+const SystemSettingsView = () => import('../views/settings/SystemSettingsView.vue')
 
 const router = createRouter({
   history: createWebHistory(),
@@ -84,6 +87,12 @@ const router = createRouter({
       name: 'hospital-list',
       component: HospitalListView,
       meta: { title: '医院管理', permission: 'hospital.view' },
+    },
+    {
+      path: '/hospital/360',
+      name: 'hospital-360',
+      component: Hospital360View,
+      meta: { title: '医院360°视图', permission: 'hospital.view' },
     },
     {
       path: '/personnel/list',
@@ -162,6 +171,18 @@ const router = createRouter({
       name: 'audit-log',
       component: AuditLogView,
       meta: { title: '操作日志', permission: 'audit.view' },
+    },
+    {
+      path: '/profile',
+      name: 'user-profile',
+      component: UserProfileView,
+      meta: { title: '个人资料', permission: 'dashboard.view' },
+    },
+    {
+      path: '/settings',
+      name: 'system-settings',
+      component: SystemSettingsView,
+      meta: { title: '系统设置', permission: 'dashboard.view' },
     },
     {
       path: '/docs/design-spec',

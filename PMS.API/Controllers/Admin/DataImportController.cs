@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.Json;
 using System.Text;
 using System.Text.RegularExpressions;
+using ClosedXML.Excel;
 using ExcelDataReader;
 using Microsoft.AspNetCore.Mvc;
 using PMS.API.Models;
@@ -14,9 +15,9 @@ namespace PMS.API.Controllers.Admin;
 [Route("api/admin/import")]
 public class DataImportController : ControllerBase
 {
-    private const string DefaultProjectLedgerExcelPath = @"C:\Users\R9000P\Desktop\项目明细.xlsx";
+    private static readonly string DefaultProjectLedgerExcelPath = Path.Combine(AppContext.BaseDirectory, "Data", "项目明细.xlsx");
     private const string DefaultProjectLedgerSheetName = "维护项目明细";
-    private const string DefaultMajorDemandExcelPath = @"C:\Users\R9000P\Desktop\项目明细.xlsx";
+    private static readonly string DefaultMajorDemandExcelPath = Path.Combine(AppContext.BaseDirectory, "Data", "项目明细.xlsx");
     private const string DefaultMajorDemandSheetName = "重大需求明细";
 
     [HttpPost("text")]
@@ -1190,5 +1191,193 @@ public class DataImportController : ControllerBase
     {
         public List<string> Columns { get; set; } = [];
         public List<Dictionary<string, string>> Rows { get; set; } = [];
+    }
+
+    // ── Template Download ──
+
+    [HttpGet("template/{type}")]
+    public IActionResult DownloadTemplate(string type)
+    {
+        return type.ToLowerInvariant() switch
+        {
+            "project-ledger" => BuildTemplateFile("维护项目明细", ProjectLedgerHeaders),
+            "major-demand" => BuildTemplateFile("重大需求明细", MajorDemandHeaders),
+            "workhours" => BuildTemplateFile("工时报表", WorkHoursHeaders),
+            _ => BadRequest(new { code = 400, message = $"未知模板类型: {type}，支持: project-ledger, major-demand, workhours" })
+        };
+    }
+
+    private static readonly string[] ProjectLedgerHeaders =
+    [
+        "序号", "服务区域", "省", "市", "销售", "服务组别", "服务人员", "医院等级",
+        "最终用户", "维护产品", "点位", "销售合同额", "维护合同额", "年度产值",
+        "合同状态", "维护开始日期", "维护结束日期", "是否超期", "超期天数",
+        "机会号", "驻地", "是否驻场", "驻场人数", "备注", "验收日期"
+    ];
+
+    private static readonly string[] MajorDemandHeaders =
+    [
+        "编号", "医院名称", "产品名称", "需求描述", "优先级", "状态", "负责人", "截止日期", "备注"
+    ];
+
+    private static readonly string[] WorkHoursHeaders =
+    [
+        "机会号", "客户名称", "产品名称", "实施状态", "工时（人天）", "实施人员（个数）",
+        "人员1", "人员2", "人员3", "人员4", "人员5", "维护开始时间", "维护结束时间",
+        "售后项目类型", "备注"
+    ];
+
+    private IActionResult BuildTemplateFile(string sheetName, string[] headers)
+    {
+        using var wb = new XLWorkbook();
+        var ws = wb.Worksheets.Add(sheetName);
+        for (var i = 0; i < headers.Length; i++)
+        {
+            var cell = ws.Cell(1, i + 1);
+            cell.Value = headers[i];
+            cell.Style.Font.Bold = true;
+            cell.Style.Fill.BackgroundColor = XLColor.LightGray;
+        }
+        ws.Columns().AdjustToContents();
+        foreach (var col in ws.ColumnsUsed())
+        {
+            if (col.Width < 12) col.Width = 12;
+        }
+
+        using var ms = new MemoryStream();
+        wb.SaveAs(ms);
+        var fileName = $"{sheetName}_导入模板.xlsx";
+        return File(ms.ToArray(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
+    }
+
+    // ── Import Validation / Preview ──
+
+    [HttpPost("validate/project-ledger")]
+    [RequestSizeLimit(50 * 1024 * 1024)]
+    public IActionResult ValidateProjectLedger(IFormFile file, [FromForm] string? sheetName)
+    {
+        if (file is null || file.Length == 0)
+            return BadRequest(new ApiResponse<object> { Code = 400, Message = "请选择要验证的Excel文件" });
+
+        if (!IsExcelFile(file.FileName))
+            return BadRequest(new ApiResponse<object> { Code = 400, Message = "仅支持 .xlsx / .xls / .xlsm 格式" });
+
+        var sheet = string.IsNullOrWhiteSpace(sheetName) ? DefaultProjectLedgerSheetName : sheetName.Trim();
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+
+        using var stream = file.OpenReadStream();
+        var projects = ReadProjectLedgerFromStream(stream, sheet);
+        var errors = new List<string>();
+        var warnings = new List<string>();
+
+        if (projects.Count == 0)
+            errors.Add($"未在工作表[{sheet}]中识别到有效数据");
+
+        var noHospital = projects.Count(p => string.IsNullOrWhiteSpace(p.HospitalName));
+        var noProduct = projects.Count(p => string.IsNullOrWhiteSpace(p.ProductName));
+        if (noHospital > 0) warnings.Add($"{noHospital} 行缺少医院名称");
+        if (noProduct > 0) warnings.Add($"{noProduct} 行缺少产品名称");
+
+        var duplicates = projects
+            .GroupBy(p => $"{p.HospitalName}|{p.ProductName}|{p.OpportunityNumber}")
+            .Where(g => g.Count() > 1)
+            .Select(g => g.Key)
+            .ToList();
+        if (duplicates.Count > 0) warnings.Add($"发现 {duplicates.Count} 组疑似重复数据");
+
+        return Ok(ApiResponse<object>.Success(new
+        {
+            valid = errors.Count == 0,
+            totalRows = projects.Count,
+            errors,
+            warnings,
+            preview = projects.Take(5).Select(p => new
+            {
+                p.HospitalName,
+                p.ProductName,
+                p.GroupName,
+                p.MaintenancePersonName,
+                p.OpportunityNumber
+            })
+        }));
+    }
+
+    [HttpPost("validate/workhours")]
+    [RequestSizeLimit(50 * 1024 * 1024)]
+    public IActionResult ValidateWorkHours(IFormFile file)
+    {
+        if (file is null || file.Length == 0)
+            return BadRequest(new ApiResponse<object> { Code = 400, Message = "请选择要验证的Excel文件" });
+
+        if (!IsExcelFile(file.FileName))
+            return BadRequest(new ApiResponse<object> { Code = 400, Message = "仅支持 .xlsx / .xls / .xlsm 格式" });
+
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+
+        List<PMS.Application.Models.WorkHours.WorkHoursReportRowDto> importedRows;
+        try
+        {
+            using var stream = file.OpenReadStream();
+            importedRows = ParseWorkHoursExcelForValidation(stream);
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new ApiResponse<object> { Code = 400, Message = $"Excel 解析失败: {ex.Message}" });
+        }
+
+        var errors = new List<string>();
+        var warnings = new List<string>();
+
+        if (importedRows.Count == 0)
+            errors.Add("未识别到有效数据行");
+
+        var noHospital = importedRows.Count(r => string.IsNullOrWhiteSpace(r.HospitalName));
+        if (noHospital > 0) warnings.Add($"{noHospital} 行缺少客户名称");
+
+        return Ok(ApiResponse<object>.Success(new
+        {
+            valid = errors.Count == 0,
+            totalRows = importedRows.Count,
+            errors,
+            warnings,
+            preview = importedRows.Take(5).Select(r => new
+            {
+                r.OpportunityNumber,
+                r.HospitalName,
+                r.ProductName,
+                r.ImplementationStatus,
+                r.WorkHoursManDays
+            })
+        }));
+    }
+
+    private static List<PMS.Application.Models.WorkHours.WorkHoursReportRowDto> ParseWorkHoursExcelForValidation(Stream stream)
+    {
+        var rows = new List<PMS.Application.Models.WorkHours.WorkHoursReportRowDto>();
+        using var reader = ExcelReaderFactory.CreateReader(stream);
+        if (!reader.Read()) return rows;
+
+        var headers = BuildHeaderIndex(reader);
+        var hospitalIdx = FindIndex(headers, "客户名称", "医院名称");
+        var productIdx = FindIndex(headers, "产品名称", "维护产品");
+        var opportunityIdx = FindIndex(headers, "机会号");
+        var statusIdx = FindIndex(headers, "实施状态");
+        var manDaysIdx = FindIndex(headers, "工时", "人天");
+
+        while (reader.Read())
+        {
+            var hospital = ReadText(reader, hospitalIdx);
+            if (string.IsNullOrWhiteSpace(hospital)) continue;
+
+            rows.Add(new PMS.Application.Models.WorkHours.WorkHoursReportRowDto
+            {
+                OpportunityNumber = ReadText(reader, opportunityIdx),
+                HospitalName = hospital,
+                ProductName = ReadText(reader, productIdx),
+                ImplementationStatus = ReadText(reader, statusIdx),
+                WorkHoursManDays = ParseDecimal(ReadText(reader, manDaysIdx))
+            });
+        }
+        return rows;
     }
 }

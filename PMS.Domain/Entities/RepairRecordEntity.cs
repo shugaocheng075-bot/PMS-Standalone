@@ -43,7 +43,7 @@ public class RepairRecordEntity
     /// <summary>处理措施</summary>
     public string Resolution { get; set; } = string.Empty;
 
-    /// <summary>状态: 待处理/处理中/已完成</summary>
+    /// <summary>状态: 待处理/处理中/已完成/已关闭</summary>
     public string Status { get; set; } = "待处理";
 
     /// <summary>紧急程度: 普通/紧急/非常紧急</summary>
@@ -51,6 +51,12 @@ public class RepairRecordEntity
 
     /// <summary>严重程度（对齐快速登记：严重程度）</summary>
     public string Severity { get; set; } = string.Empty;
+
+    /// <summary>处理人姓名</summary>
+    public string AssigneeName { get; set; } = string.Empty;
+
+    /// <summary>完成时间</summary>
+    public DateTime? CompletedAt { get; set; }
 
     /// <summary>附件图片路径（分号分隔，对齐快速登记：附件图片）</summary>
     public string AttachmentImages { get; set; } = string.Empty;

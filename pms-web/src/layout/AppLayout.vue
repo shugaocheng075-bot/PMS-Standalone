@@ -56,10 +56,51 @@
           <span class="nav-icon"><el-icon><User /></el-icon></span>
         </div>
         <span class="nav-divider"></span>
+        <!-- Scope switch: supervisor+ can switch personnel identity -->
+        <el-select
+          v-if="canSwitchScope"
+          v-model="selectedPersonnelId"
+          size="small"
+          class="scope-switch-select"
+          placeholder="切换身份"
+          filterable
+          @change="onScopeSwitch"
+        >
+          <el-option
+            v-for="actor in actorList"
+            :key="actor.personnelId"
+            :label="actor.personnelName"
+            :value="actor.personnelId"
+          >
+            <span>{{ actor.personnelName }}</span>
+            <span style="color: #909399; font-size: 12px; margin-left: 8px;">{{ actor.systemRole }}</span>
+          </el-option>
+        </el-select>
         <span class="user-name">{{ displayUserName }}</span>
+        <el-button link class="logout-btn" @click="$router.push('/profile')">资料</el-button>
+        <el-button link class="logout-btn" @click="showChangePasswordDialog = true">改密</el-button>
         <el-button link class="logout-btn" @click="onLogout">退出</el-button>
       </div>
     </header>
+
+    <!-- 修改密码对话框 -->
+    <el-dialog v-model="showChangePasswordDialog" title="修改密码" width="400" :close-on-click-modal="false">
+      <el-form :model="passwordForm" label-width="80px">
+        <el-form-item label="原密码">
+          <el-input v-model="passwordForm.oldPassword" type="password" show-password placeholder="请输入原密码" />
+        </el-form-item>
+        <el-form-item label="新密码">
+          <el-input v-model="passwordForm.newPassword" type="password" show-password placeholder="至少6个字符" />
+        </el-form-item>
+        <el-form-item label="确认密码">
+          <el-input v-model="passwordForm.confirmPassword" type="password" show-password placeholder="再次输入新密码" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="showChangePasswordDialog = false">取消</el-button>
+        <el-button type="primary" :loading="changingPassword" @click="onChangePassword">确认修改</el-button>
+      </template>
+    </el-dialog>
 
     <div class="workspace">
       <aside class="left-pane notranslate" v-if="!isMobileViewport" lang="zh-CN" translate="no">
@@ -121,11 +162,13 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter, type RouteLocationRaw } from 'vue-router'
 import { Bell, Loading, Menu, User } from '@element-plus/icons-vue'
-import { logout } from '../api/modules/auth'
+import { logout, changePassword } from '../api/modules/auth'
+import { fetchAccessActors } from '../api/modules/access'
 import { fetchNotificationSummary, fetchNotifications, markNotificationAsRead, markAllNotificationsAsRead } from '../api/modules/notification'
 import { useAccessControl } from '../composables/useAccessControl'
 import { clearAuthState } from '../constants/access'
 import type { NotificationItem } from '../types/notification'
+import type { PersonnelActor } from '../types/access'
 
 const route = useRoute()
 const router = useRouter()
@@ -134,6 +177,26 @@ const mobileMenuVisible = ref(false)
 const isMobileViewport = ref(false)
 
 const access = useAccessControl()
+
+// Scope switch state
+const actorList = ref<PersonnelActor[]>([])
+const selectedPersonnelId = ref(access.currentPersonnelId.value)
+const canSwitchScope = computed(() => access.isManager() || access.isRegionalManager() || access.isSupervisor())
+
+const loadActors = async () => {
+  try {
+    const res = await fetchAccessActors()
+    actorList.value = res.data ?? []
+  } catch {
+    // silent
+  }
+}
+
+const onScopeSwitch = async (personnelId: number) => {
+  access.setCurrentPersonnelId(personnelId)
+  await access.ensureAccessProfileLoaded(true)
+  router.go(0) // reload page to reflect new scope
+}
 
 // Notification state
 const unreadCount = ref(0)
@@ -503,6 +566,36 @@ const onLogout = async () => {
   await router.replace('/login')
 }
 
+// Change password state
+const showChangePasswordDialog = ref(false)
+const changingPassword = ref(false)
+const passwordForm = ref({ oldPassword: '', newPassword: '', confirmPassword: '' })
+
+const onChangePassword = async () => {
+  if (passwordForm.value.newPassword.length < 6) {
+    ElMessage.warning('新密码不能少于6个字符')
+    return
+  }
+  if (passwordForm.value.newPassword !== passwordForm.value.confirmPassword) {
+    ElMessage.warning('两次输入的新密码不一致')
+    return
+  }
+  changingPassword.value = true
+  try {
+    await changePassword({
+      oldPassword: passwordForm.value.oldPassword,
+      newPassword: passwordForm.value.newPassword,
+    })
+    ElMessage.success('密码修改成功')
+    showChangePasswordDialog.value = false
+    passwordForm.value = { oldPassword: '', newPassword: '', confirmPassword: '' }
+  } catch {
+    ElMessage.error('密码修改失败，请检查原密码是否正确')
+  } finally {
+    changingPassword.value = false
+  }
+}
+
 const updateViewportState = () => {
   if (typeof window === 'undefined') {
     return
@@ -521,6 +614,9 @@ onMounted(() => {
     window.addEventListener('resize', updateViewportState)
     await loadNotificationSummary()
     notificationTimer = setInterval(loadNotificationSummary, 60000)
+    if (canSwitchScope.value) {
+      await loadActors()
+    }
   })()
 })
 
@@ -631,6 +727,10 @@ onBeforeUnmount(() => {
   width: 1px;
   height: 16px;
   background: rgba(255, 255, 255, 0.35);
+}
+
+.scope-switch-select {
+  width: 140px;
 }
 
 .nav-icon {

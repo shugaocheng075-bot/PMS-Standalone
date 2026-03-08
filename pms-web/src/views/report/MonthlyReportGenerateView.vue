@@ -1,9 +1,12 @@
 <template>
-  <div class="page-shell report-page">
+  <div ref="pageRef" class="page-shell report-page">
     <div class="page-head">
       <div>
         <h2 class="page-title">月度报告生成</h2>
         <div class="page-subtitle">先核对主管、驻场/远程、负责医院和产品，再生成月报</div>
+      </div>
+      <div class="head-actions no-print">
+        <el-button size="small" @click="onPrint">打印</el-button>
       </div>
     </div>
 
@@ -241,6 +244,7 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useRouter } from 'vue-router'
+import { usePrint } from '../../composables/usePrint'
 import { fetchAccessActors } from '../../api/modules/access'
 import {
   exportMonthlyReport,
@@ -252,6 +256,8 @@ import type { MonthlyReportItem } from '../../types/monthly-report'
 import type { MonthlyReportSourcePreview } from '../../types/report'
 import { getErrorMessage } from '../../utils/error'
 
+const { printArea } = usePrint()
+const pageRef = ref<HTMLElement | null>(null)
 const generating = ref(false)
 const groupOptionsLoading = ref(false)
 const sourceLoading = ref(false)
@@ -551,6 +557,8 @@ watch(
     void loadSourcePreview(false)
   },
 )
+
+const onPrint = () => printArea(pageRef.value, '月度报告')
 
 onMounted(() => {
   void loadGroupOptions()

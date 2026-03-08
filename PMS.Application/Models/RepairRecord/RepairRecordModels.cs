@@ -22,6 +22,8 @@ public class RepairRecordItemDto
     public string WorkHoursDetail { get; set; } = string.Empty;
     public string Status { get; set; } = string.Empty;
     public string Urgency { get; set; } = string.Empty;
+    public string AssigneeName { get; set; } = string.Empty;
+    public DateTime? CompletedAt { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
 }
@@ -46,6 +48,18 @@ public class RepairRecordUpsertDto
     public string RegistrationStatus { get; set; } = string.Empty;
     public string Status { get; set; } = "待处理";
     public string Urgency { get; set; } = "普通";
+    public string AssigneeName { get; set; } = string.Empty;
+}
+
+public class RepairRecordStatusTransitionDto
+{
+    public string Status { get; set; } = string.Empty;
+    public string? Resolution { get; set; }
+}
+
+public class RepairRecordAssignDto
+{
+    public string AssigneeName { get; set; } = string.Empty;
 }
 
 public class RepairRecordQuery
@@ -65,4 +79,5 @@ public class RepairRecordSummaryDto
     public int PendingCount { get; set; }
     public int InProgressCount { get; set; }
     public int CompletedCount { get; set; }
+    public int ClosedCount { get; set; }
 }

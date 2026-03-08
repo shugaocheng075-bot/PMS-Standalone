@@ -27,4 +27,13 @@ public class WorkHoursEntity
     public string Description { get; set; } = string.Empty;
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
+
+    /// <summary>状态：draft/submitted/confirmed/rejected</summary>
+    public string Status { get; set; } = "draft";
+
+    /// <summary>确认人</summary>
+    public string? ConfirmedBy { get; set; }
+
+    /// <summary>确认时间</summary>
+    public DateTime? ConfirmedAt { get; set; }
 }

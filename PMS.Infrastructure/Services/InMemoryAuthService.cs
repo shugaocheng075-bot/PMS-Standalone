@@ -115,6 +115,29 @@ public class InMemoryAuthService(IPersonnelService personnelService, IAccessCont
         return Task.FromResult(Sessions.TryRemove(accessToken, out _));
     }
 
+    public Task<bool> ChangePasswordAsync(int personnelId, string oldPassword, string newPassword, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        lock (SyncRoot)
+        {
+            var account = Accounts.FirstOrDefault(x => x.PersonnelId == personnelId);
+            if (account is null)
+                return Task.FromResult(false);
+
+            if (!VerifyPassword(oldPassword, account.PasswordHash, account.PasswordSalt))
+                return Task.FromResult(false);
+
+            var (hash, salt) = HashPassword(newPassword);
+            account.PasswordHash = hash;
+            account.PasswordSalt = salt;
+            account.UpdatedAt = DateTime.UtcNow;
+            SqliteJsonStore.Save(StateKey, Accounts);
+        }
+
+        return Task.FromResult(true);
+    }
+
     private async Task EnsureAccountSeedsAsync(CancellationToken cancellationToken)
     {
         var personnel = await personnelService.QueryAsync(new PersonnelQuery

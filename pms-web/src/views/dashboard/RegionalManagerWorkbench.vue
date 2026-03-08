@@ -2,8 +2,8 @@
   <div class="page-shell workbench-page" v-loading="loading">
     <div class="page-head">
       <div>
-        <h2 class="page-title">个人工作台</h2>
-        <div class="page-subtitle">待办事项、个人数据统计概览</div>
+        <h2 class="page-title">区域经理工作台</h2>
+        <div class="page-subtitle">区域数据总览、月报审批与区域告警</div>
       </div>
       <el-button size="small" :loading="loading" @click="loadWorkbench">刷新数据</el-button>
     </div>
@@ -18,13 +18,28 @@
       </el-col>
     </el-row>
 
-    <!-- 待办列表 -->
+    <!-- 审批 & 告警 -->
     <el-row :gutter="16">
       <el-col :span="8">
         <el-card shadow="never" class="todo-card">
           <template #header>
             <div class="panel-head">
-              <span class="panel-title">临期合同</span>
+              <span class="panel-title">月报审批</span>
+              <el-button link type="primary" @click="router.push('/annual-report/list')">查看全部</el-button>
+            </div>
+          </template>
+          <div class="empty-tip">前往年报/月报列表审批已提交的月报</div>
+          <el-button type="primary" plain size="small" @click="router.push('/annual-report/list')">
+            去审批
+          </el-button>
+        </el-card>
+      </el-col>
+
+      <el-col :span="8">
+        <el-card shadow="never" class="todo-card">
+          <template #header>
+            <div class="panel-head">
+              <span class="panel-title">区域临期合同</span>
               <el-tag type="warning">{{ data?.expiringContracts.length ?? 0 }}</el-tag>
             </div>
           </template>
@@ -50,31 +65,7 @@
         <el-card shadow="never" class="todo-card">
           <template #header>
             <div class="panel-head">
-              <span class="panel-title">待巡检</span>
-              <el-tag type="info">{{ data?.pendingInspections.length ?? 0 }}</el-tag>
-            </div>
-          </template>
-          <div v-if="!data?.pendingInspections.length" class="empty-tip">暂无待巡检</div>
-          <div
-            v-for="item in data?.pendingInspections ?? []"
-            :key="item.id"
-            class="todo-item clickable"
-            @click="router.push('/inspection/list')"
-          >
-            <div class="todo-main">
-              <span class="todo-label">{{ item.hospitalName }}</span>
-              <span class="todo-sub">{{ item.inspector }} · {{ item.planDate }}</span>
-            </div>
-            <el-tag size="small">{{ item.status }}</el-tag>
-          </div>
-        </el-card>
-      </el-col>
-
-      <el-col :span="8">
-        <el-card shadow="never" class="todo-card">
-          <template #header>
-            <div class="panel-head">
-              <span class="panel-title">未处理报修</span>
+              <span class="panel-title">区域待处理报修</span>
               <el-tag type="danger">{{ data?.unresolvedRepairs.length ?? 0 }}</el-tag>
             </div>
           </template>
@@ -97,20 +88,26 @@
       </el-col>
     </el-row>
 
-    <!-- 快捷操作 -->
-    <el-card shadow="never" class="quick-actions-card">
+    <!-- 区域巡检 -->
+    <el-card shadow="never" class="todo-card" style="margin-top: 16px;">
       <template #header>
         <div class="panel-head">
-          <span class="panel-title">快捷操作</span>
+          <span class="panel-title">区域待巡检</span>
+          <el-tag type="info">{{ data?.pendingInspections.length ?? 0 }}</el-tag>
         </div>
       </template>
-      <div class="quick-actions">
-        <el-button @click="router.push('/workhours/list?action=create')">登记工时</el-button>
-        <el-button @click="router.push('/repair/list?action=create')">新建报修</el-button>
-        <el-button @click="router.push('/inspection/list')">查看巡检</el-button>
-        <el-button @click="router.push('/project/list')">项目台账</el-button>
-        <el-button @click="router.push('/major-demand/list')">重大需求</el-button>
-        <el-button @click="router.push('/alert/center')">告警中心</el-button>
+      <div v-if="!data?.pendingInspections.length" class="empty-tip">暂无待巡检</div>
+      <div
+        v-for="item in data?.pendingInspections ?? []"
+        :key="item.id"
+        class="todo-item clickable"
+        @click="router.push('/inspection/plan')"
+      >
+        <div class="todo-main">
+          <span class="todo-label">{{ item.hospitalName }}</span>
+          <span class="todo-sub">{{ item.inspector }} · {{ item.planDate }}</span>
+        </div>
+        <el-tag size="small">{{ item.status }}</el-tag>
       </div>
     </el-card>
   </div>
@@ -129,9 +126,9 @@ const loading = ref(false)
 const data = ref<WorkbenchData | null>(null)
 
 const statCards = computed(() => [
-  { title: '我的项目', value: String(data.value?.myProjects ?? 0), onClick: () => void router.push('/project/list') },
+  { title: '区域项目', value: String(data.value?.myProjects ?? 0), onClick: () => void router.push('/project/list') },
   { title: '待处理报修', value: String(data.value?.pendingRepairCount ?? 0), onClick: () => void router.push('/repair/list') },
-  { title: '待巡检', value: String(data.value?.pendingInspectionCount ?? 0), onClick: () => void router.push('/inspection/list') },
+  { title: '待巡检', value: String(data.value?.pendingInspectionCount ?? 0), onClick: () => void router.push('/inspection/plan') },
   { title: '本月工时(人天)', value: String(data.value?.thisMonthWorkHours ?? 0), onClick: () => void router.push('/workhours/list') },
 ])
 
@@ -165,12 +162,38 @@ onMounted(() => loadWorkbench())
 }
 
 .panel-title {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.stats-row {
+  margin-bottom: 0;
+}
+
+.stat-card {
+  text-align: center;
+  cursor: pointer;
+  transition: box-shadow 0.2s;
+}
+
+.stat-card:hover {
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+}
+
+.stat-card .t {
+  font-size: 13px;
+  color: #909399;
+  margin-bottom: 8px;
+}
+
+.stat-card .v {
+  font-size: 28px;
   font-weight: 700;
-  color: #1f3f70;
+  color: #303133;
 }
 
 .todo-card {
-  min-height: 320px;
+  min-height: 180px;
 }
 
 .todo-item {
@@ -178,11 +201,16 @@ onMounted(() => loadWorkbench())
   align-items: center;
   justify-content: space-between;
   padding: 8px 0;
-  border-bottom: 1px solid var(--el-border-color-lighter);
+  border-bottom: 1px solid #f0f0f0;
+  cursor: pointer;
 }
 
 .todo-item:last-child {
   border-bottom: none;
+}
+
+.todo-item:hover {
+  background-color: #f5f7fa;
 }
 
 .todo-main {
@@ -190,50 +218,25 @@ onMounted(() => loadWorkbench())
   flex-direction: column;
   gap: 2px;
   min-width: 0;
-  flex: 1;
-  margin-right: 8px;
 }
 
 .todo-label {
   font-size: 14px;
-  color: var(--el-text-color-primary);
-  white-space: nowrap;
+  color: #303133;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .todo-sub {
   font-size: 12px;
-  color: var(--el-text-color-secondary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  color: #909399;
 }
 
 .empty-tip {
-  color: var(--el-text-color-placeholder);
   text-align: center;
-  padding: 40px 0;
-}
-
-.quick-actions-card {
-  margin-top: 0;
-}
-
-.quick-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-}
-
-.clickable {
-  cursor: pointer;
-}
-
-@media (max-width: 1280px) {
-  .el-col-8 {
-    max-width: 100%;
-    flex: 0 0 100%;
-  }
+  color: #909399;
+  padding: 24px 0;
+  font-size: 14px;
 }
 </style>

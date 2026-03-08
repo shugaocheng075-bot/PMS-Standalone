@@ -25,3 +25,7 @@ export function updateWorkHours(id: number, data: WorkHoursUpsert) {
 export function deleteWorkHours(id: number) {
   return request.delete<any, ApiResponse<any>>(`/workhours/${id}`)
 }
+
+export function exportWorkHours(params?: Partial<WorkHoursQuery>) {
+  return request.get<any, Blob>('/workhours/export', { params, responseType: 'blob' })
+}

@@ -11,3 +11,7 @@ export function fetchContractAlerts(params: ContractAlertQuery) {
     params,
   })
 }
+
+export function exportContractAlerts(params?: Partial<ContractAlertQuery>) {
+  return request.get<any, Blob>('/contracts/alerts/export', { params, responseType: 'blob' })
+}

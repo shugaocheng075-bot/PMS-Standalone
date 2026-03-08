@@ -10,4 +10,5 @@ public interface INotificationService
     Task MarkAsReadAsync(long recipientId, long notificationId, CancellationToken cancellationToken = default);
     Task MarkAllAsReadAsync(long recipientId, CancellationToken cancellationToken = default);
     Task CreateAsync(long recipientId, string type, string title, string content, string relatedPath = "", CancellationToken cancellationToken = default);
+    Task BroadcastToManagersAsync(string type, string title, string content, string relatedPath = "", CancellationToken cancellationToken = default);
 }

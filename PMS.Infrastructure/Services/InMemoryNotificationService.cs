@@ -1,3 +1,4 @@
+using PMS.Application.Contracts.Access;
 using PMS.Application.Contracts.Notification;
 using PMS.Application.Models;
 using PMS.Application.Models.Notification;
@@ -5,7 +6,7 @@ using PMS.Domain.Entities;
 
 namespace PMS.Infrastructure.Services;
 
-public class InMemoryNotificationService : INotificationService
+public class InMemoryNotificationService(IAccessControlService accessControlService) : INotificationService
 {
     private const string TableName = "Notifications";
     private static readonly object SyncRoot = new();
@@ -123,4 +124,19 @@ public class InMemoryNotificationService : INotificationService
         IsRead = e.IsRead,
         CreatedAt = e.CreatedAt
     };
+
+    public async Task BroadcastToManagersAsync(string type, string title, string content, string relatedPath = "", CancellationToken cancellationToken = default)
+    {
+        var actors = await accessControlService.GetActorsAsync(cancellationToken);
+        var managerIds = actors
+            .Where(a => string.Equals(a.SystemRole, "manager", StringComparison.OrdinalIgnoreCase)
+                     || string.Equals(a.SystemRole, "regional_manager", StringComparison.OrdinalIgnoreCase))
+            .Select(a => (long)a.PersonnelId)
+            .ToList();
+
+        foreach (var recipientId in managerIds)
+        {
+            await CreateAsync(recipientId, type, title, content, relatedPath, cancellationToken);
+        }
+    }
 }

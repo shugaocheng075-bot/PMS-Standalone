@@ -11,3 +11,8 @@ export interface LoginResult {
   roleType: string
   isAdmin: boolean
 }
+
+export interface ChangePasswordRequest {
+  oldPassword: string
+  newPassword: string
+}

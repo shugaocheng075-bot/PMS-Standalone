@@ -23,7 +23,8 @@ public class InMemoryRepairRecordService : IRepairRecordService
                 Total = Records.Count,
                 PendingCount = Records.Count(x => x.Status == "待处理"),
                 InProgressCount = Records.Count(x => x.Status == "处理中"),
-                CompletedCount = Records.Count(x => x.Status == "已完成")
+                CompletedCount = Records.Count(x => x.Status == "已完成"),
+                ClosedCount = Records.Count(x => x.Status == "已关闭")
             });
         }
     }
@@ -110,6 +111,7 @@ public class InMemoryRepairRecordService : IRepairRecordService
                 Resolution = dto.Resolution.Trim(),
                 AttachmentImages = dto.AttachmentImages.Trim(),
                 RegistrationStatus = dto.RegistrationStatus.Trim(),
+                AssigneeName = dto.AssigneeName?.Trim() ?? string.Empty,
                 Status = string.IsNullOrWhiteSpace(dto.Status) ? "待处理" : dto.Status.Trim(),
                 Urgency = string.IsNullOrWhiteSpace(dto.Urgency) ? "普通" : dto.Urgency.Trim(),
                 CreatedAt = DateTime.UtcNow,
@@ -149,8 +151,69 @@ public class InMemoryRepairRecordService : IRepairRecordService
             entity.Resolution = dto.Resolution.Trim();
             entity.AttachmentImages = dto.AttachmentImages.Trim();
             entity.RegistrationStatus = dto.RegistrationStatus.Trim();
+            if (!string.IsNullOrWhiteSpace(dto.AssigneeName))
+            {
+                entity.AssigneeName = dto.AssigneeName.Trim();
+            }
             entity.Status = string.IsNullOrWhiteSpace(dto.Status) ? entity.Status : dto.Status.Trim();
             entity.Urgency = string.IsNullOrWhiteSpace(dto.Urgency) ? entity.Urgency : dto.Urgency.Trim();
+            entity.UpdatedAt = DateTime.UtcNow;
+
+            SqliteTableStore.Update(TableName, entity, entity.Id);
+            var workHours = InMemoryWorkHoursService.GetSnapshot();
+            return Task.FromResult<RepairRecordItemDto?>(MapToDto(entity, workHours));
+        }
+    }
+
+    private static readonly Dictionary<string, HashSet<string>> ValidTransitions = new()
+    {
+        ["待处理"] = ["处理中", "已关闭"],
+        ["处理中"] = ["已完成", "已关闭"],
+        ["已完成"] = ["已关闭"],
+        ["已关闭"] = []
+    };
+
+    public Task<RepairRecordItemDto?> TransitionStatusAsync(long id, string newStatus, string? resolution, CancellationToken cancellationToken = default)
+    {
+        lock (SyncRoot)
+        {
+            var entity = Records.FirstOrDefault(x => x.Id == id);
+            if (entity is null) return Task.FromResult<RepairRecordItemDto?>(null);
+
+            if (!ValidTransitions.TryGetValue(entity.Status, out var allowed) || !allowed.Contains(newStatus))
+            {
+                throw new InvalidOperationException($"不允许从 '{entity.Status}' 转换到 '{newStatus}'");
+            }
+
+            entity.Status = newStatus;
+            if (!string.IsNullOrWhiteSpace(resolution))
+            {
+                entity.Resolution = resolution.Trim();
+            }
+            if (newStatus == "已完成" || newStatus == "已关闭")
+            {
+                entity.CompletedAt ??= DateTime.UtcNow;
+            }
+            entity.UpdatedAt = DateTime.UtcNow;
+
+            SqliteTableStore.Update(TableName, entity, entity.Id);
+            var workHours = InMemoryWorkHoursService.GetSnapshot();
+            return Task.FromResult<RepairRecordItemDto?>(MapToDto(entity, workHours));
+        }
+    }
+
+    public Task<RepairRecordItemDto?> AssignAsync(long id, string assigneeName, CancellationToken cancellationToken = default)
+    {
+        lock (SyncRoot)
+        {
+            var entity = Records.FirstOrDefault(x => x.Id == id);
+            if (entity is null) return Task.FromResult<RepairRecordItemDto?>(null);
+
+            entity.AssigneeName = assigneeName.Trim();
+            if (entity.Status == "待处理")
+            {
+                entity.Status = "处理中";
+            }
             entity.UpdatedAt = DateTime.UtcNow;
 
             SqliteTableStore.Update(TableName, entity, entity.Id);
@@ -193,6 +256,8 @@ public class InMemoryRepairRecordService : IRepairRecordService
             AttachmentImages = entity.AttachmentImages,
             RegistrationStatus = entity.RegistrationStatus,
             WorkHoursDetail = workHoursDetail,
+            AssigneeName = entity.AssigneeName,
+            CompletedAt = entity.CompletedAt,
             Status = entity.Status,
             Urgency = entity.Urgency,
             CreatedAt = entity.CreatedAt,

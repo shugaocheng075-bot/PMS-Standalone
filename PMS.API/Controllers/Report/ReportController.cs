@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using PMS.API.Middleware;
 using PMS.API.Models;
 using PMS.Application.Contracts.Access;
 using PMS.Application.Contracts.Handover;
@@ -38,15 +39,22 @@ public class ReportController(
     /// 工时报表 — 从导入的工时报表数据读取
     /// </summary>
     [HttpGet("workhours")]
-    public IActionResult GetWorkHoursReport(
+    public async Task<IActionResult> GetWorkHoursReport(
         [FromQuery] string? reportMonth,
-        [FromQuery] string? implementationStatus)
+        [FromQuery] string? implementationStatus,
+        CancellationToken cancellationToken = default)
     {
         var resolvedMonth = ResolveReportMonth(reportMonth);
         var allRows = InMemoryWorkHoursReportStore.GetOrCreateMonthRows(
             resolvedMonth,
             () => BuildAutoWorkHoursRows(resolvedMonth));
-        IEnumerable<WorkHoursReportRowDto> filtered = allRows;
+
+        var personnelId = HttpContext.GetCurrentPersonnelId();
+        var dataScope = await accessControlService.GetDataScopeAsync(personnelId, cancellationToken);
+        var scopedRows = PMS.API.Middleware.HospitalScopeHelper
+            .FilterByHospitalScope(dataScope, allRows, x => x.HospitalName).ToList();
+
+        IEnumerable<WorkHoursReportRowDto> filtered = scopedRows;
 
         if (!string.IsNullOrWhiteSpace(implementationStatus))
         {
@@ -118,15 +126,22 @@ public class ReportController(
     /// 导出工时报表（Excel .xlsx）
     /// </summary>
     [HttpGet("workhours/export")]
-    public IActionResult ExportWorkHoursReport(
+    public async Task<IActionResult> ExportWorkHoursReport(
         [FromQuery] string? reportMonth,
-        [FromQuery] string? implementationStatus)
+        [FromQuery] string? implementationStatus,
+        CancellationToken cancellationToken = default)
     {
         var resolvedMonth = ResolveReportMonth(reportMonth);
         var allRows = InMemoryWorkHoursReportStore.GetOrCreateMonthRows(
             resolvedMonth,
             () => BuildAutoWorkHoursRows(resolvedMonth));
-        IEnumerable<WorkHoursReportRowDto> filtered = allRows;
+
+        var personnelId = HttpContext.GetCurrentPersonnelId();
+        var dataScope = await accessControlService.GetDataScopeAsync(personnelId, cancellationToken);
+        var scopedRows = PMS.API.Middleware.HospitalScopeHelper
+            .FilterByHospitalScope(dataScope, allRows, x => x.HospitalName).ToList();
+
+        IEnumerable<WorkHoursReportRowDto> filtered = scopedRows;
 
         if (!string.IsNullOrWhiteSpace(implementationStatus))
         {

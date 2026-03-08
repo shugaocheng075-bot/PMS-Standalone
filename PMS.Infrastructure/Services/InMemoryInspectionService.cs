@@ -207,6 +207,20 @@ public class InMemoryInspectionService : IInspectionService
 
     // ─── 持久化 ───
 
+    public Task<bool> ReviewResultAsync(long resultId, string reviewStatus, string reviewedBy, CancellationToken cancellationToken = default)
+    {
+        lock (SyncRoot)
+        {
+            var result = StoredResults.FirstOrDefault(x => x.Id == resultId);
+            if (result is null) return Task.FromResult(false);
+            result.ReviewStatus = reviewStatus;
+            result.ReviewedBy = reviewedBy;
+            result.ReviewedAt = DateTime.UtcNow;
+            PersistResults();
+            return Task.FromResult(true);
+        }
+    }
+
     private static void PersistResults()
     {
         SqliteTableStore.ReplaceAll(ResultsTable, StoredResults);

@@ -13,6 +13,11 @@
         <el-button v-if="canManageMaintenance" type="warning" :loading="loading.cleaning" @click="onCleanup">执行清洗</el-button>
         <el-button :loading="loading.audit" @click="loadAudit">刷新审计列表</el-button>
       </el-space>
+      <el-space wrap style="margin-top: 8px;">
+        <el-button size="small" @click="onDownloadTemplate('project-ledger')">下载项目台账模板</el-button>
+        <el-button size="small" @click="onDownloadTemplate('major-demand')">下载重大需求模板</el-button>
+        <el-button size="small" @click="onDownloadTemplate('workhours')">下载工时报表模板</el-button>
+      </el-space>
       <div v-if="lastResult" style="margin-top: 12px; color: var(--el-text-color-secondary)">
         {{ lastResult }}
       </div>
@@ -41,7 +46,19 @@
           </el-upload>
           <div style="margin-top: 12px; display: flex; align-items: center; gap: 8px;">
             <el-input v-model="projectSheetName" placeholder="工作表名（默认：维护项目明细）" clearable style="flex: 1;" />
+            <el-button size="small" :loading="loading.validateProject" :disabled="!projectFile" @click="onValidateProject">验证</el-button>
             <el-button type="primary" :loading="loading.uploadProject" :disabled="!projectFile" @click="onUploadProject">导入</el-button>
+          </div>
+          <div v-if="validateProjectResult" style="margin-top: 8px; font-size: 13px;">
+            <div v-if="validateProjectResult.errors.length" style="color: var(--el-color-danger)">
+              <div v-for="e in validateProjectResult.errors" :key="e">❌ {{ e }}</div>
+            </div>
+            <div v-if="validateProjectResult.warnings.length" style="color: var(--el-color-warning)">
+              <div v-for="w in validateProjectResult.warnings" :key="w">⚠️ {{ w }}</div>
+            </div>
+            <div v-if="validateProjectResult.valid" style="color: var(--el-color-success)">
+              ✅ 验证通过，共 {{ validateProjectResult.totalRows }} 行数据
+            </div>
           </div>
           <div v-if="uploadProjectResult" style="margin-top: 8px; color: var(--el-color-success); font-size: 13px;">
             {{ uploadProjectResult }}
@@ -117,7 +134,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Upload } from '@element-plus/icons-vue'
-import { fetchOwnershipAudit, reassignOwnership, runAutoImport, runCleanup, uploadProjectLedger, uploadMajorDemand } from '../../api/modules/maintenance'
+import { fetchOwnershipAudit, reassignOwnership, runAutoImport, runCleanup, uploadProjectLedger, uploadMajorDemand, downloadImportTemplate, validateProjectLedger } from '../../api/modules/maintenance'
 import { getErrorMessage } from '../../utils/error'
 import { useLinkedRealtimeRefresh } from '../../composables/useLinkedRealtimeRefresh'
 import { useAccessControl } from '../../composables/useAccessControl'
@@ -132,6 +149,7 @@ const loading = reactive({
   reassign: false,
   uploadProject: false,
   uploadDemand: false,
+  validateProject: false,
 })
 
 // Upload state
@@ -139,6 +157,7 @@ const projectFile = ref<File | null>(null)
 const projectFileList = ref<UploadFile[]>([])
 const projectSheetName = ref('')
 const uploadProjectResult = ref('')
+const validateProjectResult = ref<{ valid: boolean; totalRows: number; errors: string[]; warnings: string[] } | null>(null)
 
 const demandFile = ref<File | null>(null)
 const demandFileList = ref<UploadFile[]>([])
@@ -187,6 +206,35 @@ const onUploadDemand = async () => {
     ElMessage.error(getErrorMessage(error, '重大需求上传导入失败'))
   } finally {
     loading.uploadDemand = false
+  }
+}
+
+const onDownloadTemplate = async (type: 'project-ledger' | 'major-demand' | 'workhours') => {
+  try {
+    const blob = await downloadImportTemplate(type)
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    const nameMap = { 'project-ledger': '维护项目明细_导入模板', 'major-demand': '重大需求明细_导入模板', 'workhours': '工时报表_导入模板' }
+    a.download = `${nameMap[type]}.xlsx`
+    a.click()
+    URL.revokeObjectURL(url)
+  } catch (error) {
+    ElMessage.error(getErrorMessage(error, '下载模板失败'))
+  }
+}
+
+const onValidateProject = async () => {
+  if (!projectFile.value) return
+  loading.validateProject = true
+  validateProjectResult.value = null
+  try {
+    const res = await validateProjectLedger(projectFile.value, projectSheetName.value || undefined)
+    validateProjectResult.value = res.data
+  } catch (error) {
+    ElMessage.error(getErrorMessage(error, '验证失败'))
+  } finally {
+    loading.validateProject = false
   }
 }
 
