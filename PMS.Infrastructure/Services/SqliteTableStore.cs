@@ -163,7 +163,40 @@ internal static class SqliteTableStore
             cmd.CommandText = $"CREATE TABLE IF NOT EXISTS [{tableName}] (\n    {columnDefs}\n)";
             cmd.ExecuteNonQuery();
 
+            EnsureMissingColumns(conn, tableName, columns);
+
             InitializedTables.Add(tableName);
+        }
+    }
+
+    private static void EnsureMissingColumns(SqliteConnection conn, string tableName, List<ColumnDef> columns)
+    {
+        var existingColumns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        using (var pragmaCmd = conn.CreateCommand())
+        {
+            pragmaCmd.CommandText = $"PRAGMA table_info([{tableName}])";
+            using var reader = pragmaCmd.ExecuteReader();
+            while (reader.Read())
+            {
+                var nameOrdinal = reader.GetOrdinal("name");
+                if (!reader.IsDBNull(nameOrdinal))
+                {
+                    existingColumns.Add(reader.GetString(nameOrdinal));
+                }
+            }
+        }
+
+        foreach (var column in columns)
+        {
+            if (existingColumns.Contains(column.Name))
+            {
+                continue;
+            }
+
+            using var alterCmd = conn.CreateCommand();
+            alterCmd.CommandText = $"ALTER TABLE [{tableName}] ADD COLUMN [{column.Name}] {column.SqlType}";
+            alterCmd.ExecuteNonQuery();
         }
     }
 
@@ -216,21 +249,29 @@ internal static class SqliteTableStore
         cmd.CommandText = $"SELECT * FROM [{tableName}]";
 
         using var reader = cmd.ExecuteReader();
+        var columnOrdinals = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < reader.FieldCount; i++)
+        {
+            columnOrdinals[reader.GetName(i)] = i;
+        }
+
         while (reader.Read())
         {
             var entity = new T();
             foreach (var col in columns)
             {
-                try
-                {
-                    var ordinal = reader.GetOrdinal(col.Name);
-                    if (reader.IsDBNull(ordinal)) continue;
-                    SetPropertyValue(col, entity, reader.GetValue(ordinal));
-                }
-                catch (IndexOutOfRangeException)
+                if (!columnOrdinals.TryGetValue(col.Name, out var ordinal))
                 {
                     // Column doesn't exist in DB yet (entity gained a new property) — skip
+                    continue;
                 }
+
+                if (reader.IsDBNull(ordinal))
+                {
+                    continue;
+                }
+
+                SetPropertyValue(col, entity, reader.GetValue(ordinal));
             }
             result.Add(entity);
         }
