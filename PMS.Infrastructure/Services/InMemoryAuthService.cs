@@ -16,7 +16,7 @@ public class InMemoryAuthService(IPersonnelService personnelService, IAccessCont
     private static readonly object SyncRoot = new();
     private static readonly List<AuthAccountState> Accounts = SqliteJsonStore.LoadOrSeed(StateKey, () => new List<AuthAccountState>());
     private static readonly ConcurrentDictionary<string, AuthSessionDto> Sessions = new(StringComparer.Ordinal);
-    private static readonly TimeSpan SessionTtl = TimeSpan.FromHours(12);
+    private static readonly TimeSpan SessionTtl = TimeSpan.FromHours(2);
     private static readonly Dictionary<char, string> PinyinCharMap = new()
     {
         ['李'] = "li", ['贝'] = "bei", ['何'] = "he", ['道'] = "dao", ['飞'] = "fei",
@@ -54,7 +54,7 @@ public class InMemoryAuthService(IPersonnelService personnelService, IAccessCont
             return null;
         }
 
-        var token = Convert.ToBase64String(Guid.NewGuid().ToByteArray())
+        var token = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32))
             .TrimEnd('=')
             .Replace('+', '-')
             .Replace('/', '_');
@@ -133,6 +133,16 @@ public class InMemoryAuthService(IPersonnelService personnelService, IAccessCont
             account.PasswordSalt = salt;
             account.UpdatedAt = DateTime.UtcNow;
             SqliteJsonStore.Save(StateKey, Accounts);
+
+            var sessionKeys = Sessions
+                .Where(pair => pair.Value.PersonnelId == personnelId)
+                .Select(pair => pair.Key)
+                .ToArray();
+
+            foreach (var key in sessionKeys)
+            {
+                Sessions.TryRemove(key, out _);
+            }
         }
 
         return Task.FromResult(true);
@@ -157,7 +167,7 @@ public class InMemoryAuthService(IPersonnelService personnelService, IAccessCont
 
             foreach (var person in personnel.Items)
             {
-                var targetAccount = BuildUniqueAccount(existingAccounts, person.Name, person.Id);
+                var targetAccount = BuildTargetAccount(existingAccounts, person.Name, person.Id);
 
                 var existing = Accounts.FirstOrDefault(x => x.PersonnelId == person.Id);
                 if (existing is not null)
@@ -208,9 +218,27 @@ public class InMemoryAuthService(IPersonnelService personnelService, IAccessCont
         }
     }
 
+    private static string BuildTargetAccount(HashSet<string> existingAccounts, string personnelName, int personnelId)
+    {
+        // Protected admin account must always be the fixed "admin" login.
+        if (personnelId == ProtectedAdminPersonnelId)
+        {
+            return "admin";
+        }
+
+        return BuildUniqueAccount(existingAccounts, personnelName, personnelId);
+    }
+
     private static string BuildUniqueAccount(HashSet<string> existingAccounts, string personnelName, int personnelId)
     {
         var baseAccount = BuildAccountFromName(personnelName, personnelId);
+
+        // Reserve "admin" for the protected admin only.
+        if (string.Equals(baseAccount, "admin", StringComparison.OrdinalIgnoreCase))
+        {
+            baseAccount = $"admin{personnelId}";
+        }
+
         if (!existingAccounts.Contains(baseAccount))
         {
             return baseAccount;
@@ -326,8 +354,9 @@ public class InMemoryAuthService(IPersonnelService personnelService, IAccessCont
     {
         if (string.Equals(account, "admin", StringComparison.OrdinalIgnoreCase))
         {
-            return Accounts.FirstOrDefault(x => string.Equals(x.Account, "admin", StringComparison.OrdinalIgnoreCase))
-                ?? Accounts.FirstOrDefault(x => x.PersonnelId == ProtectedAdminPersonnelId);
+            return Accounts.FirstOrDefault(x => x.PersonnelId == ProtectedAdminPersonnelId)
+                ?? Accounts.FirstOrDefault(x => string.Equals(x.Account, "admin", StringComparison.OrdinalIgnoreCase)
+                    && x.PersonnelId == ProtectedAdminPersonnelId);
         }
 
         return Accounts.FirstOrDefault(x => string.Equals(x.Account, account, StringComparison.OrdinalIgnoreCase));

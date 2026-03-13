@@ -682,10 +682,14 @@ public class InMemoryAccessControlService(IPersonnelService personnelService) : 
         PersonnelPermissionState state,
         DataScopeDto? dataScope = null)
     {
+        var resolvedPersonnelName = personnelId == ProtectedAdminPersonnelId
+            ? "admin"
+            : personnelName;
+
         return new PersonnelAccessProfileDto
         {
             PersonnelId = personnelId,
-            PersonnelName = personnelName,
+            PersonnelName = resolvedPersonnelName,
             RoleType = roleType,
             SystemRole = state.SystemRole ?? RoleOperator,
             SupervisorId = state.SupervisorId,
