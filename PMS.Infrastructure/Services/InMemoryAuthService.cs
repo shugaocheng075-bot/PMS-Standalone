@@ -5,6 +5,7 @@ using PMS.Application.Contracts.Access;
 using PMS.Application.Contracts.Auth;
 using PMS.Application.Contracts.Personnel;
 using PMS.Application.Models.Auth;
+using PMS.Application.Models.Personnel;
 
 namespace PMS.Infrastructure.Services;
 
@@ -208,6 +209,8 @@ public class InMemoryAuthService(IPersonnelService personnelService, IAccessCont
                 changed = true;
             }
 
+            EnsureAdminAccount(personnelById, existingAccounts, ref changed);
+
             var removed = Accounts.RemoveAll(x => !personnelById.ContainsKey(x.PersonnelId));
             changed = changed || removed > 0;
 
@@ -215,6 +218,64 @@ public class InMemoryAuthService(IPersonnelService personnelService, IAccessCont
             {
                 SqliteJsonStore.Save(StateKey, Accounts);
             }
+        }
+    }
+
+    private static void EnsureAdminAccount(
+        IReadOnlyDictionary<int, PersonnelItemDto> personnelById,
+        HashSet<string> existingAccounts,
+        ref bool changed)
+    {
+        if (personnelById.Count == 0)
+        {
+            return;
+        }
+
+        var adminTargetId = personnelById.ContainsKey(ProtectedAdminPersonnelId)
+            ? ProtectedAdminPersonnelId
+            : personnelById.Keys.Min();
+
+        var currentAdmin = Accounts.FirstOrDefault(x => string.Equals(x.Account, "admin", StringComparison.OrdinalIgnoreCase));
+        var target = Accounts.FirstOrDefault(x => x.PersonnelId == adminTargetId);
+
+        if (target is null)
+        {
+            var (hash, salt) = HashPassword(DefaultPassword);
+            Accounts.Add(new AuthAccountState
+            {
+                PersonnelId = adminTargetId,
+                Account = "admin",
+                PasswordHash = hash,
+                PasswordSalt = salt,
+                UpdatedAt = DateTime.UtcNow
+            });
+            existingAccounts.Add("admin");
+            changed = true;
+            return;
+        }
+
+        if (!string.Equals(target.Account, "admin", StringComparison.OrdinalIgnoreCase))
+        {
+            existingAccounts.Remove(target.Account);
+            target.Account = "admin";
+            existingAccounts.Add("admin");
+            target.UpdatedAt = DateTime.UtcNow;
+            changed = true;
+        }
+
+        if (!VerifyPassword(DefaultPassword, target.PasswordHash, target.PasswordSalt))
+        {
+            var (hash, salt) = HashPassword(DefaultPassword);
+            target.PasswordHash = hash;
+            target.PasswordSalt = salt;
+            target.UpdatedAt = DateTime.UtcNow;
+            changed = true;
+        }
+
+        if (currentAdmin is not null && !ReferenceEquals(currentAdmin, target))
+        {
+            Accounts.Remove(currentAdmin);
+            changed = true;
         }
     }
 
