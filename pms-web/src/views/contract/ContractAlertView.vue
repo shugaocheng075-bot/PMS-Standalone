@@ -23,7 +23,7 @@
       </el-col>
     </el-row>
 
-    <el-card shadow="never" class="filter-card">
+    <AppFilterCard>
       <el-form :model="query" inline class="filter-form" @submit.prevent="onSearch">
         <el-form-item label="预警级别">
           <el-select v-model="query.alertLevel" placeholder="全部" clearable style="width: 140px">
@@ -48,9 +48,9 @@
           <el-button @click="onReset">重置</el-button>
         </el-form-item>
       </el-form>
-    </el-card>
+    </AppFilterCard>
 
-    <el-card shadow="never" class="table-card">
+    <AppTableCard>
       <el-table :data="tableData" v-loading="loading" stripe max-height="520" scrollbar-always-on empty-text="暂无符合条件的数据" @row-dblclick="onGotoProject">
         <el-table-column prop="hospitalName" label="医院" min-width="220" show-overflow-tooltip sortable />
         <el-table-column prop="province" label="省份" width="100" show-overflow-tooltip />
@@ -86,7 +86,7 @@
           @current-change="(page: number) => { query.page = page; loadData() }"
         />
       </div>
-    </el-card>
+    </AppTableCard>
   </div>
 </template>
 
@@ -101,6 +101,8 @@ import { getErrorMessage } from '../../utils/error'
 import { GROUP_OPTIONS, PROVINCE_OPTIONS } from '../../constants/filterOptions'
 import { useFilterStatePersist } from '../../composables/useFilterStatePersist'
 import { useLinkedRealtimeRefresh } from '../../composables/useLinkedRealtimeRefresh'
+import AppFilterCard from '../../components/AppFilterCard.vue'
+import AppTableCard from '../../components/AppTableCard.vue'
 
 const loading = ref(false)
 const exporting = ref(false)
@@ -129,6 +131,20 @@ const readRouteQueryValue = (value: unknown): string => {
   }
 
   return ''
+}
+
+const updateRouteQuery = async (patch: Record<string, string | undefined>) => {
+  const nextQuery = { ...route.query }
+  Object.entries(patch).forEach(([key, value]) => {
+    if (value) {
+      nextQuery[key] = value
+      return
+    }
+
+    delete nextQuery[key]
+  })
+
+  await router.replace({ path: route.path, query: nextQuery })
 }
 
 const applyDrillQuery = () => {
@@ -291,6 +307,7 @@ const onStatClick = (alertLevel: string) => {
   query.salesName = ''
   query.alertLevel = alertLevel
   query.page = 1
+  void updateRouteQuery({ alertLevel: undefined, province: undefined, groupName: undefined, salesName: undefined })
   loadData()
 }
 
@@ -307,6 +324,7 @@ const onReset = () => {
   query.page = 1
   query.size = 15
   clearFilterState()
+  void updateRouteQuery({ alertLevel: undefined, province: undefined, groupName: undefined, salesName: undefined })
   loadData()
 }
 

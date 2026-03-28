@@ -8,7 +8,7 @@
       <el-button v-if="canManage" type="primary" @click="onOpenCreate">新增月报</el-button>
     </div>
 
-    <el-card shadow="never" class="filter-card">
+    <AppFilterCard>
       <el-form :model="query" inline class="filter-form" @submit.prevent="onSearch">
         <el-form-item label="医院名称">
           <el-select v-model="query.hospitalName" clearable filterable placeholder="全部" style="width: 220px">
@@ -40,9 +40,9 @@
           <el-button @click="onReset">重置</el-button>
         </el-form-item>
       </el-form>
-    </el-card>
+    </AppFilterCard>
 
-    <el-card shadow="never" class="table-card">
+    <AppTableCard>
       <el-table :data="tableData" v-loading="loading" stripe max-height="520" scrollbar-always-on empty-text="暂无符合条件的数据" @row-dblclick="onRowDoubleClick">
         <el-table-column prop="id" label="ID" width="70" />
         <el-table-column prop="hospitalName" label="医院名称" min-width="180" show-overflow-tooltip />
@@ -88,9 +88,9 @@
           @current-change="onCurrentPageChange"
         />
       </div>
-    </el-card>
+    </AppTableCard>
 
-    <el-dialog v-model="dialogVisible" :title="editingId ? '编辑月报' : '新增月报'" width="640px" destroy-on-close>
+    <AppFormDialog v-model="dialogVisible" :title="editingId ? '编辑月报' : '新增月报'" width="640px">
       <el-form ref="formRef" :model="form" :rules="formRules" label-width="90px" :disabled="!canManage && !!editingId">
         <el-form-item label="医院名称" required>
           <el-select v-model="form.hospitalName" filterable placeholder="请选择医院" style="width: 100%">
@@ -118,7 +118,7 @@
         <el-button :disabled="submitLoading" @click="dialogVisible = false">{{ canManage ? '取消' : '关闭' }}</el-button>
         <el-button v-if="canManage" type="primary" :loading="submitLoading" :disabled="submitLoading" @click="onSubmit">确定</el-button>
       </template>
-    </el-dialog>
+    </AppFormDialog>
   </div>
 </template>
 
@@ -141,6 +141,9 @@ import { getErrorMessage } from '../../utils/error'
 import { useFilterStatePersist } from '../../composables/useFilterStatePersist'
 import { useLinkedRealtimeRefresh } from '../../composables/useLinkedRealtimeRefresh'
 import { resolveMonthlyReportStatusTag } from '../../utils/statusTag'
+import AppFilterCard from '../../components/AppFilterCard.vue'
+import AppTableCard from '../../components/AppTableCard.vue'
+import AppFormDialog from '../../components/AppFormDialog.vue'
 
 const access = useAccessControl()
 const canManage = computed(() => access.canPermission('monthly-report.manage'))

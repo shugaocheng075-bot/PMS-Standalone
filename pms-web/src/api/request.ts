@@ -7,6 +7,29 @@ import {
 
 const baseURL = import.meta.env.VITE_API_BASE_URL || '/api'
 
+const resolveInitialPersonnelId = (): number => {
+  if (typeof window === 'undefined') {
+    return 1
+  }
+
+  const raw = window.localStorage.getItem(CURRENT_PERSONNEL_STORAGE_KEY)
+  const parsed = raw ? Number(raw) : 1
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : 1
+}
+
+let cachedPersonnelId = resolveInitialPersonnelId()
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('storage', (event) => {
+    if (event.key !== CURRENT_PERSONNEL_STORAGE_KEY) {
+      return
+    }
+
+    const parsed = event.newValue ? Number(event.newValue) : 1
+    cachedPersonnelId = Number.isInteger(parsed) && parsed > 0 ? parsed : 1
+  })
+}
+
 const request = axios.create({
   baseURL,
   timeout: 10000,
@@ -67,11 +90,13 @@ request.interceptors.request.use((config) => {
     return config
   }
 
-  const rawPersonnelId = typeof window !== 'undefined'
-    ? window.localStorage.getItem(CURRENT_PERSONNEL_STORAGE_KEY)
-    : null
-  const personnelId = rawPersonnelId ? Number(rawPersonnelId) : 1
-  const resolvedPersonnelId = Number.isInteger(personnelId) && personnelId > 0 ? personnelId : 1
+  if (typeof window !== 'undefined') {
+    const raw = window.localStorage.getItem(CURRENT_PERSONNEL_STORAGE_KEY)
+    const parsed = raw ? Number(raw) : 1
+    cachedPersonnelId = Number.isInteger(parsed) && parsed > 0 ? parsed : 1
+  }
+
+  const resolvedPersonnelId = cachedPersonnelId
 
   config.headers = config.headers ?? {}
   config.headers['X-PMS-User-Id'] = String(resolvedPersonnelId)
@@ -90,8 +115,8 @@ request.interceptors.response.use(
     const status = error?.response?.status
     if (status === 401) {
       clearAuthState()
-      if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
-        window.location.href = '/login'
+      if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
+        window.location.assign('/login')
       }
     }
 

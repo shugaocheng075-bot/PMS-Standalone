@@ -15,7 +15,7 @@
       <el-col :span="6"><el-card shadow="never" class="stat-card stats-card clickable" :class="{ active: query.tier === '一级' }" @click="onStatClick('一级')"><div class="t">一级医院</div><div class="v danger">{{ summary.oneTierCount }}</div></el-card></el-col>
     </el-row>
 
-    <el-card shadow="never" class="filter-card">
+    <AppFilterCard>
       <el-form :model="query" inline class="filter-form" @submit.prevent="onSearch">
         <el-form-item label="医院名称"><el-input v-model="query.hospitalName" clearable @keyup.enter="onSearch" /></el-form-item>
         <el-form-item label="医院等级">
@@ -39,9 +39,9 @@
           <el-button :loading="exporting" @click="onExport">导出CSV</el-button>
         </el-form-item>
       </el-form>
-    </el-card>
+    </AppFilterCard>
 
-    <el-card shadow="never" class="table-card">
+    <AppTableCard>
       <el-table :data="tableData" v-loading="loading" stripe max-height="520" scrollbar-always-on empty-text="暂无符合条件的数据" @row-dblclick="onRowDoubleClick">
         <el-table-column prop="hospitalName" label="医院名称" min-width="220" show-overflow-tooltip sortable />
         <el-table-column prop="tier" label="等级" width="100" sortable>
@@ -107,9 +107,9 @@
           @current-change="(page: number) => { query.page = page; loadData() }"
         />
       </div>
-    </el-card>
+    </AppTableCard>
 
-    <el-dialog v-model="editVisible" :title="editMode === 'create' ? '新增医院' : '编辑医院'" width="620px" destroy-on-close>
+    <AppFormDialog v-model="editVisible" :title="editMode === 'create' ? '新增医院' : '编辑医院'" width="620px">
       <el-form ref="editFormRef" :model="editForm" :rules="editRules" label-width="90px">
         <el-form-item label="医院名称" prop="hospitalName"><el-input v-model="editForm.hospitalName" /></el-form-item>
         <el-form-item label="医院等级">
@@ -130,9 +130,9 @@
         <el-button :disabled="submitLoading" @click="editVisible = false">取消</el-button>
         <el-button type="primary" :loading="submitLoading" :disabled="submitLoading" @click="onSaveEdit">保存</el-button>
       </template>
-    </el-dialog>
+    </AppFormDialog>
 
-    <el-dialog v-model="ratingVisible" title="更新评级" width="460px" destroy-on-close>
+    <AppFormDialog v-model="ratingVisible" title="更新评级" width="460px">
       <el-form :model="ratingForm" label-width="95px">
         <el-form-item label="EMR评级"><el-input v-model="ratingForm.emrRatingLevel" /></el-form-item>
         <el-form-item label="互联互通评级"><el-input v-model="ratingForm.interopRatingLevel" /></el-form-item>
@@ -141,9 +141,9 @@
         <el-button :disabled="ratingLoading" @click="ratingVisible = false">取消</el-button>
         <el-button type="primary" :loading="ratingLoading" :disabled="ratingLoading" @click="onSaveRating">保存</el-button>
       </template>
-    </el-dialog>
+    </AppFormDialog>
 
-    <el-dialog v-model="detailVisible" title="医院详情" width="620px" destroy-on-close>
+    <AppFormDialog v-model="detailVisible" title="医院详情" width="620px">
       <el-descriptions v-if="detailItem" :column="2" border>
         <el-descriptions-item label="医院名称">{{ detailItem.hospitalName }}</el-descriptions-item>
         <el-descriptions-item label="等级">{{ detailItem.tier }}</el-descriptions-item>
@@ -159,7 +159,7 @@
       <template #footer>
         <el-button type="primary" @click="detailVisible = false">关闭</el-button>
       </template>
-    </el-dialog>
+    </AppFormDialog>
   </div>
 </template>
 
@@ -185,6 +185,9 @@ import { CITY_OPTIONS, PROVINCE_OPTIONS } from '../../constants/filterOptions'
 import { useFilterStatePersist } from '../../composables/useFilterStatePersist'
 import { useLinkedRealtimeRefresh } from '../../composables/useLinkedRealtimeRefresh'
 import { useAccessControl } from '../../composables/useAccessControl'
+import AppFilterCard from '../../components/AppFilterCard.vue'
+import AppTableCard from '../../components/AppTableCard.vue'
+import AppFormDialog from '../../components/AppFormDialog.vue'
 
 const loading = ref(false)
 const exporting = ref(false)
@@ -421,6 +424,7 @@ const onStatClick = (tier: string) => {
   query.city = ''
   query.tier = tier
   query.page = 1
+  void updateRouteQuery({ tier: undefined })
   loadData()
 }
 
@@ -437,6 +441,7 @@ const onReset = () => {
   query.page = 1
   query.size = 15
   clearFilterState()
+  void updateRouteQuery({ tier: undefined, action: undefined, id: undefined })
   loadData()
 }
 

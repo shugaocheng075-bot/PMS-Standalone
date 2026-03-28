@@ -15,7 +15,7 @@
       <el-col :span="6"><el-card shadow="never" class="stat-card stats-card clickable" :class="{ active: query.status === '已停用' }" @click="onStatClick('已停用')"><div class="t">已停用</div><div class="v danger">{{ summary.stoppedCount }}</div></el-card></el-col>
     </el-row>
 
-    <el-card shadow="never" class="filter-card">
+    <AppFilterCard>
       <el-form :model="query" inline class="filter-form" @submit.prevent="onSearch">
         <el-form-item label="产品名称"><el-input v-model="query.productName" clearable @keyup.enter="onSearch" /></el-form-item>
         <el-form-item label="分类">
@@ -41,9 +41,9 @@
           >批量删除（{{ selectedProductIds.length }}）</el-button>
         </el-form-item>
       </el-form>
-    </el-card>
+    </AppFilterCard>
 
-    <el-card shadow="never" class="table-card">
+    <AppTableCard>
       <el-table :data="tableData" v-loading="loading" stripe max-height="520" scrollbar-always-on empty-text="暂无符合条件的数据" @selection-change="onSelectionChange" @row-dblclick="onRowDoubleClick">
         <el-table-column v-if="canManageProduct" type="selection" width="46" />
         <el-table-column prop="productName" label="产品名称" min-width="220" show-overflow-tooltip sortable />
@@ -94,9 +94,9 @@
           @current-change="(page: number) => { query.page = page; loadData() }"
         />
       </div>
-    </el-card>
+    </AppTableCard>
 
-    <el-dialog v-model="editVisible" :title="editMode === 'create' ? '新增产品' : '编辑产品'" width="560px" destroy-on-close>
+    <AppFormDialog v-model="editVisible" :title="editMode === 'create' ? '新增产品' : '编辑产品'" width="560px">
       <el-form ref="editFormRef" :model="editForm" :rules="editRules" label-width="90px">
         <el-form-item label="产品名称" prop="productName"><el-input v-model="editForm.productName" /></el-form-item>
         <el-form-item label="版本" prop="version"><el-input v-model="editForm.version" /></el-form-item>
@@ -116,9 +116,9 @@
         <el-button :disabled="submitLoading" @click="editVisible = false">取消</el-button>
         <el-button type="primary" :loading="submitLoading" :disabled="submitLoading" @click="onSaveEdit">保存</el-button>
       </template>
-    </el-dialog>
+    </AppFormDialog>
 
-    <el-dialog v-model="detailVisible" title="产品详情" width="520px" destroy-on-close>
+    <AppFormDialog v-model="detailVisible" title="产品详情" width="520px">
       <el-descriptions v-if="detailItem" :column="2" border>
         <el-descriptions-item label="产品名称">{{ detailItem.productName }}</el-descriptions-item>
         <el-descriptions-item label="版本">{{ detailItem.version }}</el-descriptions-item>
@@ -129,7 +129,7 @@
       <template #footer>
         <el-button type="primary" @click="detailVisible = false">关闭</el-button>
       </template>
-    </el-dialog>
+    </AppFormDialog>
   </div>
 </template>
 
@@ -154,6 +154,9 @@ import { useLinkedRealtimeRefresh } from '../../composables/useLinkedRealtimeRef
 import { useAccessControl } from '../../composables/useAccessControl'
 import { useFilterStatePersist } from '../../composables/useFilterStatePersist'
 import { resolveProductStatusTag } from '../../utils/statusTag'
+import AppFilterCard from '../../components/AppFilterCard.vue'
+import AppTableCard from '../../components/AppTableCard.vue'
+import AppFormDialog from '../../components/AppFormDialog.vue'
 
 const loading = ref(false)
 const total = ref(0)
@@ -329,6 +332,7 @@ const onStatClick = (status: string) => {
   query.category = ''
   query.status = status
   query.page = 1
+  void updateRouteQuery({ status: undefined })
   loadData()
 }
 
@@ -344,6 +348,7 @@ const onReset = () => {
   query.page = 1
   query.size = 15
   clearFilterState()
+  void updateRouteQuery({ status: undefined, action: undefined, id: undefined })
   loadData()
 }
 

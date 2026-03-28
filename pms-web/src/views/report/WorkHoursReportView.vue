@@ -24,7 +24,7 @@
       </div>
     </div>
 
-    <el-card shadow="never" class="table-card">
+    <AppTableCard>
       <el-table
         :data="rows"
         stripe
@@ -143,7 +143,7 @@
         <span>共 {{ rows.length }} 条记录</span>
         <span v-if="totalManDays > 0" style="margin-left:16px">总工时：{{ totalManDays }} 人天</span>
       </div>
-    </el-card>
+    </AppTableCard>
   </div>
 </template>
 
@@ -162,6 +162,7 @@ import {
 } from '../../api/modules/report'
 import type { WorkHoursReportRow, WorkHoursReportRowUpdatePayload } from '../../types/report'
 import { getErrorMessage } from '../../utils/error'
+import AppTableCard from '../../components/AppTableCard.vue'
 
 const { printArea } = usePrint()
 const pageRef = ref<HTMLElement | null>(null)

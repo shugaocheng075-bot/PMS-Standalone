@@ -31,6 +31,14 @@ export function updateInspection(id: number, payload: InspectionPlanUpsert) {
   return request.put<any, ApiResponse<InspectionPlanItem>>(`/inspections/${id}`, payload)
 }
 
+export function createInspection(payload: InspectionPlanUpsert) {
+  return request.post<any, ApiResponse<InspectionPlanItem>>('/inspections', payload)
+}
+
+export function deleteInspection(id: number) {
+  return request.delete<any, ApiResponse<boolean>>(`/inspections/${id}`)
+}
+
 // ---- 巡检结果（由 SystemAuditTool 推送） ----
 
 export function fetchInspectionResults(params: InspectionResultQuery) {

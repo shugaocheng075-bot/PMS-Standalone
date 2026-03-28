@@ -6,6 +6,7 @@
         <div class="page-subtitle">跟踪年度服务报告进度与提交情况（点击单元格即可编辑）</div>
       </div>
       <div class="head-actions no-print">
+        <el-button v-if="canManageAnnualReport" size="small" type="primary" @click="onOpenCreate">新增</el-button>
         <el-button size="small" @click="onPrint">打印</el-button>
       </div>
     </div>
@@ -19,7 +20,7 @@
       <el-col :span="4"><el-card shadow="never" class="stat-card stats-card clickable" :class="{ active: !normalizeStatusText(query.status) && !isOverdueActive }" @click="onStatClick('')"><div class="t">总数</div><div class="v">{{ summary.total }}</div></el-card></el-col>
     </el-row>
 
-    <el-card shadow="never" class="filter-card">
+    <AppFilterCard>
       <el-form :model="query" inline class="filter-form" @submit.prevent="onSearch">
         <el-form-item label="状态">
           <el-select v-model="query.status" placeholder="全部" clearable style="width: 140px">
@@ -39,15 +40,25 @@
             <el-option v-for="person in filteredServicePersonOptions" :key="person" :label="person" :value="person" />
           </el-select>
         </el-form-item>
+        <el-form-item label="优先级">
+          <el-select v-model="query.priority" clearable placeholder="全部" style="width: 120px">
+            <el-option label="高" value="高" />
+            <el-option label="中" value="中" />
+            <el-option label="低" value="低" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="评审人">
+          <el-input v-model="query.reviewer" clearable placeholder="请输入评审人" style="width: 140px" />
+        </el-form-item>
         <el-form-item class="filter-actions">
           <el-button type="primary" @click="onSearch">查询</el-button>
           <el-button @click="onReset">重置</el-button>
           <el-button :loading="exporting" @click="onExport">导出CSV</el-button>
         </el-form-item>
       </el-form>
-    </el-card>
+    </AppFilterCard>
 
-    <el-card shadow="never" class="table-card">
+    <AppTableCard>
       <el-table :data="tableData" v-loading="loading" stripe max-height="520" scrollbar-always-on empty-text="暂无符合条件的数据" :row-class-name="rowClassName">
         <!-- 机会号 -->
         <el-table-column prop="opportunityNumber" label="机会号" min-width="150" show-overflow-tooltip>
@@ -139,11 +150,41 @@
             <el-tag v-else :type="statusTag(row.status)" class="editable-cell" @click="onCellEdit(row.id, 'status')">{{ row.status }}</el-tag>
           </template>
         </el-table-column>
+        <!-- 优先级 -->
+        <el-table-column prop="priority" label="优先级" width="100" sortable>
+          <template #default="{ row }">
+            <el-select v-if="isEditing(row.id, 'priority')" v-model="row.priority" size="small" @change="onCellSave(row, 'priority')" v-focus>
+              <el-option label="高" value="高" />
+              <el-option label="中" value="中" />
+              <el-option label="低" value="低" />
+            </el-select>
+            <el-tag
+              v-else
+              :type="row.priority === '高' ? 'danger' : row.priority === '中' ? 'warning' : 'info'"
+              class="editable-cell"
+              @click="onCellEdit(row.id, 'priority')"
+            >{{ row.priority || '-' }}</el-tag>
+          </template>
+        </el-table-column>
         <!-- 提交日期 -->
         <el-table-column prop="submitDate" label="提交日期" width="130">
           <template #default="{ row }">
             <el-date-picker v-if="isEditing(row.id, 'submitDate')" v-model="row.submitDate" type="date" size="small" value-format="YYYY-MM-DD" clearable style="width:100%" @change="onCellSave(row, 'submitDate')" @blur="onCellSave(row, 'submitDate')" v-focus />
             <span v-else class="editable-cell" @click="onCellEdit(row.id, 'submitDate')">{{ row.submitDate ? row.submitDate.slice(0, 10) : '-' }}</span>
+          </template>
+        </el-table-column>
+        <!-- 评审人 -->
+        <el-table-column prop="reviewer" label="评审人" width="120" show-overflow-tooltip>
+          <template #default="{ row }">
+            <el-input v-if="isEditing(row.id, 'reviewer')" v-model="row.reviewer" size="small" @blur="onCellSave(row, 'reviewer')" @keyup.enter="onCellSave(row, 'reviewer')" v-focus />
+            <span v-else class="editable-cell" @click="onCellEdit(row.id, 'reviewer')">{{ row.reviewer || '-' }}</span>
+          </template>
+        </el-table-column>
+        <!-- 评审日期 -->
+        <el-table-column prop="reviewDate" label="评审日期" width="130">
+          <template #default="{ row }">
+            <el-date-picker v-if="isEditing(row.id, 'reviewDate')" v-model="row.reviewDate" type="date" size="small" value-format="YYYY-MM-DD" clearable style="width:100%" @change="onCellSave(row, 'reviewDate')" @blur="onCellSave(row, 'reviewDate')" v-focus />
+            <span v-else class="editable-cell" @click="onCellEdit(row.id, 'reviewDate')">{{ row.reviewDate ? row.reviewDate.slice(0, 10) : '-' }}</span>
           </template>
         </el-table-column>
         <!-- 备注 -->
@@ -157,6 +198,7 @@
         <el-table-column label="操作" width="120" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" @click="onOpenDetail(row)">详情</el-button>
+            <el-button v-if="canManageAnnualReport" link type="danger" @click="onDelete(row)">删除</el-button>
             <el-button link @click="goToProjectPage(row)">项目页</el-button>
           </template>
         </el-table-column>
@@ -173,9 +215,9 @@
           @current-change="(page: number) => { query.page = page; loadData() }"
         />
       </div>
-    </el-card>
+    </AppTableCard>
 
-    <el-dialog v-model="detailVisible" title="年度报告详情" width="720px" destroy-on-close>
+    <AppFormDialog v-model="detailVisible" title="年度报告详情" width="720px">
       <template v-if="detailItem">
         <el-descriptions :column="2" border size="small">
           <el-descriptions-item label="机会号">{{ detailItem.opportunityNumber }}</el-descriptions-item>
@@ -195,7 +237,10 @@
           <el-descriptions-item label="状态">
             <el-tag :type="statusTag(detailItem.status)">{{ detailItem.status }}</el-tag>
           </el-descriptions-item>
+          <el-descriptions-item label="优先级">{{ detailItem.priority || '-' }}</el-descriptions-item>
           <el-descriptions-item label="提交日期">{{ detailItem.submitDate ? detailItem.submitDate.slice(0, 10) : '-' }}</el-descriptions-item>
+          <el-descriptions-item label="评审人">{{ detailItem.reviewer || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="评审日期">{{ detailItem.reviewDate ? detailItem.reviewDate.slice(0, 10) : '-' }}</el-descriptions-item>
           <el-descriptions-item label="备注">{{ detailItem.remarks || '-' }}</el-descriptions-item>
         </el-descriptions>
 
@@ -204,20 +249,55 @@
           <el-button plain @click="goToPersonnelPage(detailItem)">去人员权限页</el-button>
         </div>
       </template>
-    </el-dialog>
+    </AppFormDialog>
+
+    <AppFormDialog v-model="createVisible" title="新增年度报告" width="720px">
+      <el-form label-width="110px">
+        <el-form-item label="医院名称"><el-input v-model="createForm.hospitalName" /></el-form-item>
+        <el-form-item label="产品名称"><el-input v-model="createForm.productName" /></el-form-item>
+        <el-form-item label="商机编号"><el-input v-model="createForm.opportunityNumber" /></el-form-item>
+        <el-form-item label="省份"><el-input v-model="createForm.province" /></el-form-item>
+        <el-form-item label="组别"><el-input v-model="createForm.groupName" /></el-form-item>
+        <el-form-item label="服务人员"><el-input v-model="createForm.servicePerson" /></el-form-item>
+        <el-form-item label="实施状态"><el-input v-model="createForm.implementationStatus" /></el-form-item>
+        <el-form-item label="维护开始"><el-date-picker v-model="createForm.maintenanceStartDate" type="date" value-format="YYYY-MM-DD" style="width:100%" /></el-form-item>
+        <el-form-item label="维护结束"><el-date-picker v-model="createForm.maintenanceEndDate" type="date" value-format="YYYY-MM-DD" style="width:100%" /></el-form-item>
+        <el-form-item label="报告年度"><el-input-number v-model="createForm.reportYear" :min="2020" :max="2035" controls-position="right" style="width:100%" /></el-form-item>
+        <el-form-item label="状态">
+          <el-select v-model="createForm.status" style="width:100%">
+            <el-option v-for="s in statusOptions" :key="`create-status-${s}`" :label="s" :value="s" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="优先级">
+          <el-select v-model="createForm.priority" style="width:100%">
+            <el-option label="高" value="高" />
+            <el-option label="中" value="中" />
+            <el-option label="低" value="低" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="备注"><el-input v-model="createForm.remarks" type="textarea" :rows="2" /></el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="createVisible = false">取消</el-button>
+        <el-button type="primary" :loading="createSubmitting" @click="onSubmitCreate">创建</el-button>
+      </template>
+    </AppFormDialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { useRoute, useRouter } from 'vue-router'
 import { usePrint } from '../../composables/usePrint'
-import { fetchAnnualReportList, fetchAnnualReportSummary, updateAnnualReport, exportAnnualReports } from '../../api/modules/annual-report'
-import type { AnnualReportItem, AnnualReportSummary } from '../../types/annual-report'
+import { createAnnualReport, deleteAnnualReport, fetchAnnualReportList, fetchAnnualReportSummary, updateAnnualReport, exportAnnualReports } from '../../api/modules/annual-report'
+import type { AnnualReportItem, AnnualReportSummary, AnnualReportUpsert } from '../../types/annual-report'
 import { useResilientLoad } from '../../composables/useResilientLoad'
 import { getErrorMessage } from '../../utils/error'
 import { GROUP_OPTIONS, PERSON_OPTIONS } from '../../constants/filterOptions'
+import AppFilterCard from '../../components/AppFilterCard.vue'
+import AppTableCard from '../../components/AppTableCard.vue'
+import AppFormDialog from '../../components/AppFormDialog.vue'
 import { useFilterStatePersist } from '../../composables/useFilterStatePersist'
 import { useLinkedRealtimeRefresh } from '../../composables/useLinkedRealtimeRefresh'
 import { useAccessControl } from '../../composables/useAccessControl'
@@ -251,11 +331,15 @@ const currentMonth = computed(() => {
 })
 
 const query = reactive({
+  hospitalName: '',
+  productName: '',
   status: '',
   reportYear: undefined as number | undefined,
   dueMonth: '',
   groupName: '',
   servicePerson: '',
+  priority: '',
+  reviewer: '',
   page: 1,
   size: 15,
 })
@@ -270,6 +354,23 @@ const canManageAnnualReport = computed(() => access.isManager() && access.canPer
 
 const detailVisible = ref(false)
 const detailItem = ref<AnnualReportItem | null>(null)
+const createVisible = ref(false)
+const createSubmitting = ref(false)
+const createForm = reactive<AnnualReportUpsert>({
+  opportunityNumber: '',
+  hospitalName: '',
+  productName: '',
+  province: '',
+  groupName: '',
+  servicePerson: '',
+  implementationStatus: '',
+  maintenanceStartDate: '',
+  maintenanceEndDate: '',
+  reportYear: new Date().getFullYear(),
+  status: '未开始',
+  priority: '中',
+  remarks: '',
+})
 
 /* ---- 内联编辑状态 ---- */
 const editingCell = ref<{ rowId: number; col: string } | null>(null)
@@ -333,28 +434,45 @@ const clearRouteActionQuery = async () => {
 
 const applyDrillQuery = () => {
   const status = readRouteQueryValue(route.query.status)
+  const hospitalName = readRouteQueryValue(route.query.hospitalName)
+  const productName = readRouteQueryValue(route.query.productName)
   const groupName = readRouteQueryValue(route.query.groupName)
   const servicePerson = readRouteQueryValue(route.query.servicePerson)
-  const hospitalName = readRouteQueryValue(route.query.hospitalName)
+  const priority = readRouteQueryValue(route.query.priority)
+  const reviewer = readRouteQueryValue(route.query.reviewer)
   const reportYear = Number(readRouteQueryValue(route.query.reportYear))
   const dueMonth = readRouteQueryValue(route.query.dueMonth)
 
-  if (status) query.status = normalizeStatusText(status)
-  if (groupName) query.groupName = groupName
-  if (servicePerson) query.servicePerson = servicePerson
-  if (dueMonth) { query.dueMonth = dueMonth; dueMonthPicker.value = dueMonth }
-  if (Number.isFinite(reportYear) && reportYear > 0) query.reportYear = reportYear
-  if (status || groupName || servicePerson || hospitalName || dueMonth || Number.isFinite(reportYear)) query.page = 1
+  query.hospitalName = hospitalName || ''
+  query.productName = productName || ''
+  query.status = status ? normalizeStatusText(status) : ''
+  query.groupName = groupName || ''
+  query.servicePerson = servicePerson || ''
+  query.priority = priority || ''
+  query.reviewer = reviewer || ''
+  if (dueMonth) {
+    query.dueMonth = dueMonth
+    dueMonthPicker.value = dueMonth
+  } else {
+    query.dueMonth = ''
+    dueMonthPicker.value = ''
+  }
+  query.reportYear = Number.isFinite(reportYear) && reportYear > 0 ? reportYear : undefined
+  if (status || groupName || servicePerson || hospitalName || productName || priority || reviewer || dueMonth || Number.isFinite(reportYear)) query.page = 1
 }
 
 const getRouteHospitalName = () => readRouteQueryValue(route.query.hospitalName)
 
 type AnnualReportFilterState = {
+  hospitalName: string
+  productName: string
   status: string
   reportYear: number | undefined
   dueMonth: string
   groupName: string
   servicePerson: string
+  priority: string
+  reviewer: string
   page: number
   size: number
 }
@@ -426,12 +544,14 @@ const onOverdueClick = () => {
   } else {
     isOverdueActive.value = true
     query.status = ''
+    query.reportYear = undefined
     query.dueMonth = ''
     dueMonthPicker.value = ''
     query.groupName = ''
     query.servicePerson = ''
   }
   query.page = 1
+  void updateRouteQuery({ hospitalName: undefined, reportYear: undefined })
   loadData()
 }
 
@@ -505,11 +625,15 @@ const loadData = async () => {
           if (item.dueMonth > currentMonth.value || sameStatus(item.status, '已完成')) return false
         }
         if (hospitalName && item.hospitalName !== hospitalName) return false
+        if (query.hospitalName && !item.hospitalName.includes(query.hospitalName)) return false
+        if (query.productName && !item.productName.includes(query.productName)) return false
         if (query.status && !sameStatus(item.status, query.status)) return false
         if (query.dueMonth && item.dueMonth !== query.dueMonth) return false
         if (query.reportYear && item.reportYear !== query.reportYear) return false
         if (query.groupName && item.groupName !== query.groupName) return false
         if (query.servicePerson && item.servicePerson !== query.servicePerson) return false
+        if (query.priority && item.priority !== query.priority) return false
+        if (query.reviewer && !item.reviewer?.includes(query.reviewer)) return false
         return true
       })
 
@@ -525,11 +649,15 @@ const loadData = async () => {
       const res = await fetchAnnualReportList({
         page: query.page < 1 ? 1 : query.page,
         size: query.size <= 0 ? 15 : query.size,
+        ...(query.hospitalName ? { hospitalName: query.hospitalName } : {}),
+        ...(query.productName ? { productName: query.productName } : {}),
         ...(query.status ? { status: query.status } : {}),
         ...(query.reportYear ? { reportYear: query.reportYear } : {}),
         ...(query.dueMonth ? { dueMonth: query.dueMonth } : {}),
         ...(query.groupName ? { groupName: query.groupName } : {}),
         ...(query.servicePerson ? { servicePerson: query.servicePerson } : {}),
+        ...(query.priority ? { priority: query.priority } : {}),
+        ...(query.reviewer ? { reviewer: query.reviewer } : {}),
       })
       tableData.value = res.data.items
       total.value = res.data.total
@@ -545,12 +673,18 @@ const loadData = async () => {
 
 const onStatClick = (status: string) => {
   isOverdueActive.value = false
+  query.hospitalName = ''
+  query.productName = ''
   query.status = normalizeStatusText(status)
+  query.reportYear = undefined
   query.dueMonth = ''
   dueMonthPicker.value = ''
   query.groupName = ''
   query.servicePerson = ''
+  query.priority = ''
+  query.reviewer = ''
   query.page = 1
+  void updateRouteQuery({ hospitalName: undefined, reportYear: undefined })
   loadData()
 }
 
@@ -558,16 +692,29 @@ const onSearch = () => { query.page = 1; loadData() }
 
 const onReset = () => {
   isOverdueActive.value = false
+  query.hospitalName = ''
+  query.productName = ''
   query.status = ''
   query.reportYear = undefined
   query.dueMonth = ''
   dueMonthPicker.value = ''
   query.groupName = ''
   query.servicePerson = ''
+  query.priority = ''
+  query.reviewer = ''
   query.page = 1
   query.size = 15
   clearFilterState()
-  void updateRouteQuery({ hospitalName: undefined, action: undefined, id: undefined, dueMonth: undefined })
+  void updateRouteQuery({
+    status: undefined,
+    groupName: undefined,
+    servicePerson: undefined,
+    hospitalName: undefined,
+    reportYear: undefined,
+    dueMonth: undefined,
+    action: undefined,
+    id: undefined,
+  })
   loadData()
 }
 
@@ -593,20 +740,28 @@ const { restore: restoreFilterState, clear: clearFilterState } = useFilterStateP
   key: 'annual-report',
   getState: () => ({
     status: query.status,
+    hospitalName: query.hospitalName,
+    productName: query.productName,
     reportYear: query.reportYear,
     dueMonth: query.dueMonth,
     groupName: query.groupName,
     servicePerson: query.servicePerson,
+    priority: query.priority,
+    reviewer: query.reviewer,
     page: query.page,
     size: query.size,
   }),
   applyState: (state) => {
     query.status = state.status ?? ''
+    query.hospitalName = state.hospitalName ?? ''
+    query.productName = state.productName ?? ''
     query.reportYear = typeof state.reportYear === 'number' ? state.reportYear : undefined
     query.dueMonth = state.dueMonth ?? ''
     dueMonthPicker.value = state.dueMonth ?? ''
     query.groupName = state.groupName ?? ''
     query.servicePerson = state.servicePerson ?? ''
+    query.priority = state.priority ?? ''
+    query.reviewer = state.reviewer ?? ''
     query.page = typeof state.page === 'number' ? state.page : 1
     query.size = typeof state.size === 'number' ? state.size : 15
   },
@@ -616,6 +771,66 @@ watch(() => [query.status, query.reportYear, query.dueMonth], () => {
   if (query.groupName && !filteredGroupOptions.value.includes(query.groupName)) query.groupName = ''
   if (query.servicePerson && !filteredServicePersonOptions.value.includes(query.servicePerson)) query.servicePerson = ''
 })
+
+const resetCreateForm = () => {
+  createForm.opportunityNumber = ''
+  createForm.hospitalName = ''
+  createForm.productName = ''
+  createForm.province = ''
+  createForm.groupName = ''
+  createForm.servicePerson = ''
+  createForm.implementationStatus = ''
+  createForm.maintenanceStartDate = ''
+  createForm.maintenanceEndDate = ''
+  createForm.reportYear = new Date().getFullYear()
+  createForm.status = '未开始'
+  createForm.priority = '中'
+  createForm.remarks = ''
+}
+
+const onOpenCreate = () => {
+  resetCreateForm()
+  createVisible.value = true
+}
+
+const onSubmitCreate = async () => {
+  if (!createForm.hospitalName?.trim() || !createForm.productName?.trim()) {
+    ElMessage.warning('请至少填写医院名称和产品名称')
+    return
+  }
+
+  createSubmitting.value = true
+  try {
+    await createAnnualReport(createForm)
+    ElMessage.success('新增成功')
+    createVisible.value = false
+    await Promise.allSettled([loadSummary(), loadFilterOptions(), loadData()])
+  } catch (error) {
+    ElMessage.error(getErrorMessage(error, '新增失败'))
+  } finally {
+    createSubmitting.value = false
+  }
+}
+
+const onDelete = async (row: AnnualReportItem) => {
+  try {
+    await ElMessageBox.confirm(`确认删除年度报告 #${row.id} 吗？`, '删除确认', {
+      type: 'warning',
+      confirmButtonText: '删除',
+      cancelButtonText: '取消',
+    })
+  } catch {
+    return
+  }
+
+  try {
+    await deleteAnnualReport(row.id)
+    ElMessage.success('删除成功')
+    await Promise.allSettled([loadSummary(), loadFilterOptions(), loadData()])
+  } catch (error) {
+    ElMessage.error(getErrorMessage(error, '删除失败'))
+  }
+}
 
 const refreshLinkedData = async () => {
   await Promise.allSettled([loadSummary(), loadFilterOptions(), loadData()])

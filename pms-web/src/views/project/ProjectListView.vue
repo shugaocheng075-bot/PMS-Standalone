@@ -7,7 +7,7 @@
       </div>
     </div>
 
-    <el-card shadow="never" class="filter-card">
+    <AppFilterCard>
       <el-form :model="query" inline class="filter-form" @submit.prevent="onSearch">
         <el-form-item label="医院名称">
           <el-input v-model="query.hospitalName" placeholder="请输入医院名称" clearable @keyup.enter="onSearch" />
@@ -68,9 +68,9 @@
           >批量编辑（{{ selectedProjectIds.length }}）</el-button>
         </el-form-item>
       </el-form>
-    </el-card>
+    </AppFilterCard>
 
-    <el-card shadow="never" class="table-card">
+    <AppTableCard>
       <el-table :data="tableData" v-loading="loading" stripe max-height="520" scrollbar-always-on empty-text="暂无符合条件的数据" @selection-change="onSelectionChange" @row-dblclick="onRowDoubleClick">
         <el-table-column v-if="canManageProjects" type="selection" width="46" />
         <el-table-column prop="hospitalName" label="医院名称" min-width="220" show-overflow-tooltip sortable />
@@ -111,25 +111,25 @@
           @current-change="(page: number) => { query.page = page; loadData() }"
         />
       </div>
-    </el-card>
+    </AppTableCard>
 
-    <el-dialog v-model="batchEditVisible" title="批量编辑项目台账" width="560px" destroy-on-close>
-      <el-form label-width="110px">
-        <el-form-item label="合同状态">
+    <AppFormDialog v-model="batchEditVisible" title="批量编辑项目台账" width="560px">
+      <el-form ref="batchFormRef" :model="batchEditForm" :rules="batchEditRules" label-width="110px">
+        <el-form-item label="合同状态" prop="contractStatus">
           <el-select v-model="batchEditForm.contractStatus" clearable placeholder="不修改" style="width: 100%">
             <el-option v-for="status in contractStatusOptions" :key="`batch-status-${status}`" :label="status" :value="status" />
           </el-select>
         </el-form-item>
-        <el-form-item label="组别">
+        <el-form-item label="组别" prop="groupName">
           <el-input v-model="batchEditForm.groupName" placeholder="不修改" clearable />
         </el-form-item>
-        <el-form-item label="销售">
+        <el-form-item label="销售" prop="salesName">
           <el-input v-model="batchEditForm.salesName" placeholder="不修改" clearable />
         </el-form-item>
-        <el-form-item label="维护人员">
+        <el-form-item label="维护人员" prop="maintenancePersonName">
           <el-input v-model="batchEditForm.maintenancePersonName" placeholder="不修改" clearable />
         </el-form-item>
-        <el-form-item label="医院级别">
+        <el-form-item label="医院级别" prop="hospitalLevel">
           <el-select v-model="batchEditForm.hospitalLevel" clearable placeholder="不修改" style="width: 100%">
             <el-option v-for="level in levelOptions" :key="`batch-level-${level}`" :label="level" :value="level" />
           </el-select>
@@ -139,25 +139,25 @@
         <el-button @click="batchEditVisible = false">取消</el-button>
         <el-button type="primary" :loading="batchUpdating" @click="submitBatchEdit">提交</el-button>
       </template>
-    </el-dialog>
+    </AppFormDialog>
 
-    <el-dialog v-model="editVisible" title="编辑项目台账" width="560px" destroy-on-close>
-      <el-form label-width="110px">
-        <el-form-item label="合同状态">
+    <AppFormDialog v-model="editVisible" title="编辑项目台账" width="560px">
+      <el-form ref="editFormRef" :model="editForm" :rules="editFormRules" label-width="110px">
+        <el-form-item label="合同状态" prop="contractStatus">
           <el-select v-model="editForm.contractStatus" clearable placeholder="请选择合同状态" style="width: 100%">
             <el-option v-for="status in contractStatusOptions" :key="`edit-status-${status}`" :label="status" :value="status" />
           </el-select>
         </el-form-item>
-        <el-form-item label="组别">
+        <el-form-item label="组别" prop="groupName">
           <el-input v-model="editForm.groupName" clearable />
         </el-form-item>
-        <el-form-item label="销售">
+        <el-form-item label="销售" prop="salesName">
           <el-input v-model="editForm.salesName" clearable />
         </el-form-item>
-        <el-form-item label="维护人员">
+        <el-form-item label="维护人员" prop="maintenancePersonName">
           <el-input v-model="editForm.maintenancePersonName" clearable />
         </el-form-item>
-        <el-form-item label="医院级别">
+        <el-form-item label="医院级别" prop="hospitalLevel">
           <el-select v-model="editForm.hospitalLevel" clearable placeholder="请选择医院级别" style="width: 100%">
             <el-option v-for="level in levelOptions" :key="`edit-level-${level}`" :label="level" :value="level" />
           </el-select>
@@ -167,13 +167,14 @@
         <el-button :disabled="editSubmitting" @click="editVisible = false">取消</el-button>
         <el-button type="primary" :loading="editSubmitting" @click="submitEdit">保存</el-button>
       </template>
-    </el-dialog>
+    </AppFormDialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
+import type { FormInstance, FormRules } from 'element-plus'
 import { useRoute, useRouter } from 'vue-router'
 import { batchUpdateProjects, exportProjects, fetchProjectList, updateProject } from '../../api/modules/project'
 import type { ProjectItem } from '../../types/project'
@@ -183,6 +184,9 @@ import { useFilterStatePersist } from '../../composables/useFilterStatePersist'
 import { useLinkedRealtimeRefresh } from '../../composables/useLinkedRealtimeRefresh'
 import { useAccessControl } from '../../composables/useAccessControl'
 import { useResilientLoad } from '../../composables/useResilientLoad'
+import AppFilterCard from '../../components/AppFilterCard.vue'
+import AppTableCard from '../../components/AppTableCard.vue'
+import AppFormDialog from '../../components/AppFormDialog.vue'
 
 const loading = ref(false)
 const exporting = ref(false)
@@ -194,6 +198,8 @@ const selectedProjectIds = ref<number[]>([])
 const batchEditVisible = ref(false)
 const editVisible = ref(false)
 const editingId = ref<number | null>(null)
+const batchFormRef = ref<FormInstance>()
+const editFormRef = ref<FormInstance>()
 
 const batchEditForm = reactive({
   contractStatus: '',
@@ -210,6 +216,55 @@ const editForm = reactive({
   maintenancePersonName: '',
   hospitalLevel: '',
 })
+
+const maxTextLengthValidator = (_rule: unknown, value: string, callback: (error?: Error) => void) => {
+  if (!value) {
+    callback()
+    return
+  }
+
+  if (value.trim().length > 64) {
+    callback(new Error('长度不能超过64个字符'))
+    return
+  }
+
+  callback()
+}
+
+const oneOfValidator = (allowed: () => string[]) => (
+  _rule: unknown,
+  value: string,
+  callback: (error?: Error) => void,
+) => {
+  if (!value) {
+    callback()
+    return
+  }
+
+  const options = allowed()
+  if (options.length > 0 && !options.includes(value)) {
+    callback(new Error('请选择有效选项'))
+    return
+  }
+
+  callback()
+}
+
+const editFormRules: FormRules<typeof editForm> = {
+  contractStatus: [{ validator: oneOfValidator(() => contractStatusOptions.value), trigger: 'change' }],
+  groupName: [{ validator: maxTextLengthValidator, trigger: 'blur' }],
+  salesName: [{ validator: maxTextLengthValidator, trigger: 'blur' }],
+  maintenancePersonName: [{ validator: maxTextLengthValidator, trigger: 'blur' }],
+  hospitalLevel: [{ validator: oneOfValidator(() => levelOptions.value), trigger: 'change' }],
+}
+
+const batchEditRules: FormRules<typeof batchEditForm> = {
+  contractStatus: [{ validator: oneOfValidator(() => contractStatusOptions.value), trigger: 'change' }],
+  groupName: [{ validator: maxTextLengthValidator, trigger: 'blur' }],
+  salesName: [{ validator: maxTextLengthValidator, trigger: 'blur' }],
+  maintenancePersonName: [{ validator: maxTextLengthValidator, trigger: 'blur' }],
+  hospitalLevel: [{ validator: oneOfValidator(() => levelOptions.value), trigger: 'change' }],
+}
 
 const access = useAccessControl()
 const canManageProjects = computed(() => {
@@ -648,6 +703,11 @@ const submitEdit = async () => {
     return
   }
 
+  const valid = await editFormRef.value?.validate().catch(() => false)
+  if (!valid) {
+    return
+  }
+
   const payload = {
     contractStatus: editForm.contractStatus.trim() || undefined,
     groupName: editForm.groupName.trim() || undefined,
@@ -676,6 +736,11 @@ const submitEdit = async () => {
 }
 
 const submitBatchEdit = async () => {
+  const valid = await batchFormRef.value?.validate().catch(() => false)
+  if (!valid) {
+    return
+  }
+
   const payload = {
     projectIds: selectedProjectIds.value,
     contractStatus: batchEditForm.contractStatus.trim() || undefined,

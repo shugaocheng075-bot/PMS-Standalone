@@ -21,7 +21,14 @@
             @show="loadNotifications"
           >
             <template #reference>
-              <el-badge :value="unreadCount" :hidden="unreadCount === 0" :max="99" class="notification-badge">
+              <el-badge
+                :value="unreadCount"
+                :hidden="unreadCount === 0"
+                :max="99"
+                class="notification-badge"
+                aria-live="polite"
+                role="status"
+              >
                 <span class="nav-icon"><el-icon><Bell /></el-icon></span>
               </el-badge>
             </template>
@@ -85,14 +92,14 @@
 
     <!-- 修改密码对话框 -->
     <el-dialog v-model="showChangePasswordDialog" title="修改密码" width="400" :close-on-click-modal="false">
-      <el-form :model="passwordForm" label-width="80px">
-        <el-form-item label="原密码">
+      <el-form ref="passwordFormRef" :model="passwordForm" :rules="passwordFormRules" label-width="80px">
+        <el-form-item label="原密码" prop="oldPassword">
           <el-input v-model="passwordForm.oldPassword" type="password" show-password placeholder="请输入原密码" />
         </el-form-item>
-        <el-form-item label="新密码">
-          <el-input v-model="passwordForm.newPassword" type="password" show-password placeholder="至少6个字符" />
+        <el-form-item label="新密码" prop="newPassword">
+          <el-input v-model="passwordForm.newPassword" type="password" show-password placeholder="至少8位，包含字母和数字" />
         </el-form-item>
-        <el-form-item label="确认密码">
+        <el-form-item label="确认密码" prop="confirmPassword">
           <el-input v-model="passwordForm.confirmPassword" type="password" show-password placeholder="再次输入新密码" />
         </el-form-item>
       </el-form>
@@ -159,9 +166,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter, type RouteLocationRaw } from 'vue-router'
 import { Bell, Loading, Menu, User } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
+import type { FormInstance, FormRules } from 'element-plus'
 import { logout, changePassword } from '../api/modules/auth'
 import { fetchAccessActors } from '../api/modules/access'
 import { fetchNotificationSummary, fetchNotifications, markNotificationAsRead, markAllNotificationsAsRead } from '../api/modules/notification'
@@ -569,32 +578,74 @@ const onLogout = async () => {
 // Change password state
 const showChangePasswordDialog = ref(false)
 const changingPassword = ref(false)
-const passwordForm = ref({ oldPassword: '', newPassword: '', confirmPassword: '' })
+const passwordFormRef = ref<FormInstance>()
+const passwordForm = reactive({ oldPassword: '', newPassword: '', confirmPassword: '' })
+
+const passwordFormRules: FormRules<typeof passwordForm> = {
+  oldPassword: [
+    { required: true, message: '请输入原密码', trigger: 'blur' },
+    { min: 6, max: 128, message: '原密码长度需在6到128个字符之间', trigger: 'blur' },
+  ],
+  newPassword: [
+    { required: true, message: '请输入新密码', trigger: 'blur' },
+    { min: 8, max: 128, message: '新密码长度需在8到128个字符之间', trigger: 'blur' },
+    { pattern: /^(?=.*[A-Za-z])(?=.*\d).+$/, message: '新密码需至少包含字母和数字', trigger: 'blur' },
+  ],
+  confirmPassword: [
+    { required: true, message: '请再次输入新密码', trigger: 'blur' },
+    {
+      validator: (_rule, value: string, callback) => {
+        if (value !== passwordForm.newPassword) {
+          callback(new Error('两次输入的新密码不一致'))
+          return
+        }
+
+        callback()
+      },
+      trigger: 'blur',
+    },
+  ],
+}
+
+const resetPasswordForm = () => {
+  passwordForm.oldPassword = ''
+  passwordForm.newPassword = ''
+  passwordForm.confirmPassword = ''
+  passwordFormRef.value?.clearValidate()
+}
 
 const onChangePassword = async () => {
-  if (passwordForm.value.newPassword.length < 6) {
-    ElMessage.warning('新密码不能少于6个字符')
+  const valid = await passwordFormRef.value?.validate().catch(() => false)
+  if (!valid) {
     return
   }
-  if (passwordForm.value.newPassword !== passwordForm.value.confirmPassword) {
-    ElMessage.warning('两次输入的新密码不一致')
+
+  if (passwordForm.oldPassword === passwordForm.newPassword) {
+    ElMessage.warning('新密码不能与原密码相同')
     return
   }
+
   changingPassword.value = true
   try {
     await changePassword({
-      oldPassword: passwordForm.value.oldPassword,
-      newPassword: passwordForm.value.newPassword,
+      oldPassword: passwordForm.oldPassword,
+      newPassword: passwordForm.newPassword,
     })
     ElMessage.success('密码修改成功')
     showChangePasswordDialog.value = false
-    passwordForm.value = { oldPassword: '', newPassword: '', confirmPassword: '' }
+    resetPasswordForm()
   } catch {
     ElMessage.error('密码修改失败，请检查原密码是否正确')
   } finally {
     changingPassword.value = false
   }
 }
+
+watch(showChangePasswordDialog, (visible) => {
+  if (!visible) {
+    resetPasswordForm()
+  }
+})
 
 const updateViewportState = () => {
   if (typeof window === 'undefined') {

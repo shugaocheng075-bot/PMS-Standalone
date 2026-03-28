@@ -54,11 +54,14 @@ public class InspectionsController(
 
     [HttpGet]
     public async Task<IActionResult> GetList(
+        [FromQuery] string? hospitalName,
         [FromQuery] string? status,
         [FromQuery] string? province,
         [FromQuery] string? productName,
         [FromQuery] string? groupName,
         [FromQuery] string? inspector,
+        [FromQuery] string? inspectionType,
+        [FromQuery] string? priority,
         [FromQuery] int page = 1,
         [FromQuery] int size = 20,
         CancellationToken cancellationToken = default)
@@ -74,10 +77,13 @@ public class InspectionsController(
             var allResult = await inspectionService.QueryAsync(new InspectionQuery
             {
                 Status = status,
+                HospitalName = hospitalName,
                 Province = province,
                 ProductName = productName,
                 GroupName = groupName,
                 Inspector = inspector,
+                InspectionType = inspectionType,
+                Priority = priority,
                 Page = 1,
                 Size = int.MaxValue
             }, cancellationToken);
@@ -106,10 +112,13 @@ public class InspectionsController(
         var result = await inspectionService.QueryAsync(new InspectionQuery
         {
             Status = status,
+            HospitalName = hospitalName,
             Province = province,
             ProductName = productName,
             GroupName = groupName,
             Inspector = inspector,
+            InspectionType = inspectionType,
+            Priority = priority,
             Page = page,
             Size = size
         }, cancellationToken);
@@ -130,6 +139,25 @@ public class InspectionsController(
         }
 
         return Ok(ApiResponse<InspectionPlanItemDto>.Success(updated));
+    }
+
+    [HttpPost]
+    public async Task<IActionResult> Create([FromBody] InspectionPlanUpsertDto dto, CancellationToken cancellationToken = default)
+    {
+        var created = await inspectionService.CreateAsync(dto, cancellationToken);
+        return Ok(ApiResponse<InspectionPlanItemDto>.Success(created));
+    }
+
+    [HttpDelete("{id:long}")]
+    public async Task<IActionResult> Delete(long id, CancellationToken cancellationToken = default)
+    {
+        var removed = await inspectionService.DeleteAsync(id, cancellationToken);
+        if (!removed)
+        {
+            return NotFound(new ApiResponse<object> { Code = 404, Message = "未找到对应巡检计划" });
+        }
+
+        return Ok(ApiResponse<bool>.Success(true));
     }
 
     // ─── SystemAuditTool 巡检结果推送 ───
@@ -312,11 +340,14 @@ public class InspectionsController(
 
     [HttpGet("export")]
     public async Task<IActionResult> Export(
+        [FromQuery] string? hospitalName,
         [FromQuery] string? status,
         [FromQuery] string? province,
         [FromQuery] string? productName,
         [FromQuery] string? groupName,
         [FromQuery] string? inspector,
+        [FromQuery] string? inspectionType,
+        [FromQuery] string? priority,
         CancellationToken cancellationToken = default)
     {
         var personnelId = HttpContext.GetCurrentPersonnelId();
@@ -325,10 +356,13 @@ public class InspectionsController(
         var allResult = await inspectionService.QueryAsync(new InspectionQuery
         {
             Status = status,
+            HospitalName = hospitalName,
             Province = province,
             ProductName = productName,
             GroupName = groupName,
             Inspector = inspector,
+            InspectionType = inspectionType,
+            Priority = priority,
             Page = 1,
             Size = 50000
         }, cancellationToken);
@@ -337,7 +371,7 @@ public class InspectionsController(
             dataScope, allResult.Items, x => x.HospitalName).ToList();
 
         var sb = new StringBuilder();
-        sb.AppendLine("\uFEFFID,医院名称,产品名称,省份,组别,巡检人,计划日期,实际日期,状态,巡检类型");
+        sb.AppendLine("\uFEFFID,医院名称,产品名称,省份,医院级别,组别,巡检人,计划日期,实际日期,状态,巡检类型,优先级,备注");
         foreach (var item in items)
         {
             sb.AppendLine(string.Join(",",
@@ -345,12 +379,15 @@ public class InspectionsController(
                 EscapeCsv(item.HospitalName),
                 EscapeCsv(item.ProductName),
                 EscapeCsv(item.Province),
+            EscapeCsv(item.HospitalLevel),
                 EscapeCsv(item.GroupName),
                 EscapeCsv(item.Inspector),
                 EscapeCsv(item.PlanDate.ToString("yyyy-MM-dd")),
                 EscapeCsv(item.ActualDate?.ToString("yyyy-MM-dd") ?? ""),
                 EscapeCsv(item.Status),
-                EscapeCsv(item.InspectionType)));
+            EscapeCsv(item.InspectionType),
+            EscapeCsv(item.Priority),
+            EscapeCsv(item.Remarks)));
         }
 
         var bytes = Encoding.UTF8.GetBytes(sb.ToString());

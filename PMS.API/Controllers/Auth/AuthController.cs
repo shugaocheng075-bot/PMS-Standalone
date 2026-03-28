@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using PMS.API.Middleware;
 using PMS.API.Models;
 using PMS.Application.Contracts.Access;
@@ -13,6 +14,7 @@ namespace PMS.API.Controllers.Auth;
 public class AuthController(IAuthService authService, IAccessControlService accessControlService) : ControllerBase
 {
     [HttpPost("login")]
+    [EnableRateLimiting("AuthLogin")]
     public async Task<IActionResult> Login([FromBody] LoginRequest request, CancellationToken cancellationToken = default)
     {
         var result = await authService.LoginAsync(request, cancellationToken);
@@ -53,8 +55,8 @@ public class AuthController(IAuthService authService, IAccessControlService acce
     [HttpPost("change-password")]
     public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordRequest request, CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(request.NewPassword) || request.NewPassword.Length < 6)
-            return BadRequest(new { code = 400, message = "新密码不能少于6个字符" });
+        if (string.Equals(request.OldPassword, request.NewPassword, StringComparison.Ordinal))
+            return BadRequest(new { code = 400, message = "新密码不能与原密码相同" });
 
         var personnelId = HttpContext.GetCurrentPersonnelId();
         var result = await authService.ChangePasswordAsync(personnelId, request.OldPassword, request.NewPassword, cancellationToken);

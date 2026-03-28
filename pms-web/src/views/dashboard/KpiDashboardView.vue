@@ -78,11 +78,11 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import * as echarts from 'echarts'
 import { ElMessage } from 'element-plus'
 import { fetchDashboardV3 } from '../../api/modules/dashboard'
 import type { DashboardV3Data } from '../../types/dashboard-kpi'
 import { getErrorMessage } from '../../utils/error'
+import { basicEcharts, type ECharts } from '../../utils/echarts-basic'
 
 const loading = ref(false)
 const kpiData = ref<DashboardV3Data | null>(null)
@@ -94,11 +94,11 @@ const inspectionChartRef = ref<HTMLDivElement | null>(null)
 const coverageChartRef = ref<HTMLDivElement | null>(null)
 const loadChartRef = ref<HTMLDivElement | null>(null)
 
-let contractChart: echarts.ECharts | null = null
-let repairChart: echarts.ECharts | null = null
-let inspectionChart: echarts.ECharts | null = null
-let coverageChart: echarts.ECharts | null = null
-let loadChart: echarts.ECharts | null = null
+let contractChart: ECharts | null = null
+let repairChart: ECharts | null = null
+let inspectionChart: ECharts | null = null
+let coverageChart: ECharts | null = null
+let loadChart: ECharts | null = null
 
 const tagTypeForRate = (rate: number) => {
   if (rate >= 80) return 'success'
@@ -305,11 +305,11 @@ const loadKpi = async () => {
 
 onMounted(async () => {
   await nextTick()
-  if (contractChartRef.value) contractChart = echarts.init(contractChartRef.value)
-  if (repairChartRef.value) repairChart = echarts.init(repairChartRef.value)
-  if (inspectionChartRef.value) inspectionChart = echarts.init(inspectionChartRef.value)
-  if (coverageChartRef.value) coverageChart = echarts.init(coverageChartRef.value)
-  if (loadChartRef.value) loadChart = echarts.init(loadChartRef.value)
+  if (contractChartRef.value) contractChart = basicEcharts.init(contractChartRef.value)
+  if (repairChartRef.value) repairChart = basicEcharts.init(repairChartRef.value)
+  if (inspectionChartRef.value) inspectionChart = basicEcharts.init(inspectionChartRef.value)
+  if (coverageChartRef.value) coverageChart = basicEcharts.init(coverageChartRef.value)
+  if (loadChartRef.value) loadChart = basicEcharts.init(loadChartRef.value)
 
   window.addEventListener('resize', resizeCharts)
   await loadKpi()

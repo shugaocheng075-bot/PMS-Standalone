@@ -26,7 +26,7 @@
       <el-col :span="6"><el-card shadow="never" class="stat-card stats-card clickable" :class="{ active: activeStatFilter === 'onsite' }" @click="onStatClick('onsite')"><div class="t">驻场人数</div><div class="v danger">{{ summary.onsiteCount }}</div></el-card></el-col>
     </el-row>
 
-    <el-card shadow="never" class="filter-card">
+    <AppFilterCard>
       <el-form :model="query" inline class="filter-form" @submit.prevent="onSearch">
         <el-form-item label="姓名"><el-input v-model="query.name" clearable @keyup.enter="onSearch" /></el-form-item>
         <el-form-item label="部门">
@@ -39,6 +39,7 @@
             <el-option v-for="group in groupOptions" :key="group" :label="group" :value="group" />
           </el-select>
         </el-form-item>
+        <el-form-item label="主管"><el-input v-model="query.supervisor" clearable @keyup.enter="onSearch" placeholder="输入主管姓名" /></el-form-item>
         <el-form-item label="角色">
           <el-select v-model="query.roleType" clearable style="width: 140px" placeholder="全部">
             <el-option v-for="roleType in roleTypeOptions" :key="roleType" :label="roleType" :value="roleType" />
@@ -55,9 +56,9 @@
           <el-button @click="onReset">重置</el-button>
         </el-form-item>
       </el-form>
-    </el-card>
+    </AppFilterCard>
 
-    <el-card shadow="never" class="table-card">
+    <AppTableCard>
       <el-table
         class="permission-table"
         :data="tableData"
@@ -161,29 +162,43 @@
           @current-change="(page: number) => { query.page = page; loadData() }"
         />
       </div>
-    </el-card>
+    </AppTableCard>
 
-    <el-dialog v-model="editVisible" :title="editMode === 'create' ? '新增人员' : '编辑人员'" width="620px" destroy-on-close>
-      <el-form ref="editFormRef" :model="editForm" :rules="editRules" label-width="90px">
-        <el-form-item label="姓名" prop="name"><el-input v-model="editForm.name" /></el-form-item>
-        <el-form-item label="部门" prop="department"><el-input v-model="editForm.department" /></el-form-item>
-        <el-form-item label="组别" prop="groupName"><el-input v-model="editForm.groupName" /></el-form-item>
-        <el-form-item label="角色" prop="roleType">
-          <el-select v-model="editForm.roleType" style="width: 160px">
-            <el-option label="服务" value="服务" />
-            <el-option label="实施" value="实施" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="电话" prop="phone"><el-input v-model="editForm.phone" /></el-form-item>
-        <el-form-item label="驻场"><el-switch v-model="editForm.isOnsite" /></el-form-item>
+    <AppFormDialog v-model="editVisible" :title="editMode === 'create' ? '新增人员' : '编辑人员'" width="900px">
+      <el-form ref="editFormRef" :model="editForm" :rules="editRules" label-width="110px">
+        <el-row :gutter="16">
+          <el-col :span="12"><el-form-item label="员工编号"><el-input v-model="editForm.employeeId" /></el-form-item></el-col>
+          <el-col :span="12"><el-form-item label="姓名" prop="name"><el-input v-model="editForm.name" /></el-form-item></el-col>
+          <el-col :span="12"><el-form-item label="性别"><el-input v-model="editForm.gender" placeholder="男/女" /></el-form-item></el-col>
+          <el-col :span="12"><el-form-item label="手机号" prop="phone"><el-input v-model="editForm.phone" /></el-form-item></el-col>
+          <el-col :span="12"><el-form-item label="婚姻状况"><el-input v-model="editForm.maritalStatus" /></el-form-item></el-col>
+          <el-col :span="12"><el-form-item label="常住地(Base地)"><el-input v-model="editForm.baseAddress" /></el-form-item></el-col>
+          <el-col :span="12"><el-form-item label="家庭省份"><el-input v-model="editForm.homeProvince" /></el-form-item></el-col>
+          <el-col :span="12"><el-form-item label="家庭城市"><el-input v-model="editForm.homeCity" /></el-form-item></el-col>
+          <el-col :span="12"><el-form-item label="部门" prop="department"><el-input v-model="editForm.department" /></el-form-item></el-col>
+          <el-col :span="12"><el-form-item label="组别" prop="groupName"><el-input v-model="editForm.groupName" /></el-form-item></el-col>
+          <el-col :span="12"><el-form-item label="岗位"><el-input v-model="editForm.position" /></el-form-item></el-col>
+          <el-col :span="12"><el-form-item label="职级"><el-input v-model="editForm.workLevel" /></el-form-item></el-col>
+          <el-col :span="12"><el-form-item label="用户角色"><el-input v-model="editForm.userRole" /></el-form-item></el-col>
+          <el-col :span="12"><el-form-item label="用户状态"><el-input v-model="editForm.userStatus" placeholder="在职/离职" /></el-form-item></el-col>
+          <el-col :span="12">
+            <el-form-item label="角色" prop="roleType">
+              <el-select v-model="editForm.roleType" style="width: 100%">
+                <el-option label="服务" value="服务" />
+                <el-option label="实施" value="实施" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+          <el-col :span="12"><el-form-item label="驻场"><el-switch v-model="editForm.isOnsite" /></el-form-item></el-col>
+        </el-row>
       </el-form>
       <template #footer>
         <el-button :disabled="submitLoading" @click="editVisible = false">取消</el-button>
         <el-button type="primary" :loading="submitLoading" :disabled="submitLoading" @click="onSaveEdit">保存</el-button>
       </template>
-    </el-dialog>
+    </AppFormDialog>
 
-    <el-dialog v-model="detailVisible" title="人员详情" width="560px" destroy-on-close>
+    <AppFormDialog v-model="detailVisible" title="人员详情" width="560px">
       <el-descriptions v-if="detailItem" :column="2" border>
         <el-descriptions-item label="姓名">{{ detailItem.name }}</el-descriptions-item>
         <el-descriptions-item label="角色">{{ detailItem.roleType }}</el-descriptions-item>
@@ -195,9 +210,9 @@
       <template #footer>
         <el-button type="primary" @click="detailVisible = false">关闭</el-button>
       </template>
-    </el-dialog>
+    </AppFormDialog>
 
-    <el-dialog v-model="permissionVisible" title="权限配置" width="760px" destroy-on-close>
+    <AppFormDialog v-model="permissionVisible" title="权限配置" width="760px">
       <el-skeleton :loading="permissionLoading" animated :rows="5">
         <template #default>
           <template v-if="permissionTarget">
@@ -284,7 +299,7 @@
         <el-button :disabled="permissionSubmitLoading" @click="permissionVisible = false">取消</el-button>
         <el-button type="primary" :loading="permissionSubmitLoading" @click="onSavePermission">保存权限</el-button>
       </template>
-    </el-dialog>
+    </AppFormDialog>
   </div>
 </template>
 
@@ -303,6 +318,7 @@ import {
   updatePersonnel,
 } from '../../api/modules/personnel'
 import {
+  fetchAccessUsers,
   fetchAccessActors,
   fetchHospitalScope,
   fetchPermissionCatalog,
@@ -321,6 +337,9 @@ import { DEPARTMENT_OPTIONS, GROUP_OPTIONS } from '../../constants/filterOptions
 import { useFilterStatePersist } from '../../composables/useFilterStatePersist'
 import { useLinkedRealtimeRefresh } from '../../composables/useLinkedRealtimeRefresh'
 import { useAccessControl } from '../../composables/useAccessControl'
+import AppFilterCard from '../../components/AppFilterCard.vue'
+import AppTableCard from '../../components/AppTableCard.vue'
+import AppFormDialog from '../../components/AppFormDialog.vue'
 
 const loading = ref(false)
 const syncLoading = ref(false)
@@ -340,6 +359,7 @@ const query = reactive({
   name: '',
   department: '',
   groupName: '',
+  supervisor: '',
   roleType: '',
   isOnsite: undefined as boolean | undefined,
   page: 1,
@@ -386,6 +406,7 @@ const clearRouteActionQuery = async () => {
 const departmentOptions = ref<string[]>([...DEPARTMENT_OPTIONS])
 const groupOptions = ref<string[]>([...GROUP_OPTIONS])
 const roleTypeOptions = ref<string[]>(['服务', '实施'])
+const personnelSupervisorMap = ref<Record<number, string>>({})
 
 const normalizeText = (value: string | undefined | null) => (value ?? '').trim().toLowerCase()
 
@@ -599,10 +620,13 @@ const hasActiveFilter = computed(() => {
     || query.name
     || query.department
     || query.groupName
+    || query.supervisor
     || query.roleType
     || onsiteValue.value,
   )
 })
+
+const resolveSupervisorName = (row: PersonnelItem) => personnelSupervisorMap.value[row.id] || ''
 
 const matchesFilter = (row: PersonnelItem, exclude: 'department' | 'groupName' | 'roleType' | null = null) => {
   if (!textContains(row.name, query.name)) {
@@ -614,6 +638,10 @@ const matchesFilter = (row: PersonnelItem, exclude: 'department' | 'groupName' |
   }
 
   if (exclude !== 'groupName' && query.groupName && !textContains(row.groupName, query.groupName)) {
+    return false
+  }
+
+  if (query.supervisor && !textContains(resolveSupervisorName(row), query.supervisor)) {
     return false
   }
 
@@ -668,6 +696,7 @@ const refreshLinkedOptions = () => {
   if (query.roleType && !roleTypeOptions.value.includes(query.roleType)) {
     query.roleType = ''
   }
+
 }
 
 const applyFilterAndPagination = () => {
@@ -696,6 +725,7 @@ const updateTableMaxHeight = () => {
 const applyDrillQuery = () => {
   const name = readRouteQueryValue(route.query.name)
   const groupName = readRouteQueryValue(route.query.groupName)
+  const supervisor = readRouteQueryValue(route.query.supervisor)
   const roleType = readRouteQueryValue(route.query.roleType)
   const isOnsite = readRouteQueryValue(route.query.isOnsite)
   let applied = false
@@ -707,6 +737,11 @@ const applyDrillQuery = () => {
 
   if (groupName) {
     query.groupName = groupName
+    applied = true
+  }
+
+  if (supervisor) {
+    query.supervisor = supervisor
     applied = true
   }
 
@@ -730,6 +765,7 @@ type PersonnelFilterState = {
   name: string
   department: string
   groupName: string
+  supervisor: string
   roleType: string
   onsiteValue: string
   page: number
@@ -868,7 +904,22 @@ const permissionGroups = computed(() => {
     .sort((a, b) => a.module.localeCompare(b.module, 'zh-CN'))
 })
 
-const editForm = reactive<PersonnelUpsert>({
+type PersonnelEditForm = PersonnelUpsert & {
+  employeeId: string
+  gender: string
+  maritalStatus: string
+  baseAddress: string
+  homeProvince: string
+  homeCity: string
+  position: string
+  workLevel: string
+  userRole: string
+  userStatus: string
+}
+
+const editSourceColumnsBase = ref<Record<string, string>>({})
+
+const editForm = reactive<PersonnelEditForm>({
   name: '',
   department: '',
   groupName: '',
@@ -877,6 +928,16 @@ const editForm = reactive<PersonnelUpsert>({
   isOnsite: false,
   projectCount: 0,
   overdueCount: 0,
+  employeeId: '',
+  gender: '',
+  maritalStatus: '',
+  baseAddress: '',
+  homeProvince: '',
+  homeCity: '',
+  position: '',
+  workLevel: '',
+  userRole: '',
+  userStatus: '',
 })
 const { runInitialLoad } = useResilientLoad()
 const { notifyDataChanged } = useLinkedRealtimeRefresh({
@@ -887,7 +948,7 @@ const { notifyDataChanged } = useLinkedRealtimeRefresh({
   intervalMs: 60000,
 })
 
-const editRules: FormRules<PersonnelUpsert> = {
+const editRules: FormRules<PersonnelEditForm> = {
   name: [{ required: true, message: '请输入姓名', trigger: 'blur' }],
   department: [{ required: true, message: '请输入部门', trigger: 'blur' }],
   groupName: [{ required: true, message: '请输入组别', trigger: 'blur' }],
@@ -917,13 +978,26 @@ const updateLocalSummary = () => {
 const loadAllPersonnelRows = async () => {
   loading.value = true
   try {
-    const res = await fetchPersonnel({ page: 1, size: 100000 })
-    allPersonnelRows.value = res.data.items
+    const personnelRes = await fetchPersonnel({ page: 1, size: 100000 })
+
+    try {
+      const accessRes = await fetchAccessUsers({ page: 1, size: 5000 })
+      const supervisorMap: Record<number, string> = {}
+      accessRes.data.items.forEach((item) => {
+        supervisorMap[item.personnelId] = (item.supervisorName || '').trim()
+      })
+      personnelSupervisorMap.value = supervisorMap
+    } catch {
+      personnelSupervisorMap.value = {}
+    }
+
+    allPersonnelRows.value = personnelRes.data.items
     updateLocalSummary()
     refreshLinkedOptions()
     applyFilterAndPagination()
   } catch (error) {
     allPersonnelRows.value = []
+    personnelSupervisorMap.value = {}
     updateLocalSummary()
     tableData.value = []
     total.value = 0
@@ -958,6 +1032,7 @@ const onStatClick = (key: string) => {
   query.name = ''
   query.department = ''
   query.groupName = ''
+  query.supervisor = ''
   query.roleType = ''
   onsiteValue.value = ''
   query.isOnsite = undefined
@@ -987,6 +1062,7 @@ const onReset = () => {
   query.name = ''
   query.department = ''
   query.groupName = ''
+  query.supervisor = ''
   query.roleType = ''
   onsiteValue.value = ''
   query.isOnsite = undefined
@@ -1026,6 +1102,7 @@ const { restore: restoreFilterState, clear: clearFilterState } = useFilterStateP
     name: query.name,
     department: query.department,
     groupName: query.groupName,
+    supervisor: query.supervisor,
     roleType: query.roleType,
     onsiteValue: onsiteValue.value,
     page: query.page,
@@ -1035,6 +1112,7 @@ const { restore: restoreFilterState, clear: clearFilterState } = useFilterStateP
     query.name = state.name ?? ''
     query.department = state.department ?? ''
     query.groupName = state.groupName ?? ''
+    query.supervisor = state.supervisor ?? ''
     query.roleType = state.roleType ?? ''
     onsiteValue.value = state.onsiteValue === 'true' || state.onsiteValue === 'false' ? state.onsiteValue : ''
     query.page = typeof state.page === 'number' ? state.page : 1
@@ -1045,6 +1123,69 @@ const { restore: restoreFilterState, clear: clearFilterState } = useFilterStateP
 
 watch(onsiteValue, syncOnsiteQuery)
 
+const buildEditableSourceColumnsFromRow = (row: PersonnelItem) => {
+  const merged: Record<string, string> = {}
+
+  Object.entries(row.sourceColumns ?? {}).forEach(([key, value]) => {
+    if (typeof value === 'string') {
+      merged[key] = value
+    }
+  })
+
+  Object.entries(getNestedSourceColumns(row)).forEach(([key, value]) => {
+    if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+      merged[key] = String(value)
+    }
+  })
+
+  delete merged.sourceColumns
+  return merged
+}
+
+const setSourceAliases = (target: Record<string, string>, keys: string[], value: string) => {
+  const text = value.trim()
+  if (!text) {
+    keys.forEach((key) => {
+      delete target[key]
+    })
+    return
+  }
+
+  keys.forEach((key) => {
+    target[key] = text
+  })
+}
+
+const buildPersonnelPayload = (): PersonnelUpsert => {
+  const sourceColumns = { ...editSourceColumnsBase.value }
+
+  setSourceAliases(sourceColumns, ['employeeId', '员工编号'], editForm.employeeId)
+  setSourceAliases(sourceColumns, ['sex', 'Sex', 'gender', 'Gender', '性别'], editForm.gender)
+  setSourceAliases(sourceColumns, ['maritalStatus', '婚姻状况'], editForm.maritalStatus)
+  setSourceAliases(sourceColumns, ['baseAddress', '常住地(Base地)'], editForm.baseAddress)
+  setSourceAliases(sourceColumns, ['homeProvince'], editForm.homeProvince)
+  setSourceAliases(sourceColumns, ['homeCity'], editForm.homeCity)
+  setSourceAliases(sourceColumns, ['position', '岗位'], editForm.position)
+  setSourceAliases(sourceColumns, ['workLevel', '职级'], editForm.workLevel)
+  setSourceAliases(sourceColumns, ['roleName', '用户角色', 'userRole'], editForm.userRole)
+  setSourceAliases(sourceColumns, ['userStatus', '用户状态'], editForm.userStatus)
+
+  const homeCityText = `${editForm.homeProvince}${editForm.homeCity}`.trim()
+  setSourceAliases(sourceColumns, ['家庭所在省市'], homeCityText)
+
+  return {
+    name: editForm.name,
+    department: editForm.department,
+    groupName: editForm.groupName,
+    roleType: editForm.roleType,
+    phone: editForm.phone,
+    isOnsite: editForm.isOnsite,
+    projectCount: editForm.projectCount,
+    overdueCount: editForm.overdueCount,
+    sourceColumns,
+  }
+}
+
 const resetEditForm = () => {
   editForm.name = ''
   editForm.department = ''
@@ -1054,6 +1195,17 @@ const resetEditForm = () => {
   editForm.isOnsite = false
   editForm.projectCount = 0
   editForm.overdueCount = 0
+  editForm.employeeId = ''
+  editForm.gender = ''
+  editForm.maritalStatus = ''
+  editForm.baseAddress = ''
+  editForm.homeProvince = ''
+  editForm.homeCity = ''
+  editForm.position = ''
+  editForm.workLevel = ''
+  editForm.userRole = ''
+  editForm.userStatus = ''
+  editSourceColumnsBase.value = {}
 }
 
 const onOpenCreate = () => {
@@ -1085,6 +1237,17 @@ const onOpenEdit = (row: PersonnelItem) => {
   editForm.isOnsite = row.isOnsite
   editForm.projectCount = row.projectCount
   editForm.overdueCount = row.overdueCount
+  editSourceColumnsBase.value = buildEditableSourceColumnsFromRow(row)
+  editForm.employeeId = getWebsiteField(row, ['employeeId', '员工编号'])
+  editForm.gender = getWebsiteField(row, ['sex', 'Sex', 'gender', 'Gender', '性别'])
+  editForm.maritalStatus = getWebsiteField(row, ['maritalStatus', '婚姻状况'])
+  editForm.baseAddress = getWebsiteField(row, ['baseAddress', '常住地(Base地)'])
+  editForm.homeProvince = getWebsiteField(row, ['homeProvince'])
+  editForm.homeCity = getWebsiteField(row, ['homeCity'])
+  editForm.position = getWebsiteField(row, ['position', '岗位'])
+  editForm.workLevel = getWebsiteField(row, ['workLevel', '职级'])
+  editForm.userRole = getWebsiteField(row, ['roleName', '用户角色', 'userRole'])
+  editForm.userStatus = getWebsiteField(row, ['userStatus', '用户状态'])
   editVisible.value = true
   void updateRouteQuery({ action: 'edit', id: String(row.id) })
 }
@@ -1162,13 +1325,15 @@ const onSaveEdit = async () => {
   const valid = await editFormRef.value.validate().catch(() => false)
   if (!valid) return
 
+  const payload = buildPersonnelPayload()
+
   submitLoading.value = true
   try {
     if (editMode.value === 'create') {
-      await createPersonnel(editForm)
+      await createPersonnel(payload)
       ElMessage.success('新增成功')
     } else if (activeId.value) {
-      await updatePersonnel(activeId.value, editForm)
+      await updatePersonnel(activeId.value, payload)
       ElMessage.success('更新成功')
     }
 
@@ -1349,7 +1514,7 @@ onBeforeUnmount(() => {
 })
 
 watch(
-  () => [query.name, query.department, query.groupName, query.roleType, onsiteValue.value, activeStatFilter.value],
+  () => [query.name, query.department, query.groupName, query.supervisor, query.roleType, onsiteValue.value, activeStatFilter.value],
   () => {
     syncOnsiteQuery()
     refreshLinkedOptions()

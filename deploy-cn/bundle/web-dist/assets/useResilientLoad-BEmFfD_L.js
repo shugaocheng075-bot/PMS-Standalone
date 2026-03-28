@@ -1,1 +1,0 @@
-function e(){return{runInitialLoad:async e=>{if(await Promise.allSettled(e.tasks.map(e=>e())),e.retryChecks?.length)for(let t of e.retryChecks)t.when()&&await t.task()}}}export{e as t};

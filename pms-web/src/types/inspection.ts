@@ -3,21 +3,30 @@ export interface InspectionPlanItem {
   hospitalName: string
   productName: string
   province: string
+  hospitalLevel: string
   groupName: string
   inspector: string
   planDate: string
   actualDate?: string | null
   status: '已计划' | '执行中' | '已完成' | '已取消'
   inspectionType: '现场' | '远程'
+  priority: '高' | '中' | '低' | string
+  remarks: string
 }
 
 export interface InspectionPlanUpsert {
-  groupName: string
-  inspector: string
-  planDate: string
+  hospitalName?: string
+  productName?: string
+  province?: string
+  hospitalLevel?: string
+  groupName?: string
+  inspector?: string
+  planDate?: string
   actualDate?: string | null
-  status: '已计划' | '执行中' | '已完成' | '已取消'
-  inspectionType: '现场' | '远程'
+  status?: '已计划' | '执行中' | '已完成' | '已取消'
+  inspectionType?: '现场' | '远程'
+  priority?: '高' | '中' | '低' | string
+  remarks?: string
 }
 
 export interface InspectionSummary {
@@ -30,11 +39,14 @@ export interface InspectionSummary {
 }
 
 export interface InspectionQuery {
+  hospitalName?: string
   status?: string
   province?: string
   productName?: string
   groupName?: string
   inspector?: string
+  inspectionType?: string
+  priority?: string
   page?: number
   size?: number
 }

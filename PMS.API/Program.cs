@@ -15,6 +15,7 @@ using PMS.Application.Contracts.MonthlyReport;
 using PMS.Application.Contracts.Notification;
 using PMS.Application.Contracts.AuditLog;
 using PMS.Infrastructure.Services;
+using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -27,6 +28,23 @@ if (string.IsNullOrWhiteSpace(urls))
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddPolicy("AuthLogin", context =>
+    {
+        var key = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        return RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: key,
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 5,
+                Window = TimeSpan.FromMinutes(15),
+                QueueLimit = 0,
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+            });
+    });
+});
 builder.Services.AddSingleton<IProjectQueryService, InMemoryProjectQueryService>();
 builder.Services.AddSingleton<IContractAlertService, InMemoryContractAlertService>();
 builder.Services.AddSingleton<IHandoverService, InMemoryHandoverService>();
@@ -51,8 +69,8 @@ builder.Services.AddCors(options =>
     options.AddPolicy("DevCors", policy =>
     {
         policy
-            .AllowAnyHeader()
-            .AllowAnyMethod()
+            .WithHeaders("Content-Type", "Authorization", "X-PMS-User-Id")
+            .WithMethods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
             .WithOrigins(allowedOrigins);
     });
 });
@@ -64,9 +82,14 @@ if (app.Environment.IsDevelopment())
     app.UseSwagger();
     app.UseSwaggerUI();
 }
+else
+{
+    app.UseHsts();
+}
 
 app.UseMiddleware<GlobalExceptionMiddleware>();
 app.UseCors("DevCors");
+app.UseRateLimiter();
 app.UseMiddleware<AuthMiddleware>();
 app.UseMiddleware<PermissionMiddleware>();
 
@@ -75,7 +98,7 @@ var enableHttpsRedirect = string.Equals(
     "true",
     StringComparison.OrdinalIgnoreCase);
 
-if (enableHttpsRedirect)
+if (enableHttpsRedirect || !app.Environment.IsDevelopment())
 {
     app.UseHttpsRedirection();
 }

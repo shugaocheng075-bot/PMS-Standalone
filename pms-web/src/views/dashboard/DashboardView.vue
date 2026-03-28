@@ -29,7 +29,7 @@
     </el-row>
 
     <div class="chart-grid">
-      <el-card shadow="never" class="table-card chart-card">
+      <AppTableCard class="chart-card">
         <template #header>
           <div class="panel-head">
             <span class="panel-title">项目台账状态占比</span>
@@ -37,9 +37,9 @@
           </div>
         </template>
         <div ref="projectChartRef" class="chart-box"></div>
-      </el-card>
+      </AppTableCard>
 
-      <el-card shadow="never" class="table-card chart-card">
+      <AppTableCard class="chart-card">
         <template #header>
           <div class="panel-head">
             <span class="panel-title">重大需求状态占比</span>
@@ -47,9 +47,9 @@
           </div>
         </template>
         <div ref="demandChartRef" class="chart-box"></div>
-      </el-card>
+      </AppTableCard>
 
-      <el-card shadow="never" class="table-card chart-card">
+      <AppTableCard class="chart-card">
         <template #header>
           <div class="panel-head">
             <span class="panel-title">告警等级占比</span>
@@ -57,9 +57,9 @@
           </div>
         </template>
         <div ref="alertChartRef" class="chart-box"></div>
-      </el-card>
+      </AppTableCard>
 
-      <el-card shadow="never" class="table-card chart-card">
+      <AppTableCard class="chart-card">
         <template #header>
           <div class="panel-head">
             <span class="panel-title">年度报告状态</span>
@@ -67,11 +67,11 @@
           </div>
         </template>
         <div ref="annualChartRef" class="chart-box"></div>
-      </el-card>
+      </AppTableCard>
     </div>
 
     <div class="analysis-grid">
-      <el-card shadow="never" class="table-card chart-card">
+      <AppTableCard class="chart-card">
         <template #header>
           <div class="panel-head">
             <span class="panel-title">告警月度趋势</span>
@@ -79,9 +79,9 @@
           </div>
         </template>
         <div ref="trendChartRef" class="chart-box"></div>
-      </el-card>
+      </AppTableCard>
 
-      <el-card shadow="never" class="table-card chart-card">
+      <AppTableCard class="chart-card">
         <template #header>
           <div class="panel-head">
             <span class="panel-title">责任人工作量 TOP12</span>
@@ -89,10 +89,10 @@
           </div>
         </template>
         <div ref="workloadChartRef" class="chart-box"></div>
-      </el-card>
+      </AppTableCard>
     </div>
 
-    <el-card shadow="never" class="table-card">
+    <AppTableCard>
       <template #header>
         <div class="panel-head">
           <span class="panel-title">下钻明细</span>
@@ -150,14 +150,13 @@
           </el-table>
         </el-tab-pane>
       </el-tabs>
-    </el-card>
+    </AppTableCard>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import * as echarts from 'echarts'
 import { ElMessage } from 'element-plus'
 import { fetchProjectList } from '../../api/modules/project'
 import { fetchMajorDemands, type MajorDemandSnapshot } from '../../api/modules/majorDemand'
@@ -171,6 +170,8 @@ import { useAccessControl } from '../../composables/useAccessControl'
 import PersonalWorkbench from './PersonalWorkbench.vue'
 import SupervisorWorkbench from './SupervisorWorkbench.vue'
 import RegionalManagerWorkbench from './RegionalManagerWorkbench.vue'
+import AppTableCard from '../../components/AppTableCard.vue'
+import { basicEcharts } from '../../utils/echarts-basic'
 
 const access = useAccessControl()
 const dashboardRole = computed(() => {
@@ -575,22 +576,22 @@ onMounted(async () => {
   await nextTick()
 
   if (projectChartRef.value) {
-    projectChart.value = echarts.init(projectChartRef.value)
+    projectChart.value = basicEcharts.init(projectChartRef.value)
   }
   if (demandChartRef.value) {
-    demandChart.value = echarts.init(demandChartRef.value)
+    demandChart.value = basicEcharts.init(demandChartRef.value)
   }
   if (alertChartRef.value) {
-    alertChart.value = echarts.init(alertChartRef.value)
+    alertChart.value = basicEcharts.init(alertChartRef.value)
   }
   if (annualChartRef.value) {
-    annualChart.value = echarts.init(annualChartRef.value)
+    annualChart.value = basicEcharts.init(annualChartRef.value)
   }
   if (trendChartRef.value) {
-    trendChart.value = echarts.init(trendChartRef.value)
+    trendChart.value = basicEcharts.init(trendChartRef.value)
   }
   if (workloadChartRef.value) {
-    workloadChart.value = echarts.init(workloadChartRef.value)
+    workloadChart.value = basicEcharts.init(workloadChartRef.value)
   }
 
   window.addEventListener('resize', resizeCharts)

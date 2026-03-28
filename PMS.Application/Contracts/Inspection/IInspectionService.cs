@@ -7,7 +7,9 @@ public interface IInspectionService
 {
     Task<InspectionSummaryDto> GetSummaryAsync(CancellationToken cancellationToken = default);
     Task<PagedResult<InspectionPlanItemDto>> QueryAsync(InspectionQuery query, CancellationToken cancellationToken = default);
+    Task<InspectionPlanItemDto> CreateAsync(InspectionPlanUpsertDto dto, CancellationToken cancellationToken = default);
     Task<InspectionPlanItemDto?> UpdateAsync(long id, InspectionPlanUpsertDto dto, CancellationToken cancellationToken = default);
+    Task<bool> DeleteAsync(long id, CancellationToken cancellationToken = default);
 
     // ─── SystemAuditTool 集成 ───
 

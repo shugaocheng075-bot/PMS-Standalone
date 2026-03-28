@@ -25,7 +25,7 @@
         </el-form-item>
 
         <el-alert
-          title="默认账号为姓名拼音，初始密码为 123456"
+          title="账号由管理员分配，如忘记密码请联系管理员重置"
           type="info"
           :closable="false"
           class="hint"
@@ -40,7 +40,6 @@
 <script setup lang="ts">
 import { nextTick, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import axios from 'axios'
 import { ElMessage } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import { login } from '../../api/modules/auth'
@@ -65,30 +64,15 @@ const form = reactive({
 })
 
 const rules: FormRules<typeof form> = {
-  account: [{ required: true, message: '请输入账号', trigger: 'blur' }],
-  password: [{ required: true, message: '请输入密码', trigger: 'blur' }],
-}
-
-const submitLogin = async () => {
-  const payload = {
-    account: form.account.trim(),
-    password: form.password,
-  }
-
-  try {
-    return await login(payload)
-  } catch (error) {
-    const statusCode = axios.isAxiosError(error) ? error.response?.status : undefined
-    const message = getErrorMessage(error, '')
-    const shouldRetry = statusCode === 401 || message.includes('账号或密码错误')
-
-    if (!shouldRetry) {
-      throw error
-    }
-
-    await nextTick()
-    return login(payload)
-  }
+  account: [
+    { required: true, message: '请输入账号', trigger: 'blur' },
+    { min: 2, max: 64, message: '账号长度需在2到64个字符之间', trigger: 'blur' },
+    { pattern: /^[a-z0-9_-]+$/i, message: '账号仅支持字母、数字、下划线或中划线', trigger: 'blur' },
+  ],
+  password: [
+    { required: true, message: '请输入密码', trigger: 'blur' },
+    { min: 6, max: 128, message: '密码长度需在6到128个字符之间', trigger: 'blur' },
+  ],
 }
 
 const onLogin = async () => {
@@ -111,7 +95,10 @@ const onLogin = async () => {
   try {
     clearAuthState()
 
-    const response = await submitLogin()
+    const response = await login({
+      account: form.account.trim(),
+      password: form.password,
+    })
 
     const result = response.data
     setAccessToken(result.accessToken)

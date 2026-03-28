@@ -15,7 +15,7 @@
       <el-col :span="4"><el-card shadow="never" class="stat-card stats-card clickable" :class="{ active: query.stage === '' }" @click="onStatClick('')"><div class="t">总数</div><div class="v">{{ summary.total }}</div></el-card></el-col>
     </el-row>
 
-    <el-card shadow="never" class="filter-card">
+    <AppFilterCard>
       <el-form :model="query" inline class="filter-form" @submit.prevent="onSearch">
         <el-form-item label="阶段">
           <el-select v-model="query.stage" placeholder="全部" clearable style="width: 140px">
@@ -48,9 +48,9 @@
           <el-button :loading="exporting" @click="onExport">导出CSV</el-button>
         </el-form-item>
       </el-form>
-    </el-card>
+    </AppFilterCard>
 
-    <el-card shadow="never" class="table-card">
+    <AppTableCard>
       <el-table :data="tableData" v-loading="loading" stripe max-height="520" scrollbar-always-on empty-text="暂无符合条件的数据" @row-dblclick="onRowDoubleClick">
         <el-table-column prop="handoverNo" label="交接单号" width="130" sortable />
         <el-table-column prop="hospitalName" label="医院" min-width="220" show-overflow-tooltip sortable />
@@ -101,9 +101,9 @@
           @current-change="(page: number) => { query.page = page; loadData() }"
         />
       </div>
-    </el-card>
+    </AppTableCard>
 
-    <el-dialog v-model="detailVisible" title="交接详情" width="680px" destroy-on-close>
+    <AppFormDialog v-model="detailVisible" title="交接详情" width="680px">
       <template v-if="detailItem">
         <el-descriptions :column="2" border size="small">
           <el-descriptions-item label="交接单号">{{ detailItem.handoverNo }}</el-descriptions-item>
@@ -133,9 +133,9 @@
           </el-button>
         </div>
       </template>
-    </el-dialog>
+    </AppFormDialog>
 
-    <el-card shadow="never" class="table-card">
+    <AppTableCard>
       <template #header>
         <div class="kanban-title">交接看板</div>
       </template>
@@ -154,7 +154,7 @@
           </div>
         </el-col>
       </el-row>
-    </el-card>
+    </AppTableCard>
   </div>
 </template>
 
@@ -176,6 +176,9 @@ import { HANDOVER_GROUP_OPTIONS, HANDOVER_OWNER_OPTIONS } from '../../constants/
 import { useFilterStatePersist } from '../../composables/useFilterStatePersist'
 import { useLinkedRealtimeRefresh } from '../../composables/useLinkedRealtimeRefresh'
 import { useAccessControl } from '../../composables/useAccessControl'
+import AppFilterCard from '../../components/AppFilterCard.vue'
+import AppTableCard from '../../components/AppTableCard.vue'
+import AppFormDialog from '../../components/AppFormDialog.vue'
 
 const loading = ref(false)
 const exporting = ref(false)
@@ -529,6 +532,17 @@ const onStatClick = (stage: string) => {
   query.toOwner = ''
   query.stage = stage
   query.page = 1
+  void updateRouteQuery({
+    stage: undefined,
+    fromGroup: undefined,
+    toOwner: undefined,
+    batch: undefined,
+    type: undefined,
+    hospitalName: undefined,
+    productName: undefined,
+    action: undefined,
+    id: undefined,
+  })
   loadData()
 }
 
@@ -546,7 +560,17 @@ const onReset = () => {
   query.page = 1
   query.size = 15
   clearFilterState()
-  void updateRouteQuery({ hospitalName: undefined, productName: undefined, action: undefined, id: undefined })
+  void updateRouteQuery({
+    stage: undefined,
+    fromGroup: undefined,
+    toOwner: undefined,
+    batch: undefined,
+    type: undefined,
+    hospitalName: undefined,
+    productName: undefined,
+    action: undefined,
+    id: undefined,
+  })
   loadData()
 }
 

@@ -55,11 +55,15 @@ public class AnnualReportsController(
 
     [HttpGet]
     public async Task<IActionResult> GetList(
+        [FromQuery] string? hospitalName,
+        [FromQuery] string? productName,
         [FromQuery] string? status,
         [FromQuery] int? reportYear,
         [FromQuery] string? dueMonth,
         [FromQuery] string? groupName,
         [FromQuery] string? servicePerson,
+        [FromQuery] string? priority,
+        [FromQuery] string? reviewer,
         [FromQuery] int page = 1,
         [FromQuery] int size = 20,
         CancellationToken cancellationToken = default)
@@ -77,10 +81,14 @@ public class AnnualReportsController(
             var allResult = await annualReportService.QueryAsync(new AnnualReportQuery
             {
                 Status = status,
+                HospitalName = hospitalName,
+                ProductName = productName,
                 ReportYear = reportYear,
                 DueMonth = dueMonth,
                 GroupName = groupName,
                 ServicePerson = servicePerson,
+                Priority = priority,
+                Reviewer = reviewer,
                 Page = 1,
                 Size = int.MaxValue
             }, cancellationToken);
@@ -109,10 +117,14 @@ public class AnnualReportsController(
         var result = await annualReportService.QueryAsync(new AnnualReportQuery
         {
             Status = status,
+            HospitalName = hospitalName,
+            ProductName = productName,
             ReportYear = reportYear,
             DueMonth = dueMonth,
             GroupName = groupName,
             ServicePerson = servicePerson,
+            Priority = priority,
+            Reviewer = reviewer,
             Page = page,
             Size = size
         }, cancellationToken);
@@ -135,13 +147,36 @@ public class AnnualReportsController(
         return Ok(ApiResponse<AnnualReportItemDto>.Success(updated));
     }
 
+    [HttpPost]
+    public async Task<IActionResult> Create([FromBody] AnnualReportUpsertDto dto, CancellationToken cancellationToken = default)
+    {
+        var created = await annualReportService.CreateAsync(dto, cancellationToken);
+        return Ok(ApiResponse<AnnualReportItemDto>.Success(created));
+    }
+
+    [HttpDelete("{id:long}")]
+    public async Task<IActionResult> Delete(long id, CancellationToken cancellationToken = default)
+    {
+        var removed = await annualReportService.DeleteAsync(id, cancellationToken);
+        if (!removed)
+        {
+            return NotFound(new ApiResponse<object> { Code = 404, Message = "未找到对应年度报告" });
+        }
+
+        return Ok(ApiResponse<bool>.Success(true));
+    }
+
     [HttpGet("export")]
     public async Task<IActionResult> Export(
+        [FromQuery] string? hospitalName,
+        [FromQuery] string? productName,
         [FromQuery] string? status,
         [FromQuery] int? reportYear,
         [FromQuery] string? dueMonth,
         [FromQuery] string? groupName,
         [FromQuery] string? servicePerson,
+        [FromQuery] string? priority,
+        [FromQuery] string? reviewer,
         CancellationToken cancellationToken = default)
     {
         var personnelId = HttpContext.GetCurrentPersonnelId();
@@ -150,10 +185,14 @@ public class AnnualReportsController(
         var allResult = await annualReportService.QueryAsync(new AnnualReportQuery
         {
             Status = status,
+            HospitalName = hospitalName,
+            ProductName = productName,
             ReportYear = reportYear,
             DueMonth = dueMonth,
             GroupName = groupName,
             ServicePerson = servicePerson,
+            Priority = priority,
+            Reviewer = reviewer,
             Page = 1,
             Size = 50000
         }, cancellationToken);
@@ -162,7 +201,7 @@ public class AnnualReportsController(
             dataScope, allResult.Items, x => x.HospitalName).ToList();
 
         var sb = new StringBuilder();
-        sb.AppendLine("\uFEFFID,商机编号,医院名称,产品名称,省份,组别,服务人员,实施状态,维护开始日期,维护结束日期,到期月份,报告年度,状态,提交日期,备注");
+        sb.AppendLine("\uFEFFID,商机编号,医院名称,产品名称,省份,组别,服务人员,实施状态,维护开始日期,维护结束日期,到期月份,报告年度,状态,优先级,提交日期,评审人,评审日期,备注");
         foreach (var item in items)
         {
             sb.AppendLine(string.Join(",",
@@ -179,7 +218,10 @@ public class AnnualReportsController(
                 EscapeCsv(item.DueMonth),
                 EscapeCsv(item.ReportYear.ToString()),
                 EscapeCsv(item.Status),
+                EscapeCsv(item.Priority),
                 EscapeCsv(item.SubmitDate?.ToString("yyyy-MM-dd") ?? ""),
+                EscapeCsv(item.Reviewer),
+                EscapeCsv(item.ReviewDate?.ToString("yyyy-MM-dd") ?? ""),
                 EscapeCsv(item.Remarks)));
         }
 

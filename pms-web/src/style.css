@@ -232,6 +232,17 @@ body.notranslate,
   color: var(--el-color-primary);
 }
 
+.fade-slide-enter-active,
+.fade-slide-leave-active {
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.fade-slide-enter-from,
+.fade-slide-leave-to {
+  opacity: 0;
+  transform: translateY(6px);
+}
+
 .table-card .el-table {
   --el-table-header-bg-color: #edf5fb;
   --el-table-border-color: #d7e6f3;

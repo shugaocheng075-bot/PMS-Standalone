@@ -82,12 +82,11 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import * as echarts from 'echarts'
+import type { ECharts } from '../../utils/echarts-map'
 import { ElMessage } from 'element-plus'
 import { fetchProjectList } from '../../api/modules/project'
 import type { ProjectItem } from '../../types/project'
 import { getErrorMessage } from '../../utils/error'
-import chinaGeoJson from '../../assets/maps/china.geo.json'
 import { fetchHospitals } from '../../api/modules/hospital'
 import { HOSPITAL_CITY_MANUAL_MAP } from '../../constants/hospitalCityMap'
 
@@ -120,8 +119,12 @@ type DetailRow = {
 }
 
 const mapRef = ref<HTMLDivElement | null>(null)
-const chartRef = ref<echarts.ECharts | null>(null)
+const chartRef = ref<ECharts | null>(null)
 const mapLoading = ref(false)
+
+let echartsModule: typeof import('../../utils/echarts-map') | null = null
+let chinaGeoJsonCache: any | null = null
+const chinaGeoJsonUrl = new URL('../../assets/maps/china.geo.json', import.meta.url).href
 
 const allProjects = ref<ProjectItem[]>([])
 const selectedProvince = ref('')
@@ -139,7 +142,25 @@ const municipalitySet = new Set(['北京', '上海', '天津', '重庆'])
 const provinceMapCache = new Map<string, any>()
 const hospitalCityMap = ref<Map<string, string>>(new Map())
 
-const chinaFeatures = ((chinaGeoJson as any)?.features ?? []) as Array<any>
+const chinaFeatures = ref<Array<any>>([])
+
+const ensureEcharts = async () => {
+  if (!echartsModule) {
+    echartsModule = await import('../../utils/echarts-map')
+  }
+
+  return echartsModule.mapEcharts
+}
+
+const ensureChinaGeoJson = async () => {
+  if (!chinaGeoJsonCache) {
+    const response = await fetch(chinaGeoJsonUrl)
+    chinaGeoJsonCache = await response.json()
+    chinaFeatures.value = ((chinaGeoJsonCache as any)?.features ?? []) as Array<any>
+  }
+
+  return chinaGeoJsonCache
+}
 
 const normalizeProvince = (province: string) => {
   return province
@@ -195,7 +216,7 @@ const extractCityName = (hospitalName: string, province: string) => {
 }
 
 const getProvinceAdcode = (province: string) => {
-  const hit = chinaFeatures.find((feature) => {
+  const hit = chinaFeatures.value.find((feature) => {
     const name = normalizeProvince(String(feature?.properties?.name ?? ''))
     return name === province
   })
@@ -411,6 +432,7 @@ const updateMap = () => {
 }
 
 const enterProvince = async (province: string) => {
+  const echarts = await ensureEcharts()
   const adcode = getProvinceAdcode(province)
   if (!adcode) {
     ElMessage.warning(`未找到 ${province} 的地图编码，无法下钻`)
@@ -494,6 +516,9 @@ const resizeMap = () => {
 
 onMounted(async () => {
   await nextTick()
+  const echarts = await ensureEcharts()
+  const chinaGeoJson = await ensureChinaGeoJson()
+
   if (mapRef.value) {
     echarts.registerMap('china', chinaGeoJson as any)
     chartRef.value = echarts.init(mapRef.value)

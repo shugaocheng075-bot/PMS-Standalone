@@ -15,7 +15,7 @@
       <el-col :span="6"><el-card shadow="never" class="stat-card stats-card clickable" :class="{ active: query.status === '已完成' }" @click="onStatClick('已完成')"><div class="t">已完成</div><div class="v success">{{ summary.completedCount }}</div></el-card></el-col>
     </el-row>
 
-    <el-card shadow="never" class="filter-card">
+    <AppFilterCard>
       <el-form :model="query" inline class="filter-form" @submit.prevent="onSearch">
         <el-form-item label="医院名称">
           <el-select v-model="query.hospitalName" clearable filterable placeholder="全部" style="width: 220px">
@@ -36,9 +36,9 @@
           <el-button :loading="exporting" @click="onExport">导出CSV</el-button>
         </el-form-item>
       </el-form>
-    </el-card>
+    </AppFilterCard>
 
-    <el-card shadow="never" class="table-card">
+    <AppTableCard>
       <el-table :data="tableData" v-loading="loading" stripe max-height="520" scrollbar-always-on empty-text="暂无符合条件的数据" @row-dblclick="onRowDoubleClick">
         <el-table-column prop="id" label="ID" width="70" />
         <el-table-column prop="hospitalName" label="医院名称" min-width="180" show-overflow-tooltip />
@@ -100,9 +100,9 @@
           @current-change="onCurrentPageChange"
         />
       </div>
-    </el-card>
+    </AppTableCard>
 
-    <el-dialog v-model="dialogVisible" :title="editingId ? '编辑报修' : '新增报修'" width="620px" destroy-on-close>
+    <AppFormDialog v-model="dialogVisible" :title="editingId ? '编辑报修' : '新增报修'" width="620px">
       <el-form ref="formRef" :model="form" :rules="formRules" label-width="90px">
         <el-form-item label="医院名称" required>
           <el-select v-model="form.hospitalName" filterable placeholder="请选择医院" style="width: 100%">
@@ -134,9 +134,9 @@
         <el-button :disabled="submitLoading" @click="dialogVisible = false">取消</el-button>
         <el-button type="primary" :loading="submitLoading" :disabled="submitLoading" @click="onSubmit">确定</el-button>
       </template>
-    </el-dialog>
+    </AppFormDialog>
 
-    <el-dialog v-model="detailVisible" title="报修详情" width="720px" destroy-on-close>
+    <AppFormDialog v-model="detailVisible" title="报修详情" width="720px">
       <el-descriptions v-if="detailItem" :column="2" border>
         <el-descriptions-item label="医院名称">{{ detailItem.hospitalName }}</el-descriptions-item>
         <el-descriptions-item label="报修人">{{ detailItem.reporterName || '-' }}</el-descriptions-item>
@@ -153,7 +153,7 @@
       <template #footer>
         <el-button type="primary" @click="detailVisible = false">关闭</el-button>
       </template>
-    </el-dialog>
+    </AppFormDialog>
   </div>
 </template>
 
@@ -179,6 +179,9 @@ import { getErrorMessage } from '../../utils/error'
 import { useFilterStatePersist } from '../../composables/useFilterStatePersist'
 import { useLinkedRealtimeRefresh } from '../../composables/useLinkedRealtimeRefresh'
 import { resolveRepairStatusTag } from '../../utils/statusTag'
+import AppFilterCard from '../../components/AppFilterCard.vue'
+import AppTableCard from '../../components/AppTableCard.vue'
+import AppFormDialog from '../../components/AppFormDialog.vue'
 
 const access = useAccessControl()
 const canCreate = computed(() => {
@@ -401,6 +404,7 @@ const onReset = () => {
   query.page = 1
   query.size = 15
   filterPersist.clear()
+  void updateRouteQuery({ status: undefined, hospitalName: undefined, reporterName: undefined, action: undefined, id: undefined })
   loadData()
 }
 
@@ -423,8 +427,11 @@ const onExport = async () => {
 }
 
 const onStatClick = (status: string) => {
+  query.hospitalName = ''
+  query.reporterName = ''
   query.status = status
   query.page = 1
+  void updateRouteQuery({ status: undefined, hospitalName: undefined, reporterName: undefined, action: undefined, id: undefined })
   loadData()
 }
 

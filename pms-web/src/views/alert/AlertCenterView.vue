@@ -46,7 +46,7 @@
       </el-col>
     </el-row>
 
-    <el-card shadow="never" class="filter-card">
+    <AppFilterCard>
       <el-form :model="query" inline class="filter-form" @submit.prevent="onSearch">
         <el-form-item label="来源">
           <el-select v-model="query.source" clearable placeholder="全部" style="width: 130px">
@@ -71,9 +71,9 @@
           <el-button :loading="exporting" @click="onExport">导出CSV</el-button>
         </el-form-item>
       </el-form>
-    </el-card>
+    </AppFilterCard>
 
-    <el-card shadow="never" class="table-card">
+    <AppTableCard>
       <el-table :data="tableData" v-loading="loading" stripe max-height="520" scrollbar-always-on empty-text="暂无待办预警" @row-dblclick="onGoto">
         <el-table-column prop="source" label="来源" width="90" />
         <el-table-column prop="level" label="级别" width="90">
@@ -104,7 +104,7 @@
           @current-change="(page: number) => { query.page = page; loadData() }"
         />
       </div>
-    </el-card>
+    </AppTableCard>
   </div>
 </template>
 
@@ -117,6 +117,8 @@ import { getErrorMessage } from '../../utils/error'
 import { useFilterStatePersist } from '../../composables/useFilterStatePersist'
 import { useLinkedRealtimeRefresh } from '../../composables/useLinkedRealtimeRefresh'
 import { useResilientLoad } from '../../composables/useResilientLoad'
+import AppFilterCard from '../../components/AppFilterCard.vue'
+import AppTableCard from '../../components/AppTableCard.vue'
 
 const router = useRouter()
 const route = useRoute()

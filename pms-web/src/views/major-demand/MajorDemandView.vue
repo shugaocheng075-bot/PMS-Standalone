@@ -7,7 +7,7 @@
       </div>
     </div>
 
-    <el-card shadow="never" class="filter-card">
+    <AppFilterCard>
       <el-space wrap>
         <el-input v-model="query.keyword" placeholder="搜索关键字" clearable style="width: 220px" />
         <el-select v-model="query.status" placeholder="状态" clearable style="width: 150px">
@@ -43,9 +43,9 @@
         <el-button :disabled="!selectedRowIds.length" @click="onBatchDueDate">批量设置截止日期</el-button>
       </el-space>
 
-    </el-card>
+    </AppFilterCard>
 
-    <el-card shadow="never" class="table-card">
+    <AppTableCard>
       <el-table
         :data="pagedRows"
         row-key="_rowId"
@@ -115,7 +115,7 @@
           layout="total, sizes, prev, pager, next"
         />
       </div>
-    </el-card>
+    </AppTableCard>
 
     <el-drawer v-model="detailVisible" title="重大需求详情" size="48%">
       <template v-if="activeRow">
@@ -156,15 +156,15 @@
       </template>
     </el-drawer>
 
-    <el-dialog v-model="commentVisible" title="新增评论" width="520px" destroy-on-close>
+    <AppFormDialog v-model="commentVisible" title="新增评论" width="520px">
       <el-input v-model="commentContent" type="textarea" :rows="4" maxlength="500" show-word-limit />
       <template #footer>
         <el-button @click="commentVisible = false">取消</el-button>
         <el-button type="primary" :loading="loading.commenting" @click="submitComment">提交</el-button>
       </template>
-    </el-dialog>
+    </AppFormDialog>
 
-    <el-dialog v-model="editVisible" title="编辑重大需求" width="680px" destroy-on-close>
+    <AppFormDialog v-model="editVisible" title="编辑重大需求" width="680px">
       <el-form v-if="editForm" label-width="120px" label-position="right">
         <el-form-item label="状态">
           <el-select v-model="editForm._status" style="width: 100%">
@@ -185,7 +185,7 @@
         <el-button @click="editVisible = false">取消</el-button>
         <el-button type="primary" :loading="loading.saving" @click="submitEdit">保存</el-button>
       </template>
-    </el-dialog>
+    </AppFormDialog>
   </div>
 </template>
 
@@ -210,6 +210,9 @@ import { useAccessControl } from '../../composables/useAccessControl'
 import { useFilterStatePersist } from '../../composables/useFilterStatePersist'
 import { useResilientLoad } from '../../composables/useResilientLoad'
 import { normalizeStatusText, resolveMajorDemandStatusTag } from '../../utils/statusTag'
+import AppFilterCard from '../../components/AppFilterCard.vue'
+import AppTableCard from '../../components/AppTableCard.vue'
+import AppFormDialog from '../../components/AppFormDialog.vue'
 
 const columns = ref<string[]>([])
 const rows = ref<Array<Record<string, string>>>([])

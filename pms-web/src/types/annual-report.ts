@@ -12,7 +12,10 @@ export interface AnnualReportItem {
   dueMonth: string
   reportYear: number
   status: '未开始' | '编写中' | '已提交' | '已完成'
+  priority: '高' | '中' | '低' | string
   submitDate?: string | null
+  reviewer?: string | null
+  reviewDate?: string | null
   remarks?: string | null
 }
 
@@ -28,7 +31,10 @@ export interface AnnualReportUpsert {
   maintenanceEndDate?: string | null
   reportYear?: number | null
   status?: string | null
+  priority?: string | null
   submitDate?: string | null
+  reviewer?: string | null
+  reviewDate?: string | null
   remarks?: string | null
 }
 
@@ -44,11 +50,15 @@ export interface AnnualReportSummary {
 }
 
 export interface AnnualReportQuery {
+  hospitalName?: string
+  productName?: string
   status?: string
   reportYear?: number
   dueMonth?: string
   groupName?: string
   servicePerson?: string
+  priority?: string
+  reviewer?: string
   page?: number
   size?: number
 }

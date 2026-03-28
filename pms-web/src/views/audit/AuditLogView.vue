@@ -28,7 +28,7 @@
       </el-col>
     </el-row>
 
-    <el-card shadow="never" class="filter-card">
+    <AppFilterCard>
       <el-form :model="query" inline class="filter-form" @submit.prevent="onSearch">
         <el-form-item label="操作类型">
           <el-select v-model="query.action" clearable placeholder="全部" style="width: 130px">
@@ -60,9 +60,9 @@
           <el-button @click="onReset">重置</el-button>
         </el-form-item>
       </el-form>
-    </el-card>
+    </AppFilterCard>
 
-    <el-card shadow="never" class="table-card">
+    <AppTableCard>
       <el-table :data="tableData" v-loading="loading" stripe max-height="520" scrollbar-always-on empty-text="暂无操作日志">
         <el-table-column prop="createdAt" label="时间" width="170">
           <template #default="scope">
@@ -89,14 +89,14 @@
         <el-pagination
           v-model:current-page="query.page"
           v-model:page-size="query.size"
-          :page-sizes="[20, 50, 100]"
+          :page-sizes="PAGE_SIZES"
           layout="total, sizes, prev, pager, next"
           :total="total"
           @size-change="(size: number) => { query.size = size; query.page = 1; loadData() }"
           @current-change="(page: number) => { query.page = page; loadData() }"
         />
       </div>
-    </el-card>
+    </AppTableCard>
   </div>
 </template>
 
@@ -106,6 +106,9 @@ import { fetchAuditLogs, fetchAuditLogSummary } from '../../api/modules/auditLog
 import type { AuditLogItem, AuditLogSummary } from '../../types/auditLog'
 import { useFilterStatePersist } from '../../composables/useFilterStatePersist'
 import { useResilientLoad } from '../../composables/useResilientLoad'
+import { DEFAULT_PAGE_SIZE, PAGE_SIZES } from '../../constants/tableConfig'
+import AppFilterCard from '../../components/AppFilterCard.vue'
+import AppTableCard from '../../components/AppTableCard.vue'
 
 const loading = ref(false)
 const tableData = ref<AuditLogItem[]>([])
@@ -125,7 +128,7 @@ const query = reactive({
   startDate: '',
   endDate: '',
   page: 1,
-  size: 20
+  size: DEFAULT_PAGE_SIZE
 })
 
 type AuditLogFilterState = Pick<typeof query, 'action' | 'module' | 'operatorName' | 'startDate' | 'endDate'>
@@ -298,7 +301,5 @@ onMounted(async () => {
 .stat-card .v { font-size: 22px; font-weight: 700; margin-top: 4px; }
 .stat-card .v.primary { color: var(--el-color-primary); }
 .stat-card .v.danger { color: var(--el-color-danger); }
-.filter-card { margin-bottom: 12px; }
-.table-card { margin-bottom: 12px; }
 .pager { margin-top: 12px; display: flex; justify-content: flex-end; }
 </style>

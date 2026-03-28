@@ -1,0 +1,1 @@
+import{t as e}from"./request-CqeLWlCC.js";function t(t){return e.get(`/alerts/center`,{params:t})}function n(t){return e.get(`/alerts/center/export`,{params:t,responseType:`blob`})}export{t as n,n as t};

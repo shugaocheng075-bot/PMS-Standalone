@@ -1,0 +1,1 @@
+import{t as e}from"./request-CqeLWlCC.js";function t(t){return e.get(`/projects`,{params:t})}function n(t){return e.post(`/projects/batch-update`,t)}function r(t,n){return e.put(`/projects/${t}`,n)}function i(t){return e.get(`/projects/export`,{params:t,responseType:`blob`})}export{r as i,i as n,t as r,n as t};

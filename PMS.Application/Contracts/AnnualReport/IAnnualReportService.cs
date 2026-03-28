@@ -7,5 +7,7 @@ public interface IAnnualReportService
 {
     Task<AnnualReportSummaryDto> GetSummaryAsync(CancellationToken cancellationToken = default);
     Task<PagedResult<AnnualReportItemDto>> QueryAsync(AnnualReportQuery query, CancellationToken cancellationToken = default);
+    Task<AnnualReportItemDto> CreateAsync(AnnualReportUpsertDto dto, CancellationToken cancellationToken = default);
     Task<AnnualReportItemDto?> UpdateAsync(long id, AnnualReportUpsertDto dto, CancellationToken cancellationToken = default);
+    Task<bool> DeleteAsync(long id, CancellationToken cancellationToken = default);
 }

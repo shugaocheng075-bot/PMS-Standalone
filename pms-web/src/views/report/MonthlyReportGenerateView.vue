@@ -10,7 +10,7 @@
       </div>
     </div>
 
-    <el-card shadow="never" class="table-card">
+    <AppTableCard>
       <el-form :model="form" label-width="100px" class="generate-form">
         <el-form-item label="报告月份" required>
           <el-date-picker
@@ -53,9 +53,9 @@
           </div>
         </el-form-item>
       </el-form>
-    </el-card>
+    </AppTableCard>
 
-    <el-card shadow="never" class="table-card source-card" v-loading="sourceLoading">
+    <AppTableCard class="source-card" v-loading="sourceLoading">
       <template #header>
         <div class="panel-head">
           <span class="panel-title">数据来源预览</span>
@@ -208,9 +208,9 @@
       </div>
 
       <el-empty v-else description="选择月份和组别后，可在此核对来源数据" />
-    </el-card>
+    </AppTableCard>
 
-    <el-card v-if="result" shadow="never" class="table-card result-card">
+    <AppTableCard v-if="result" class="result-card">
       <template #header>
         <div class="panel-head">
           <span class="panel-title">生成结果</span>
@@ -236,7 +236,7 @@
           </el-collapse-item>
         </el-collapse>
       </div>
-    </el-card>
+    </AppTableCard>
   </div>
 </template>
 
@@ -255,6 +255,7 @@ import { fetchPersonnel } from '../../api/modules/personnel'
 import type { MonthlyReportItem } from '../../types/monthly-report'
 import type { MonthlyReportSourcePreview } from '../../types/report'
 import { getErrorMessage } from '../../utils/error'
+import AppTableCard from '../../components/AppTableCard.vue'
 
 const { printArea } = usePrint()
 const pageRef = ref<HTMLElement | null>(null)

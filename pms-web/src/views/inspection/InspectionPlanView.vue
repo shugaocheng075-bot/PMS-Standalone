@@ -5,6 +5,7 @@
         <h2 class="page-title">巡检管理</h2>
         <div class="page-subtitle">管理巡检排期、执行状态与实际巡检结果</div>
       </div>
+      <el-button v-if="canManageInspection && activeTab === 'plan'" type="primary" @click="onOpenPlanCreate">新增巡检计划</el-button>
     </div>
 
     <el-tabs v-model="activeTab" class="main-tabs" @tab-change="onTabChange">
@@ -19,8 +20,11 @@
           <el-col :span="4"><el-card shadow="never" class="stat-card stats-card clickable" :class="{ active: query.status === '' }" @click="onStatClick('')"><div class="t">总数</div><div class="v">{{ summary.total }}</div></el-card></el-col>
         </el-row>
 
-        <el-card shadow="never" class="filter-card">
+        <AppFilterCard>
           <el-form :model="query" inline class="filter-form" @submit.prevent="onSearch">
+            <el-form-item label="医院">
+              <el-input v-model="query.hospitalName" clearable style="width: 200px" placeholder="请输入医院名称" />
+            </el-form-item>
             <el-form-item label="状态">
               <el-select v-model="query.status" clearable style="width: 140px" placeholder="全部">
                 <el-option v-for="status in statusOptions" :key="status" :label="status" :value="status" />
@@ -53,22 +57,42 @@
                 <el-option v-for="person in inspectorOptions" :key="person" :label="person" :value="person" />
               </el-select>
             </el-form-item>
+            <el-form-item label="方式">
+              <el-select v-model="query.inspectionType" clearable style="width: 120px" placeholder="全部">
+                <el-option label="现场" value="现场" />
+                <el-option label="远程" value="远程" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="优先级">
+              <el-select v-model="query.priority" clearable style="width: 120px" placeholder="全部">
+                <el-option label="高" value="高" />
+                <el-option label="中" value="中" />
+                <el-option label="低" value="低" />
+              </el-select>
+            </el-form-item>
             <el-form-item class="filter-actions">
               <el-button type="primary" @click="onSearch">查询</el-button>
               <el-button @click="onReset">重置</el-button>
               <el-button :loading="exporting" @click="onExport">导出CSV</el-button>
             </el-form-item>
           </el-form>
-        </el-card>
+        </AppFilterCard>
 
-        <el-card shadow="never" class="table-card">
+        <AppTableCard>
           <el-table :data="tableData" v-loading="loading" stripe max-height="520" scrollbar-always-on empty-text="暂无符合条件的数据" @row-dblclick="onPlanRowDoubleClick">
             <el-table-column prop="hospitalName" label="医院" min-width="220" show-overflow-tooltip sortable />
             <el-table-column prop="productName" label="产品" min-width="180" show-overflow-tooltip sortable />
             <el-table-column prop="province" label="省份" width="100" show-overflow-tooltip sortable />
+            <el-table-column prop="hospitalLevel" label="医院级别" width="100" show-overflow-tooltip />
             <el-table-column prop="groupName" label="组别" width="120" show-overflow-tooltip />
             <el-table-column prop="inspector" label="巡检人" width="100" show-overflow-tooltip />
             <el-table-column prop="inspectionType" label="方式" width="90" />
+            <el-table-column prop="priority" label="优先级" width="90">
+              <template #default="scope">
+                <el-tag :type="scope.row.priority === '高' ? 'danger' : scope.row.priority === '中' ? 'warning' : 'info'">{{ scope.row.priority || '-' }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="remarks" label="备注" min-width="180" show-overflow-tooltip />
             <el-table-column prop="planDate" label="计划日期" width="120" sortable>
               <template #default="scope">{{ formatDate(scope.row.planDate) }}</template>
             </el-table-column>
@@ -80,9 +104,10 @@
                 <el-tag :type="statusTag(scope.row.status)">{{ scope.row.status }}</el-tag>
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="180" fixed="right">
+            <el-table-column label="操作" width="220" fixed="right">
               <template #default="scope">
                 <el-button v-if="canManageInspection" link type="primary" @click="onOpenPlanEdit(scope.row)">编辑</el-button>
+                <el-button v-if="canManageInspection" link type="danger" @click="onDeletePlan(scope.row)">删除</el-button>
                 <el-button link type="primary" @click="onOpenPlanDetail(scope.row)">详情</el-button>
                 <el-button v-if="isSameStatus(scope.row.status, '已完成')" link @click="goToResultTab(scope.row)">查看结果</el-button>
               </template>
@@ -100,7 +125,7 @@
           @current-change="(page: number) => { query.page = page; loadData() }"
         />
       </div>
-    </el-card>
+    </AppTableCard>
       </el-tab-pane>
 
       <!-- ===================== 巡检结果 Tab ===================== -->
@@ -130,7 +155,7 @@
         </el-row>
 
         <!-- 结果筛选 -->
-        <el-card shadow="never" class="filter-card">
+        <AppFilterCard>
           <el-form :model="resultQuery" inline class="filter-form" @submit.prevent="onResultSearch">
             <el-form-item label="医院">
               <el-select v-model="resultQuery.hospitalName" clearable filterable style="width: 200px" placeholder="全部">
@@ -161,10 +186,10 @@
               <input ref="resultUploadInput" type="file" accept=".json,application/json" style="display: none" @change="onResultFileChange" />
             </el-form-item>
           </el-form>
-        </el-card>
+        </AppFilterCard>
 
         <!-- 结果表格 -->
-        <el-card shadow="never" class="table-card">
+        <AppTableCard>
           <el-table :data="resultTableData" v-loading="resultLoading" stripe max-height="520" scrollbar-always-on empty-text="暂无巡检结果数据（SystemAuditTool 推送后将在此显示）" @row-dblclick="onResultRowDoubleClick">
             <el-table-column prop="hospitalName" label="医院" min-width="200" show-overflow-tooltip sortable />
             <el-table-column prop="productName" label="产品" min-width="160" show-overflow-tooltip sortable />
@@ -217,10 +242,10 @@
               @current-change="(page: number) => { resultQuery.page = page; loadResults() }"
             />
           </div>
-        </el-card>
+        </AppTableCard>
 
         <!-- 详情弹窗 -->
-        <el-dialog v-model="detailVisible" title="巡检结果详情" width="720px" destroy-on-close>
+        <AppFormDialog v-model="detailVisible" title="巡检结果详情" width="720px">
           <template v-if="detailRow">
             <el-descriptions :column="2" border size="small" class="result-desc">
               <el-descriptions-item label="医院">{{ detailRow.hospitalName }}</el-descriptions-item>
@@ -261,37 +286,55 @@
               </el-table>
             </div>
           </template>
-        </el-dialog>
+        </AppFormDialog>
 
       </el-tab-pane>
     </el-tabs>
 
-    <el-dialog v-model="planDetailVisible" title="巡检计划详情" width="680px" destroy-on-close>
+    <AppFormDialog v-model="planDetailVisible" title="巡检计划详情" width="680px">
       <template v-if="planDetailRow">
         <el-descriptions :column="2" border size="small" class="result-desc">
           <el-descriptions-item label="医院">{{ planDetailRow.hospitalName }}</el-descriptions-item>
           <el-descriptions-item label="产品">{{ planDetailRow.productName }}</el-descriptions-item>
           <el-descriptions-item label="省份">{{ planDetailRow.province }}</el-descriptions-item>
+          <el-descriptions-item label="医院级别">{{ planDetailRow.hospitalLevel || '-' }}</el-descriptions-item>
           <el-descriptions-item label="组别">{{ planDetailRow.groupName }}</el-descriptions-item>
           <el-descriptions-item label="巡检人">{{ planDetailRow.inspector }}</el-descriptions-item>
           <el-descriptions-item label="方式">{{ planDetailRow.inspectionType }}</el-descriptions-item>
+          <el-descriptions-item label="优先级">{{ planDetailRow.priority || '-' }}</el-descriptions-item>
           <el-descriptions-item label="计划日期">{{ formatDate(planDetailRow.planDate) }}</el-descriptions-item>
           <el-descriptions-item label="实际日期">{{ planDetailRow.actualDate ? formatDate(planDetailRow.actualDate) : '-' }}</el-descriptions-item>
           <el-descriptions-item label="状态">
             <el-tag :type="statusTag(planDetailRow.status)">{{ planDetailRow.status }}</el-tag>
           </el-descriptions-item>
+          <el-descriptions-item label="备注" :span="2">{{ planDetailRow.remarks || '-' }}</el-descriptions-item>
         </el-descriptions>
 
         <div class="detail-actions">
           <el-button v-if="canManageInspection" plain type="primary" @click="onOpenPlanEdit(planDetailRow)">编辑计划</el-button>
+          <el-button v-if="canManageInspection" plain type="danger" @click="onDeletePlan(planDetailRow)">删除计划</el-button>
           <el-button plain @click="goToProjectPage(planDetailRow)">去项目台账</el-button>
           <el-button plain @click="goToResultTab(planDetailRow)">去巡检结果</el-button>
         </div>
       </template>
-    </el-dialog>
+    </AppFormDialog>
 
-    <el-dialog v-model="planEditVisible" title="编辑巡检计划" width="620px" destroy-on-close>
+    <AppFormDialog v-model="planEditVisible" :title="editingPlanId ? '编辑巡检计划' : '新增巡检计划'" width="620px">
       <el-form label-width="100px">
+        <el-form-item label="医院">
+          <el-input v-model="planEditForm.hospitalName" clearable />
+        </el-form-item>
+        <el-form-item label="产品">
+          <el-input v-model="planEditForm.productName" clearable />
+        </el-form-item>
+        <el-form-item label="省份">
+          <el-select v-model="planEditForm.province" clearable filterable style="width: 100%">
+            <el-option v-for="province in provinceOptions" :key="`edit-province-${province}`" :label="province" :value="province" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="医院级别">
+          <el-input v-model="planEditForm.hospitalLevel" clearable />
+        </el-form-item>
         <el-form-item label="组别">
           <el-select v-model="planEditForm.groupName" clearable filterable style="width: 100%">
             <el-option v-for="group in filteredGroupOptions" :key="`edit-${group}`" :label="group" :value="group" />
@@ -319,21 +362,33 @@
             <el-option label="远程" value="远程" />
           </el-select>
         </el-form-item>
+        <el-form-item label="优先级">
+          <el-select v-model="planEditForm.priority" clearable style="width: 100%">
+            <el-option label="高" value="高" />
+            <el-option label="中" value="中" />
+            <el-option label="低" value="低" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="备注">
+          <el-input v-model="planEditForm.remarks" type="textarea" :rows="3" clearable />
+        </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="planEditVisible = false">取消</el-button>
         <el-button type="primary" :loading="planSubmitting" @click="submitPlanEdit">保存</el-button>
       </template>
-    </el-dialog>
+    </AppFormDialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { useRoute, useRouter } from 'vue-router'
 import {
   fetchInspections,
+  createInspection,
+  deleteInspection,
   fetchInspectionResults,
   fetchInspectionSummary,
   submitInspectionResults,
@@ -349,6 +404,9 @@ import { useFilterStatePersist } from '../../composables/useFilterStatePersist'
 import { useLinkedRealtimeRefresh } from '../../composables/useLinkedRealtimeRefresh'
 import { useAccessControl } from '../../composables/useAccessControl'
 import { normalizeStatusText, resolveInspectionStatusTag } from '../../utils/statusTag'
+import AppFilterCard from '../../components/AppFilterCard.vue'
+import AppTableCard from '../../components/AppTableCard.vue'
+import AppFormDialog from '../../components/AppFormDialog.vue'
 
 // ---- Tab 切换 ----
 const activeTab = ref('plan')
@@ -371,11 +429,14 @@ const summary = ref<InspectionSummary>({
 })
 
 const query = reactive({
+  hospitalName: '',
   status: '',
   province: '',
   productName: '',
   groupName: '',
   inspector: '',
+  inspectionType: '',
+  priority: '',
   page: 1,
   size: 15,
 })
@@ -386,12 +447,18 @@ const planEditVisible = ref(false)
 const planSubmitting = ref(false)
 const editingPlanId = ref<number | null>(null)
 const planEditForm = reactive<InspectionPlanUpsert>({
+  hospitalName: '',
+  productName: '',
+  province: '',
+  hospitalLevel: '',
   groupName: '',
   inspector: '',
   planDate: '',
   actualDate: null,
   status: '已计划',
   inspectionType: '远程',
+  priority: '中',
+  remarks: '',
 })
 
 const readRouteQueryValue = (value: unknown): string => {
@@ -438,6 +505,8 @@ const applyDrillQuery = () => {
   const groupName = readRouteQueryValue(route.query.groupName)
   const inspector = readRouteQueryValue(route.query.inspector)
   const hospitalName = readRouteQueryValue(route.query.hospitalName)
+  const inspectionType = readRouteQueryValue(route.query.inspectionType)
+  const priority = readRouteQueryValue(route.query.priority)
   const healthLevel = readRouteQueryValue(route.query.healthLevel)
 
   if (activeTab.value === 'results') {
@@ -449,15 +518,15 @@ const applyDrillQuery = () => {
     return
   }
 
+  if (hospitalName) query.hospitalName = hospitalName
   if (status) query.status = status
   if (province) query.province = province
   if (productName) query.productName = productName
   if (groupName) query.groupName = groupName
   if (inspector) query.inspector = inspector
-  if (hospitalName) {
-    query.page = 1
-  }
-  if (status || province || productName || groupName || inspector) {
+  if (inspectionType) query.inspectionType = inspectionType
+  if (priority) query.priority = priority
+  if (status || province || productName || groupName || inspector || hospitalName || inspectionType || priority) {
     query.page = 1
   }
 }
@@ -465,11 +534,14 @@ const applyDrillQuery = () => {
 const getRoutePlanHospitalName = () => readRouteQueryValue(route.query.hospitalName)
 
 type InspectionFilterState = {
+  hospitalName: string
   status: string
   province: string
   productName: string
   groupName: string
   inspector: string
+  inspectionType: string
+  priority: string
   page: number
   size: number
 }
@@ -578,12 +650,15 @@ const loadData = async () => {
       }
 
       const filtered = source
-        .filter((item) => item.hospitalName === getRoutePlanHospitalName())
+        .filter((item) => !query.hospitalName || item.hospitalName.includes(query.hospitalName))
+        .filter((item) => !getRoutePlanHospitalName() || item.hospitalName === getRoutePlanHospitalName())
         .filter((item) => !query.status || isSameStatus(item.status, query.status))
         .filter((item) => !query.province || item.province === query.province)
         .filter((item) => !query.productName || item.productName === query.productName)
         .filter((item) => !query.groupName || item.groupName === query.groupName)
         .filter((item) => !query.inspector || item.inspector === query.inspector)
+        .filter((item) => !query.inspectionType || item.inspectionType === query.inspectionType)
+        .filter((item) => !query.priority || item.priority === query.priority)
 
       total.value = filtered.length
       const start = (query.page - 1) * query.size
@@ -604,12 +679,28 @@ const loadData = async () => {
 }
 
 const onStatClick = (status: string) => {
+  query.hospitalName = ''
   query.province = ''
   query.productName = ''
   query.groupName = ''
   query.inspector = ''
+  query.inspectionType = ''
+  query.priority = ''
   query.status = status
   query.page = 1
+  void updateRouteQuery({
+    hospitalName: undefined,
+    status: undefined,
+    province: undefined,
+    productName: undefined,
+    groupName: undefined,
+    inspector: undefined,
+    inspectionType: undefined,
+    priority: undefined,
+    action: undefined,
+    id: undefined,
+    tab: 'plan',
+  })
   loadData()
 }
 
@@ -619,15 +710,30 @@ const onSearch = () => {
 }
 
 const onReset = () => {
+  query.hospitalName = ''
   query.status = ''
   query.province = ''
   query.productName = ''
   query.groupName = ''
   query.inspector = ''
+  query.inspectionType = ''
+  query.priority = ''
   query.page = 1
   query.size = 15
   clearFilterState()
-  void updateRouteQuery({ hospitalName: undefined, productName: undefined, groupName: undefined, inspector: undefined, action: undefined, id: undefined, tab: 'plan' })
+  void updateRouteQuery({
+    hospitalName: undefined,
+    status: undefined,
+    province: undefined,
+    productName: undefined,
+    groupName: undefined,
+    inspector: undefined,
+    inspectionType: undefined,
+    priority: undefined,
+    action: undefined,
+    id: undefined,
+    tab: 'plan',
+  })
   loadData()
 }
 
@@ -652,20 +758,26 @@ const onExport = async () => {
 const { restore: restoreFilterState, clear: clearFilterState } = useFilterStatePersist<InspectionFilterState>({
   key: 'inspection-plan',
   getState: () => ({
+    hospitalName: query.hospitalName,
     status: query.status,
     province: query.province,
     productName: query.productName,
     groupName: query.groupName,
     inspector: query.inspector,
+    inspectionType: query.inspectionType,
+    priority: query.priority,
     page: query.page,
     size: query.size,
   }),
   applyState: (state) => {
+    query.hospitalName = state.hospitalName ?? ''
     query.status = state.status ?? ''
     query.province = state.province ?? ''
     query.productName = state.productName ?? ''
     query.groupName = state.groupName ?? ''
     query.inspector = state.inspector ?? ''
+    query.inspectionType = state.inspectionType ?? ''
+    query.priority = state.priority ?? ''
     query.page = typeof state.page === 'number' ? state.page : 1
     query.size = typeof state.size === 'number' ? state.size : 15
   },
@@ -773,14 +885,42 @@ const onOpenPlanEdit = (row: InspectionPlanItem, syncRoute = true) => {
   editingPlanId.value = row.id
   planEditForm.groupName = row.groupName
   planEditForm.inspector = row.inspector
+  planEditForm.hospitalName = row.hospitalName
+  planEditForm.productName = row.productName
+  planEditForm.province = row.province
+  planEditForm.hospitalLevel = row.hospitalLevel
   planEditForm.planDate = row.planDate
   planEditForm.actualDate = row.actualDate ?? null
   planEditForm.status = row.status
   planEditForm.inspectionType = row.inspectionType
+  planEditForm.priority = row.priority
+  planEditForm.remarks = row.remarks
   planEditVisible.value = true
   if (syncRoute) {
     void updateRouteQuery({ tab: 'plan', action: 'edit', id: String(row.id), resultId: undefined })
   }
+}
+
+const resetPlanEditForm = () => {
+  planEditForm.hospitalName = ''
+  planEditForm.productName = ''
+  planEditForm.province = ''
+  planEditForm.hospitalLevel = ''
+  planEditForm.groupName = ''
+  planEditForm.inspector = ''
+  planEditForm.planDate = new Date().toISOString().slice(0, 10)
+  planEditForm.actualDate = null
+  planEditForm.status = '已计划'
+  planEditForm.inspectionType = '远程'
+  planEditForm.priority = '中'
+  planEditForm.remarks = ''
+}
+
+const onOpenPlanCreate = () => {
+  editingPlanId.value = null
+  resetPlanEditForm()
+  planEditVisible.value = true
+  void updateRouteQuery({ tab: 'plan', action: 'create', id: undefined, resultId: undefined })
 }
 
 const onPlanRowDoubleClick = (row: InspectionPlanItem) => {
@@ -793,21 +933,46 @@ const onPlanRowDoubleClick = (row: InspectionPlanItem) => {
 }
 
 const submitPlanEdit = async () => {
-  if (!editingPlanId.value) {
-    return
-  }
-
   planSubmitting.value = true
   try {
-    const res = await updateInspection(editingPlanId.value, planEditForm)
-    ElMessage.success('巡检计划更新成功')
-    planDetailRow.value = res.data
+    if (editingPlanId.value) {
+      const res = await updateInspection(editingPlanId.value, planEditForm)
+      ElMessage.success('巡检计划更新成功')
+      planDetailRow.value = res.data
+    } else {
+      const res = await createInspection(planEditForm)
+      ElMessage.success('巡检计划创建成功')
+      planDetailRow.value = res.data
+    }
+
     planEditVisible.value = false
     await Promise.allSettled([loadSummary(), loadFilterOptions(), loadData()])
   } catch (error) {
-    ElMessage.error(getErrorMessage(error, '更新巡检计划失败'))
+    ElMessage.error(getErrorMessage(error, editingPlanId.value ? '更新巡检计划失败' : '创建巡检计划失败'))
   } finally {
     planSubmitting.value = false
+  }
+}
+
+const onDeletePlan = async (row: InspectionPlanItem) => {
+  try {
+    await ElMessageBox.confirm(`确认删除巡检计划 #${row.id} 吗？`, '删除确认', {
+      type: 'warning',
+      confirmButtonText: '删除',
+      cancelButtonText: '取消',
+    })
+  } catch {
+    return
+  }
+
+  try {
+    await deleteInspection(row.id)
+    ElMessage.success('巡检计划删除成功')
+    planDetailVisible.value = false
+    planEditVisible.value = false
+    await Promise.allSettled([loadSummary(), loadFilterOptions(), loadData()])
+  } catch (error) {
+    ElMessage.error(getErrorMessage(error, '删除巡检计划失败'))
   }
 }
 
@@ -903,7 +1068,14 @@ const onResultRowDoubleClick = (row: InspectionResult) => {
 
 const syncPlanDetailFromRoute = async () => {
   const action = readRouteQueryValue(route.query.action)
-  if (activeTab.value !== 'plan' || (action !== 'detail' && action !== 'edit')) {
+  if (activeTab.value !== 'plan' || (action !== 'detail' && action !== 'edit' && action !== 'create')) {
+    return
+  }
+
+  if (action === 'create') {
+    if (canManageInspection.value && !planEditVisible.value) {
+      onOpenPlanCreate()
+    }
     return
   }
 
@@ -948,11 +1120,14 @@ const syncSinglePlanActionFromFilters = async () => {
   const source = allPlanRows.value.length > 0 ? allPlanRows.value : tableData.value
   const filtered = source
     .filter((item) => !getRoutePlanHospitalName() || item.hospitalName === getRoutePlanHospitalName())
+    .filter((item) => !query.hospitalName || item.hospitalName.includes(query.hospitalName))
     .filter((item) => !query.status || isSameStatus(item.status, query.status))
     .filter((item) => !query.province || item.province === query.province)
     .filter((item) => !query.productName || item.productName === query.productName)
     .filter((item) => !query.groupName || item.groupName === query.groupName)
     .filter((item) => !query.inspector || item.inspector === query.inspector)
+    .filter((item) => !query.inspectionType || item.inspectionType === query.inspectionType)
+    .filter((item) => !query.priority || item.priority === query.priority)
 
   if (filtered.length !== 1) {
     return

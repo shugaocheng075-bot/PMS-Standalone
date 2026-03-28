@@ -1,3 +1,5 @@
+# Progress
+
 2026-03-07: 巡检计划、年度报告补齐前端编辑态；月报来源页到交接/巡检/年报的跳转补充 action 与更精确的医院/产品上下文，并在目标页支持单条命中自动打开。验证：前端诊断无错，npm run build 通过。
 2026-03-07: 权限配置页打开与保存后强制刷新上级主管候选人，确保新设为运维主管的人员能立即被其他人员选择为上级主管。验证：PersonnelListView 诊断无错，pms-web 构建通过。
 2026-03-07: 权限配置“上级主管”新增兜底候选（无 supervisor/manager 时允许选择服务角色人员）；月度报告生成“组别”改为优先按运维主管(systemRole=supervisor)筛选，缺失时再回退经理组/全组别。验证：pms-web 执行 npm run build 通过。
@@ -10,7 +12,8 @@
 2026-03-08: 排查“重大需求”菜单偶发显示错字，确认前端未做标题字符串计算或改写；为侧边栏菜单强制指定中文字体、字重并关闭字体合成，降低小字号下中文字形误判。验证：AppLayout 前端诊断无错。
 2026-03-08: 继续收口菜单栏名称异常显示问题：为桌面/移动菜单栏容器增加 zh-CN 与 translate=no，并统一菜单栏文本字体与 text-size-adjust，避免菜单名称被浏览器翻译或自动缩放干扰。验证：AppLayout 前端诊断无错。
 2026-03-08: 修复重大需求单条状态修改串行污染问题：后端为重大需求导入/存量快照统一强制唯一 RowId，并在服务启动时自动修复既有 RowId 冲突；前端表格补充 row-key 稳定行标识，避免状态渲染和选择复用错位。验证：重大需求相关文件诊断通过，后端构建待验证。
-2026-03-08: 修复“点击状态标签有统计但无列表”交互问题：年度报告改为状态归一化比对（消除空格/全角空格差异）并将“商机编号”统一改名“机会号”；同时对重大需求与巡检计划的同类状态交互（筛选/按钮显隐）做归一化加固。验证：pms-web 执行 npm run build 通过。2026-03-09: 全站审计优化批量实施。后端：新增 GlobalExceptionMiddleware 全局异常兜底；CORS 从 AllowAnyOrigin 收紧为可配 WithOrigins。前端：分页 page-sizes 统一为 [15,30,50,100]（14处）；MajorDemandView 分页 layout 补 total/sizes 并接入 useFilterStatePersist；15 个 el-dialog 补 destroy-on-close；PersonnelListView 操作按钮 plain→link；AppLayout router-view 包裹 fade-slide transition；style.css 新增 6 个 CSS 变量 + 过渡动画类；Login 卡片宽度改 min(420px,90vw) 响应式；新增 constants/tableConfig.ts 集中分页常量。
+2026-03-08: 修复“点击状态标签有统计但无列表”交互问题：年度报告改为状态归一化比对（消除空格/全角空格差异）并将“商机编号”统一改名“机会号”；同时对重大需求与巡检计划的同类状态交互（筛选/按钮显隐）做归一化加固。验证：pms-web 执行 npm run build 通过。
+2026-03-09: 全站审计优化批量实施。后端：新增 GlobalExceptionMiddleware 全局异常兜底；CORS 从 AllowAnyOrigin 收紧为可配 WithOrigins。前端：分页 page-sizes 统一为 [15,30,50,100]（14处）；MajorDemandView 分页 layout 补 total/sizes 并接入 useFilterStatePersist；15 个 el-dialog 补 destroy-on-close；PersonnelListView 操作按钮 plain→link；AppLayout router-view 包裹 fade-slide transition；style.css 新增 6 个 CSS 变量 + 过渡动画类；Login 卡片宽度改 min(420px,90vw) 响应式；新增 constants/tableConfig.ts 集中分页常量。
 2026-03-10: Task 1 (P0) — Dashboard + AlertCenter 数据范围修复。DashboardController v2/v3 注入 IAccessControlService，所有聚合数据（events、projects、repairs、workHours、inspections）均按 HospitalScope 过滤；AlertCenterController 同步加固。验证：dotnet build 0 错误。
 2026-03-10: Task 2 (P1-a) — 个人工作台。后端新增 GET /api/dashboard/workbench 端点，聚合临期合同(30天)、待巡检、未处理报修、本月工时、项目数。前端新建 PersonalWorkbench.vue（3列待办卡片+4统计指标），DashboardView.vue 根据 isManager() 自动切换管理仪表盘/个人工作台。验证：dotnet build 0 错误，npm run build 通过。
 2026-03-10: Task 3 (P1-b) — 通知系统。后端新增 NotificationEntity、INotificationService/InMemoryNotificationService（SQLite 持久化，_nextId 自增模式）、NotificationController（4端点：summary/query/mark-read/mark-all-read）。前端新增 types/notification.ts、api/modules/notification.ts，AppLayout.vue 铃铛图标升级为 el-popover+el-badge 通知面板（60秒轮询、标已读、点击导航）。验证：dotnet build 0 错误，npm run build 通过。
@@ -31,3 +34,8 @@
 2026-03-10: Task 18 (P5-d) — 备份恢复。SqliteJsonStore 暴露 GetDbPath()+CreateConnection()。新建 BackupController（GET download 用 VACUUM INTO 一致快照+POST restore 校验上传 DB 有效性后替换）。前端 system.ts 增加 downloadBackup/uploadRestore，SystemSettingsView 增加备份下载/恢复上传 UI。
 2026-03-10: Task 19 (P5-e) — 打印/PDF。新建 composables/usePrint.ts（打开新窗口+注入样式+隐藏非打印元素+window.print），WorkHoursReportView、MonthlyReportGenerateView、AnnualReportView 三个报表视图均增加"打印"按钮+pageRef。
 2026-03-10: Task 20 (P5-f) — UX 加固。5个 Dashboard/Workbench 视图主容器增加 v-loading 指令消除首屏空壳闪烁；MS010001013001View（项目地图看板）新增 mapLoading 状态；Controllers/System 文件夹重命名为 Controllers/Infra 修复 C# System 命名空间冲突。验证：vue-tsc 0 错误，dotnet build 0 错误 17 警告。
+2026-03-09: 全面审查收口补丁 — 补齐 AuditLogView 的全局组件规范化：筛选/表格容器迁移到 AppFilterCard/AppTableCard，分页尺寸统一改用 tableConfig 常量（PAGE_SIZES/DEFAULT_PAGE_SIZE），并移除页面局部 .filter-card/.table-card 冗余样式。验证：vue-tsc 0 错误，npm run build 通过。
+2026-03-09: 继续收口（规范+性能）— AppFormDialog 增强统一行为（size 预设 + close-on-press-escape 默认开启）；Vite 增加 manualChunks 分包；MS010001013001View 改为懒加载 echarts 与 china.geo.json。结果：complex-model-view 由 ~1891.96kB 降至 ~197.48kB，vue-tsc 0 错误，npm run build 通过；当前主要大包剩余 vendor-element-plus / vendor-echarts / china.geo。
+2026-03-09: 继续性能压缩 — 前端切换 Element Plus 按需加载（移除 main.ts 全量 app.use(ElementPlus) 与全量样式），改为 Vite unplugin-auto-import + unplugin-vue-components + ElementPlusResolver；MS010001013001View 的 china.geo.json 从 JS 动态导入改为 URL fetch 静态资源加载，避免生成大型 JS 数据块。验证：待本轮构建结果确认。
+2026-03-09: 性能压缩结果确认 — 构建通过（vue-tsc 0 错误）；Element Plus 体积显著下降（历史 ~806kB → ~140kB 后再由默认分包拆散），complex-model 业务块降至约 10~13kB 级；china.geo 从 JS chunk 变为静态 json 资源。当前仅剩 ECharts 相关 chunk 约 645kB 超出 500k 警告阈值，属于图表库体积告警。
+2026-03-09: ECharts 终轮拆分 — 新增 `utils/echarts-basic.ts` 与 `utils/echarts-map.ts`，Dashboard/KPI 改用 basic，项目地图改用 map；移除旧 `utils/echarts.ts`。构建结果：ECharts 拆为 `echarts-basic`(~96.93kB)、`echarts-map`(~87.05kB) 与 `installCanvasRenderer`(~465.33kB)，不再出现 >500k chunk 警告；vue-tsc 0 错误，npm run build 通过。

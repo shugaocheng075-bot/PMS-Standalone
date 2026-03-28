@@ -16,6 +16,14 @@ export function updateAnnualReport(id: number, payload: Partial<AnnualReportUpse
   return request.put<any, ApiResponse<AnnualReportItem>>(`/annual-reports/${id}`, payload)
 }
 
+export function createAnnualReport(payload: AnnualReportUpsert) {
+  return request.post<any, ApiResponse<AnnualReportItem>>('/annual-reports', payload)
+}
+
+export function deleteAnnualReport(id: number) {
+  return request.delete<any, ApiResponse<boolean>>(`/annual-reports/${id}`)
+}
+
 export function exportAnnualReports(params: AnnualReportQuery) {
   return request.get<any, Blob>('/annual-reports/export', {
     params,

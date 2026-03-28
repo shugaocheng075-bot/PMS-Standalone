@@ -16,7 +16,10 @@ public class AnnualReportItemDto
     public string DueMonth { get; set; } = string.Empty;
     public int ReportYear { get; set; }
     public string Status { get; set; } = string.Empty;
+    public string Priority { get; set; } = string.Empty;
     public DateTime? SubmitDate { get; set; }
+    public string Reviewer { get; set; } = string.Empty;
+    public DateTime? ReviewDate { get; set; }
     public string Remarks { get; set; } = string.Empty;
 }
 
@@ -33,6 +36,9 @@ public class AnnualReportUpsertDto
     public string? MaintenanceEndDate { get; set; }
     public int? ReportYear { get; set; }
     public string? Status { get; set; }
+    public string? Priority { get; set; }
     public DateTime? SubmitDate { get; set; }
+    public string? Reviewer { get; set; }
+    public DateTime? ReviewDate { get; set; }
     public string? Remarks { get; set; }
 }

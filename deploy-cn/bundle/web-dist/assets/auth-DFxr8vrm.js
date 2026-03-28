@@ -1,0 +1,1 @@
+import{n as e,t}from"./request-CqeLWlCC.js";var n=e.create({baseURL:`/api`,timeout:1e4});function r(e){return n.post(`/auth/login`,e).then(e=>e.data)}function i(){return t.post(`/auth/logout`)}function a(e){return t.post(`/auth/change-password`,e)}export{r as n,i as r,a as t};

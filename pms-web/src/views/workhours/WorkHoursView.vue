@@ -17,7 +17,7 @@
       <el-col :span="4"><el-card shadow="never" class="stat-card stats-card clickable" :class="{ active: query.workType === '出差' }" @click="onTypeClick('出差')"><div class="t">出差</div><div class="v danger">{{ summary.travelCount }}</div></el-card></el-col>
     </el-row>
 
-    <el-card shadow="never" class="filter-card">
+    <AppFilterCard>
       <el-form :model="query" inline class="filter-form" @submit.prevent="onSearch">
         <el-form-item label="人员"><el-input v-model="query.personnelName" clearable @keyup.enter="onSearch" /></el-form-item>
         <el-form-item label="医院名称">
@@ -51,9 +51,9 @@
           <el-button @click="onReset">重置</el-button>
         </el-form-item>
       </el-form>
-    </el-card>
+    </AppFilterCard>
 
-    <el-card shadow="never" class="table-card">
+    <AppTableCard>
       <el-table :data="tableData" v-loading="loading" stripe max-height="520" scrollbar-always-on empty-text="暂无符合条件的数据" @row-dblclick="onRowDoubleClick">
         <el-table-column prop="id" label="ID" width="70" />
         <el-table-column prop="personnelName" label="人员" width="100" />
@@ -108,19 +108,27 @@
           @current-change="onCurrentPageChange"
         />
       </div>
-    </el-card>
+    </AppTableCard>
 
-    <el-dialog v-model="dialogVisible" :title="editingId ? '编辑工时' : '新增工时'" width="600px" destroy-on-close>
+    <AppFormDialog v-model="dialogVisible" :title="editingId ? '编辑工时' : '新增工时'" width="600px">
       <el-form ref="formRef" :model="form" :rules="formRules" label-width="90px">
-        <el-form-item label="医院名称" required>
+        <el-form-item label="医院名称" prop="hospitalName" required>
           <el-select v-model="form.hospitalName" filterable placeholder="请选择医院" style="width: 100%">
             <el-option v-for="name in accessibleHospitals" :key="name" :label="name" :value="name" />
           </el-select>
         </el-form-item>
         <el-form-item label="人员姓名"><el-input v-model="personnelName" /></el-form-item>
-        <el-form-item label="工作日期"><el-date-picker v-model="form.workDate" type="date" value-format="YYYY-MM-DD" style="width: 100%" /></el-form-item>
-        <el-form-item label="工时(h)"><el-input-number v-model="form.hours" :min="0.5" :max="24" :step="0.5" style="width: 100%" /></el-form-item>
-        <el-form-item label="工作类型">
+        <el-form-item label="工作日期" prop="workDate">
+          <el-date-picker
+            v-model="form.workDate"
+            type="date"
+            value-format="YYYY-MM-DD"
+            :disabled-date="disableFutureDates"
+            style="width: 100%"
+          />
+        </el-form-item>
+        <el-form-item label="工时(h)" prop="hours"><el-input-number v-model="form.hours" :min="0.5" :max="24" :step="0.5" style="width: 100%" /></el-form-item>
+        <el-form-item label="工作类型" prop="workType">
           <el-select v-model="form.workType" style="width: 100%">
             <el-option label="驻场" value="驻场" />
             <el-option label="远程" value="远程" />
@@ -130,15 +138,15 @@
             <el-option label="其他特殊" value="其他特殊" />
           </el-select>
         </el-form-item>
-        <el-form-item label="工作内容"><el-input v-model="form.description" type="textarea" :rows="3" /></el-form-item>
+        <el-form-item label="工作内容" prop="description"><el-input v-model="form.description" type="textarea" :rows="3" /></el-form-item>
       </el-form>
       <template #footer>
         <el-button :disabled="submitLoading" @click="dialogVisible = false">取消</el-button>
         <el-button type="primary" :loading="submitLoading" :disabled="submitLoading" @click="onSubmit">确定</el-button>
       </template>
-    </el-dialog>
+    </AppFormDialog>
 
-    <el-dialog v-model="detailVisible" title="工时详情" width="620px" destroy-on-close>
+    <AppFormDialog v-model="detailVisible" title="工时详情" width="620px">
       <el-descriptions v-if="detailItem" :column="2" border>
         <el-descriptions-item label="人员">{{ detailItem.personnelName || '-' }}</el-descriptions-item>
         <el-descriptions-item label="医院名称">{{ detailItem.hospitalName || '-' }}</el-descriptions-item>
@@ -151,7 +159,7 @@
       <template #footer>
         <el-button type="primary" @click="detailVisible = false">关闭</el-button>
       </template>
-    </el-dialog>
+    </AppFormDialog>
   </div>
 </template>
 
@@ -176,6 +184,9 @@ import { useResilientLoad } from '../../composables/useResilientLoad'
 import { getErrorMessage } from '../../utils/error'
 import { useFilterStatePersist } from '../../composables/useFilterStatePersist'
 import { useLinkedRealtimeRefresh } from '../../composables/useLinkedRealtimeRefresh'
+import AppFilterCard from '../../components/AppFilterCard.vue'
+import AppTableCard from '../../components/AppTableCard.vue'
+import AppFormDialog from '../../components/AppFormDialog.vue'
 
 const access = useAccessControl()
 const canManage = computed(() => access.isManager() && access.canPermission('workhours.manage'))
@@ -293,8 +304,36 @@ const { notifyDataChanged } = useLinkedRealtimeRefresh({
 const formRules: FormRules<WorkHoursUpsert> = {
   hospitalName: [{ required: true, message: '请选择医院名称', trigger: 'change' }],
   workDate: [{ required: true, message: '请选择工作日期', trigger: 'change' }],
-  hours: [{ required: true, message: '请填写工时', trigger: 'change' }],
+  hours: [
+    { required: true, message: '请填写工时', trigger: 'change' },
+    {
+      validator: (_rule, value: number, callback) => {
+        if (typeof value !== 'number' || Number.isNaN(value)) {
+          callback(new Error('请填写有效工时'))
+          return
+        }
+
+        if (value < 0.5 || value > 24) {
+          callback(new Error('工时需在0.5到24之间'))
+          return
+        }
+
+        callback()
+      },
+      trigger: 'change',
+    },
+  ],
   workType: [{ required: true, message: '请选择工作类型', trigger: 'change' }],
+  description: [
+    { required: true, message: '请填写工作内容', trigger: 'blur' },
+    { min: 2, max: 500, message: '工作内容长度需在2到500个字符之间', trigger: 'blur' },
+  ],
+}
+
+const disableFutureDates = (date: Date) => {
+  const today = new Date()
+  today.setHours(23, 59, 59, 999)
+  return date.getTime() > today.getTime()
 }
 
 const typeTag = (type: string) => {
@@ -370,6 +409,7 @@ const onReset = () => {
   query.page = 1
   query.size = 15
   filterPersist.clear()
+  void updateRouteQuery({ personnelName: undefined, hospitalName: undefined, workType: undefined, action: undefined, id: undefined })
   loadData()
 }
 
@@ -400,6 +440,7 @@ const onExport = async () => {
 const onTypeClick = (workType: string) => {
   query.workType = query.workType === workType ? '' : workType
   query.page = 1
+  void updateRouteQuery({ personnelName: undefined, hospitalName: undefined, workType: undefined, action: undefined, id: undefined })
   loadData()
 }
 
