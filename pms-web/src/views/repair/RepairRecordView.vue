@@ -44,9 +44,9 @@
             </el-select>
           </el-form-item>
           <el-form-item class="filter-actions">
-            <el-button type="primary" @click="onSearch">查询</el-button>
-            <el-button @click="onReset">重置</el-button>
-          </el-form-item>
+          <el-button type="primary" @click="onSearch">查询</el-button>
+          <el-button @click="onReset">重置</el-button>
+        </el-form-item>
         </el-form>
       </template>
 
@@ -105,7 +105,7 @@
       </el-table-column>
     </ProTable>
 
-    <AppFormDialog v-model="dialogVisible" :title="editingId ? '编辑报修' : '新增报修'" width="620px">
+    <ProDrawer v-model="dialogVisible" :title="editingId ? '编辑报修' : '新增报修'" width="620px">
       <el-form ref="formRef" :model="form" :rules="formRules" label-width="90px">
         <el-form-item label="医院名称" required>
           <el-select v-model="form.hospitalName" filterable placeholder="请选择医院" style="width: 100%">
@@ -137,9 +137,9 @@
         <el-button :disabled="submitLoading" @click="dialogVisible = false">取消</el-button>
         <el-button type="primary" :loading="submitLoading" :disabled="submitLoading" @click="onSubmit">确定</el-button>
       </template>
-    </AppFormDialog>
+    </ProDrawer>
 
-    <AppFormDialog v-model="detailVisible" title="报修详情" width="720px">  
+    <ProDrawer v-model="detailVisible" title="报修详情" width="720px">  
       <el-descriptions v-if="detailItem" :column="2" border>
         <el-descriptions-item label="医院名称">{{ detailItem.hospitalName }}</el-descriptions-item>
         <el-descriptions-item label="报修人">{{ detailItem.reporterName || '-' }}</el-descriptions-item>
@@ -154,7 +154,7 @@
         <el-descriptions-item label="描述" :span="2">{{ detailItem.description || '-' }}</el-descriptions-item>
       </el-descriptions>
       <template #footer><el-button @click="detailVisible = false">关闭</el-button></template>
-    </AppFormDialog>
+    </ProDrawer>
   </div>
 </template>
 <script setup lang="ts">
@@ -179,7 +179,7 @@ import { getErrorMessage } from '../../utils/error'
 import { useFilterStatePersist } from '../../composables/useFilterStatePersist'
 import { useLinkedRealtimeRefresh } from '../../composables/useLinkedRealtimeRefresh'
 import { resolveRepairStatusTag } from '../../utils/statusTag'
-import AppFormDialog from '../../components/AppFormDialog.vue'
+
 
 const access = useAccessControl()
 const canCreate = computed(() => {

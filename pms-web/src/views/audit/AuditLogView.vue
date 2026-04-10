@@ -28,7 +28,27 @@
       </el-col>
     </el-row>
 
-    <AppFilterCard>
+    
+
+    <ProTable
+      title="明细数据"
+      :data="tableData"
+      :loading="loading"
+      :total="total"
+      v-model:page="query.page"
+      v-model:size="query.size"
+      @refresh="loadData"
+      @pagination-change="loadData"
+      stripe
+      row-key="id"
+      empty-text="暂无符合条件的数据"
+            
+    >
+      <template #toolbar>
+  
+      </template>
+
+      <template #search>
       <el-form :model="query" inline class="filter-form" @submit.prevent="onSearch">
         <el-form-item label="操作类型">
           <el-select v-model="query.action" clearable placeholder="全部" style="width: 130px">
@@ -60,10 +80,10 @@
           <el-button @click="onReset">重置</el-button>
         </el-form-item>
       </el-form>
-    </AppFilterCard>
+    </template>
 
-    <AppTableCard>
-      <el-table :data="tableData" v-loading="loading" stripe max-height="520" scrollbar-always-on empty-text="暂无操作日志">
+    
+
         <el-table-column prop="createdAt" label="时间" width="170">
           <template #default="scope">
             {{ formatDateTime(scope.row.createdAt) }}
@@ -83,20 +103,11 @@
         <el-table-column prop="target" label="操作目标" min-width="200" show-overflow-tooltip />
         <el-table-column prop="detail" label="详情" min-width="260" show-overflow-tooltip />
         <el-table-column prop="ipAddress" label="IP地址" width="140" show-overflow-tooltip />
-      </el-table>
 
-      <div class="pager">
-        <el-pagination
-          v-model:current-page="query.page"
-          v-model:page-size="query.size"
-          :page-sizes="PAGE_SIZES"
-          layout="total, sizes, prev, pager, next"
-          :total="total"
-          @size-change="(size: number) => { query.size = size; query.page = 1; loadData() }"
-          @current-change="(page: number) => { query.page = page; loadData() }"
-        />
-      </div>
-    </AppTableCard>
+
+
+    
+    </ProTable>
   </div>
 </template>
 
@@ -106,9 +117,8 @@ import { fetchAuditLogs, fetchAuditLogSummary } from '../../api/modules/auditLog
 import type { AuditLogItem, AuditLogSummary } from '../../types/auditLog'
 import { useFilterStatePersist } from '../../composables/useFilterStatePersist'
 import { useResilientLoad } from '../../composables/useResilientLoad'
-import { DEFAULT_PAGE_SIZE, PAGE_SIZES } from '../../constants/tableConfig'
-import AppFilterCard from '../../components/AppFilterCard.vue'
-import AppTableCard from '../../components/AppTableCard.vue'
+import { DEFAULT_PAGE_SIZE } from '../../constants/tableConfig'
+import ProTable from '../../components/ProTable.vue'
 
 const loading = ref(false)
 const tableData = ref<AuditLogItem[]>([])
