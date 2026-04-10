@@ -695,6 +695,3 @@ onMounted(async () => {
   await syncDialogFromRoute()
 })
 </script>
-
-<style scoped>
-</style>

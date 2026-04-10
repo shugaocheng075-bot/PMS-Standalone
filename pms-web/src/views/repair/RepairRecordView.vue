@@ -1,106 +1,109 @@
-<template>
+﻿<template>
   <div class="page-shell">
     <div class="page-head">
       <div>
         <h2 class="page-title">报修记录</h2>
         <div class="page-subtitle">项目报修登记、处理进度跟踪与历史记录查询</div>
       </div>
-      <el-button v-if="canCreate" type="primary" @click="onOpenCreate">新增报修</el-button>
     </div>
 
+    <!-- 顶部状态卡片概览 -->
     <el-row :gutter="16" class="stats-row">
-      <el-col :span="6"><el-card shadow="never" class="stat-card stats-card clickable" :class="{ active: query.status === '' }" @click="onStatClick('')"><div class="t">全部</div><div class="v">{{ summary.total }}</div></el-card></el-col>
+      <el-col :span="6"><el-card shadow="never" class="stat-card stats-card clickable" :class="{ active: query.status === '' }" @click="onStatClick('')"><div class="t">全部</div><div class="v">{{ summary.total }}</div></el-card></el-col> 
       <el-col :span="6"><el-card shadow="never" class="stat-card stats-card clickable" :class="{ active: query.status === '待处理' }" @click="onStatClick('待处理')"><div class="t">待处理</div><div class="v danger">{{ summary.pendingCount }}</div></el-card></el-col>
       <el-col :span="6"><el-card shadow="never" class="stat-card stats-card clickable" :class="{ active: query.status === '处理中' }" @click="onStatClick('处理中')"><div class="t">处理中</div><div class="v warning">{{ summary.inProgressCount }}</div></el-card></el-col>
       <el-col :span="6"><el-card shadow="never" class="stat-card stats-card clickable" :class="{ active: query.status === '已完成' }" @click="onStatClick('已完成')"><div class="t">已完成</div><div class="v success">{{ summary.completedCount }}</div></el-card></el-col>
     </el-row>
 
-    <AppFilterCard>
-      <el-form :model="query" inline class="filter-form" @submit.prevent="onSearch">
-        <el-form-item label="医院名称">
-          <el-select v-model="query.hospitalName" clearable filterable placeholder="全部" style="width: 220px">
-            <el-option v-for="name in accessibleHospitals" :key="name" :label="name" :value="name" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="报修人"><el-input v-model="query.reporterName" clearable @keyup.enter="onSearch" /></el-form-item>
-        <el-form-item label="状态">
-          <el-select v-model="query.status" clearable style="width: 140px" placeholder="全部">
-            <el-option label="待处理" value="待处理" />
-            <el-option label="处理中" value="处理中" />
-            <el-option label="已完成" value="已完成" />
-          </el-select>
-        </el-form-item>
-        <el-form-item class="filter-actions">
-          <el-button type="primary" @click="onSearch">查询</el-button>
-          <el-button @click="onReset">重置</el-button>
-          <el-button :loading="exporting" @click="onExport">导出CSV</el-button>
-        </el-form-item>
-      </el-form>
-    </AppFilterCard>
+    <ProTable
+      title="报修明细"
+      :data="tableData"
+      :loading="loading"
+      :total="total"
+      v-model:page="query.page"
+      v-model:size="query.size"
+      @refresh="loadData"
+      @pagination-change="loadData"
+      stripe
+      empty-text="暂无符合条件的数据"
+      @row-dblclick="onRowDoubleClick"
+    >
+      <template #search>
+        <el-form :model="query" inline class="filter-form" @submit.prevent="onSearch">
+          <el-form-item label="医院名称">
+            <el-select v-model="query.hospitalName" clearable filterable placeholder="全部" style="width: 220px">
+              <el-option v-for="name in accessibleHospitals" :key="name" :label="name" :value="name" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="报修人"><el-input v-model="query.reporterName" placeholder="输入姓名按回车搜索" clearable @keyup.enter="onSearch" /></el-form-item>
+          <el-form-item label="状态">
+            <el-select v-model="query.status" clearable style="width: 140px" placeholder="全部">
+              <el-option label="待处理" value="待处理" />
+              <el-option label="处理中" value="处理中" />
+              <el-option label="已完成" value="已完成" />
+            </el-select>
+          </el-form-item>
+          <el-form-item class="filter-actions">
+            <el-button type="primary" @click="onSearch">查询</el-button>
+            <el-button @click="onReset">重置</el-button>
+          </el-form-item>
+        </el-form>
+      </template>
 
-    <AppTableCard>
-      <el-table :data="tableData" v-loading="loading" stripe max-height="520" scrollbar-always-on empty-text="暂无符合条件的数据" @row-dblclick="onRowDoubleClick">
-        <el-table-column prop="id" label="ID" width="70" />
-        <el-table-column prop="hospitalName" label="医院名称" min-width="180" show-overflow-tooltip />
-        <el-table-column prop="productName" label="产品名称" min-width="140" show-overflow-tooltip />
-        <el-table-column prop="projectName" label="项目名称" min-width="180" show-overflow-tooltip />
-        <el-table-column prop="reporterName" label="报修人" width="100" />
-        <el-table-column prop="severity" label="严重程度" width="100" show-overflow-tooltip />
-        <el-table-column prop="urgency" label="紧急程度" width="110">
-          <template #default="scope">
-            <el-tag :type="urgencyTag(scope.row.urgency)">{{ scope.row.urgency }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="status" label="状态" width="100">
-          <template #default="scope">
-            <el-tag :type="statusTag(scope.row.status)">{{ scope.row.status }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="description" label="问题描述" min-width="220" show-overflow-tooltip />
-        <el-table-column prop="reportedAt" label="报修日期" width="170">
-          <template #default="scope">{{ formatTime(scope.row.reportedAt || '') }}</template>
-        </el-table-column>
-        <el-table-column prop="actualWorkHours" label="实际工时" width="100" />
-        <el-table-column label="操作" width="220" fixed="right">
-          <template #default="scope">
-            <el-button
-              type="primary"
-              link
-              :loading="detailLoadingId === scope.row.id"
-              :disabled="submitLoading || deletingId === scope.row.id"
-              @click="onOpenDetail(scope.row.id)"
-            >详情</el-button>
-            <el-button
-              v-if="canEditOrDelete"
-              type="primary"
-              link
-              :disabled="submitLoading || deletingId === scope.row.id"
-              @click="onOpenEdit(scope.row)"
-            >编辑</el-button>
-            <el-button
-              v-if="canEditOrDelete"
-              type="danger"
-              link
-              :loading="deletingId === scope.row.id"
-              :disabled="submitLoading || deletingId === scope.row.id"
-              @click="onDelete(scope.row)"
-            >删除</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
+      <template #toolbar>
+        <el-button v-if="canCreate" type="primary" @click="onOpenCreate">新增报修</el-button>
+        <el-button :loading="exporting" @click="onExport">导出记录</el-button>
+      </template>
 
-      <div class="pager">
-        <el-pagination
-          v-model:current-page="query.page"
-          v-model:page-size="query.size"
-          :page-sizes="[15, 30, 50, 100]"
-          layout="total, sizes, prev, pager, next"
-          :total="total"
-          @size-change="onPageSizeChange"
-          @current-change="onCurrentPageChange"
-        />
-      </div>
-    </AppTableCard>
+      <!-- Table Columns -->
+      <el-table-column prop="id" label="ID" width="70" />
+      <el-table-column prop="hospitalName" label="医院名称" min-width="180" show-overflow-tooltip />
+      <el-table-column prop="productName" label="产品名称" min-width="140" show-overflow-tooltip />
+      <el-table-column prop="projectName" label="项目名称" min-width="180" show-overflow-tooltip />
+      <el-table-column prop="reporterName" label="报修人" width="100" />    
+      <el-table-column prop="severity" label="严重程度" width="100" show-overflow-tooltip />
+      <el-table-column prop="urgency" label="紧迫程度" width="110">
+        <template #default="scope">
+          <el-tag :type="urgencyTag(scope.row.urgency)">{{ scope.row.urgency }}</el-tag>
+        </template>
+      </el-table-column>
+      <el-table-column prop="status" label="状态" width="100">
+        <template #default="scope">
+          <el-tag :type="statusTag(scope.row.status)">{{ scope.row.status }}</el-tag>
+        </template>
+      </el-table-column>
+      <el-table-column prop="description" label="问题描述" min-width="220" show-overflow-tooltip />
+      <el-table-column prop="reportedAt" label="报修日期" width="170">    
+        <template #default="scope">{{ formatTime(scope.row.reportedAt || '') }}</template>
+      </el-table-column>
+      <el-table-column prop="actualWorkHours" label="实际工时" width="100" />
+      <el-table-column label="操作" width="160" fixed="right">
+        <template #default="scope">
+          <el-button
+            type="primary"
+            link
+            :loading="detailLoadingId === scope.row.id"
+            :disabled="submitLoading || deletingId === scope.row.id"
+            @click="onOpenDetail(scope.row.id)"
+          >详情</el-button>
+          <el-button
+            v-if="canEditOrDelete"
+            type="primary"
+            link
+            :disabled="submitLoading || deletingId === scope.row.id"
+            @click="onOpenEdit(scope.row)"
+          >编辑</el-button>
+          <el-button
+            v-if="canEditOrDelete"
+            type="danger"
+            link
+            :loading="deletingId === scope.row.id"
+            :disabled="submitLoading || deletingId === scope.row.id"
+            @click="onDelete(scope.row)"
+          >删除</el-button>
+        </template>
+      </el-table-column>
+    </ProTable>
 
     <AppFormDialog v-model="dialogVisible" :title="editingId ? '编辑报修' : '新增报修'" width="620px">
       <el-form ref="formRef" :model="form" :rules="formRules" label-width="90px">
@@ -136,27 +139,24 @@
       </template>
     </AppFormDialog>
 
-    <AppFormDialog v-model="detailVisible" title="报修详情" width="720px">
+    <AppFormDialog v-model="detailVisible" title="报修详情" width="720px">  
       <el-descriptions v-if="detailItem" :column="2" border>
         <el-descriptions-item label="医院名称">{{ detailItem.hospitalName }}</el-descriptions-item>
         <el-descriptions-item label="报修人">{{ detailItem.reporterName || '-' }}</el-descriptions-item>
         <el-descriptions-item label="产品名称">{{ detailItem.productName || '-' }}</el-descriptions-item>
         <el-descriptions-item label="项目名称">{{ detailItem.projectName || '-' }}</el-descriptions-item>
         <el-descriptions-item label="严重程度">{{ detailItem.severity || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="紧急程度">{{ detailItem.urgency || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="紧迫程度">{{ detailItem.urgency || '-' }}</el-descriptions-item>
         <el-descriptions-item label="状态">{{ detailItem.status || '-' }}</el-descriptions-item>
         <el-descriptions-item label="报修日期">{{ formatTime(detailItem.reportedAt || '') }}</el-descriptions-item>
         <el-descriptions-item label="实际工时">{{ detailItem.actualWorkHours ?? '-' }}</el-descriptions-item>
         <el-descriptions-item label="处理结果">{{ detailItem.resolution || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="问题描述" :span="2">{{ detailItem.description || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="描述" :span="2">{{ detailItem.description || '-' }}</el-descriptions-item>
       </el-descriptions>
-      <template #footer>
-        <el-button type="primary" @click="detailVisible = false">关闭</el-button>
-      </template>
+      <template #footer><el-button @click="detailVisible = false">关闭</el-button></template>
     </AppFormDialog>
   </div>
 </template>
-
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -179,8 +179,6 @@ import { getErrorMessage } from '../../utils/error'
 import { useFilterStatePersist } from '../../composables/useFilterStatePersist'
 import { useLinkedRealtimeRefresh } from '../../composables/useLinkedRealtimeRefresh'
 import { resolveRepairStatusTag } from '../../utils/statusTag'
-import AppFilterCard from '../../components/AppFilterCard.vue'
-import AppTableCard from '../../components/AppTableCard.vue'
 import AppFormDialog from '../../components/AppFormDialog.vue'
 
 const access = useAccessControl()
@@ -435,16 +433,7 @@ const onStatClick = (status: string) => {
   loadData()
 }
 
-const onPageSizeChange = (size: number) => {
-  query.size = size
-  query.page = 1
-  loadData()
-}
 
-const onCurrentPageChange = (page: number) => {
-  query.page = page
-  loadData()
-}
 
 const resetForm = () => {
   Object.assign(form, {
@@ -677,5 +666,4 @@ watch(() => route.fullPath, () => {
 })
 </script>
 
-<style scoped>
-</style>
+

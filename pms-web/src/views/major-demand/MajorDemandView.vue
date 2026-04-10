@@ -8,23 +8,34 @@
     </div>
 
     <AppFilterCard>
-      <el-space wrap>
-        <el-input v-model="query.keyword" placeholder="搜索关键字" clearable style="width: 220px" />
-        <el-select v-model="query.status" placeholder="状态" clearable style="width: 150px">
-          <el-option v-for="item in statusOptions" :key="item" :label="item" :value="item" />
-        </el-select>
-        <el-select v-model="query.owner" placeholder="负责人" clearable style="width: 150px">
-          <el-option v-for="item in ownerOptions" :key="item" :label="item" :value="item" />
-        </el-select>
+      <el-form class="filter-form" @submit.prevent>
+        <el-form-item label="关键字">
+          <el-input v-model="query.keyword" placeholder="搜索名称或描述" clearable style="width: 220px" />
+        </el-form-item>
+        <el-form-item label="状态">
+          <el-select v-model="query.status" placeholder="全部状态" clearable style="width: 150px">
+            <el-option v-for="item in statusOptions" :key="item" :label="item" :value="item" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="负责人">
+          <el-select v-model="query.owner" placeholder="全部负责人" clearable style="width: 150px">
+            <el-option v-for="item in ownerOptions" :key="item" :label="item" :value="item" />
+          </el-select>
+        </el-form-item>
 
-        <el-button type="primary" @click="onSearch">查询</el-button>
-        <el-button @click="onReset">重置</el-button>
-        <el-button :loading="loading.fetching" @click="loadData">刷新</el-button>
-        <el-button type="success" @click="onAddRow">新增</el-button>
-        <el-button :loading="loading.exporting" @click="onExport">导出Excel</el-button>
-      </el-space>
+        <div class="filter-actions">
+          <el-form-item>
+            <el-button type="primary" @click="onSearch">查询</el-button>
+            <el-button @click="onReset">重置</el-button>
+            <el-button :loading="loading.fetching" @click="loadData">刷新</el-button>
+            <el-button type="success" @click="onAddRow">新增</el-button>
+            <el-button :loading="loading.exporting" @click="onExport">导出Excel</el-button>
+          </el-form-item>
+        </div>
+      </el-form>
 
-      <el-space v-if="canManageMajorDemand" wrap style="margin-top: 10px">
+      <div v-if="canManageMajorDemand" style="margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--el-border-color-light); display: flex; gap: 12px; align-items: center;">
+        <span style="font-size: 13px; color: var(--el-text-color-regular); font-weight: 500;">批量操作:</span>
         <el-select v-model="batchForm.status" placeholder="批量状态" style="width: 150px">
           <el-option v-for="item in statusOptions" :key="`batch-status-${item}`" :label="item" :value="item" />
         </el-select>
@@ -41,8 +52,7 @@
           style="width: 170px"
         />
         <el-button :disabled="!selectedRowIds.length" @click="onBatchDueDate">批量设置截止日期</el-button>
-      </el-space>
-
+      </div>
     </AppFilterCard>
 
     <AppTableCard>
@@ -105,9 +115,10 @@
 
       <div class="pager" style="margin-top: 12px; display: flex; justify-content: space-between; align-items: center;">
         <span style="color: var(--el-text-color-secondary)">
-          共 {{ displayRows.length }} 条（已选 {{ selectedRowIds.length }} 条），字段 {{ columns.length }} 列
+          共 {{ displayRows.length }} 条（已选 {{ selectedRowIds.length }} 条）
         </span>
         <el-pagination
+          background
           v-model:current-page="currentPage"
           v-model:page-size="pageSize"
           :page-sizes="[15, 30, 50, 100]"

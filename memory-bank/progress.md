@@ -1,5 +1,7 @@
 # Progress
 
+2026-04-10: 恢复本机通过 bjgoodwill.fun 的外网访问。执行 `scripts/setup-domain-tunnel.ps1` 刷新 Cloudflare Tunnel DNS 与运行配置，启动本机 API（5111）、Vite 前端（5173）与 `pms-bjgoodwill` 隧道；验证：本地前端 200，本地 `/api/health` 401，外网 `https://bjgoodwill.fun/` 200 登录页，`https://bjgoodwill.fun/api/health` 与 `https://api.bjgoodwill.fun/api/health` 401。
+
 2026-03-07: 巡检计划、年度报告补齐前端编辑态；月报来源页到交接/巡检/年报的跳转补充 action 与更精确的医院/产品上下文，并在目标页支持单条命中自动打开。验证：前端诊断无错，npm run build 通过。
 2026-03-07: 权限配置页打开与保存后强制刷新上级主管候选人，确保新设为运维主管的人员能立即被其他人员选择为上级主管。验证：PersonnelListView 诊断无错，pms-web 构建通过。
 2026-03-07: 权限配置“上级主管”新增兜底候选（无 supervisor/manager 时允许选择服务角色人员）；月度报告生成“组别”改为优先按运维主管(systemRole=supervisor)筛选，缺失时再回退经理组/全组别。验证：pms-web 执行 npm run build 通过。
