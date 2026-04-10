@@ -5,7 +5,7 @@
         <h2 class="page-title">合同预警</h2>
         <div class="page-subtitle">按超期风险分级管理合同跟进任务</div>
       </div>
-      <el-button :loading="exporting" @click="onExport">导出Excel</el-button>
+
     </div>
 
     <el-row :gutter="16" class="stats-row">
@@ -23,7 +23,27 @@
       </el-col>
     </el-row>
 
-    <AppFilterCard>
+    
+
+    <ProTable
+      title="明细数据"
+      :data="tableData"
+      :loading="loading"
+      :total="total"
+      v-model:page="query.page"
+      v-model:size="query.size"
+      @refresh="loadData"
+      @pagination-change="loadData"
+      stripe
+      row-key="id"
+      empty-text="暂无符合条件的数据"
+            
+    >
+      <template #toolbar>
+        <el-button :loading="exporting" @click="onExport">导出Excel</el-button>
+      </template>
+
+      <template #search>
       <el-form :model="query" inline class="filter-form" @submit.prevent="onSearch">
         <el-form-item label="预警级别">
           <el-select v-model="query.alertLevel" placeholder="全部" clearable style="width: 140px">
@@ -48,10 +68,10 @@
           <el-button @click="onReset">重置</el-button>
         </el-form-item>
       </el-form>
-    </AppFilterCard>
+    </template>
 
-    <AppTableCard>
-      <el-table :data="tableData" v-loading="loading" stripe max-height="520" scrollbar-always-on empty-text="暂无符合条件的数据" @row-dblclick="onGotoProject">
+    
+
         <el-table-column prop="hospitalName" label="医院" min-width="220" show-overflow-tooltip sortable />
         <el-table-column prop="province" label="省份" width="100" show-overflow-tooltip />
         <el-table-column prop="groupName" label="组别" width="120" show-overflow-tooltip />
@@ -73,20 +93,11 @@
             <el-button link type="primary" @click="onGotoProject(scope.row)">去处理</el-button>
           </template>
         </el-table-column>
-      </el-table>
 
-      <div class="pager">
-        <el-pagination
-          v-model:current-page="query.page"
-          v-model:page-size="query.size"
-          :page-sizes="[15, 30, 50, 100]"
-          layout="total, sizes, prev, pager, next"
-          :total="total"
-          @size-change="(size: number) => { query.size = size; query.page = 1; loadData() }"
-          @current-change="(page: number) => { query.page = page; loadData() }"
-        />
-      </div>
-    </AppTableCard>
+
+
+    
+    </ProTable>
   </div>
 </template>
 
@@ -101,8 +112,7 @@ import { getErrorMessage } from '../../utils/error'
 import { GROUP_OPTIONS, PROVINCE_OPTIONS } from '../../constants/filterOptions'
 import { useFilterStatePersist } from '../../composables/useFilterStatePersist'
 import { useLinkedRealtimeRefresh } from '../../composables/useLinkedRealtimeRefresh'
-import AppFilterCard from '../../components/AppFilterCard.vue'
-import AppTableCard from '../../components/AppTableCard.vue'
+import ProTable from '../../components/ProTable.vue'
 
 const loading = ref(false)
 const exporting = ref(false)

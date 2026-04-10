@@ -20,8 +20,28 @@
           <el-col :span="4"><el-card shadow="never" class="stat-card stats-card clickable" :class="{ active: query.status === '' }" @click="onStatClick('')"><div class="t">总数</div><div class="v">{{ summary.total }}</div></el-card></el-col>
         </el-row>
 
-        <AppFilterCard>
-          <el-form :model="query" inline class="filter-form" @submit.prevent="onSearch">
+  
+
+        <ProTable
+      title="明细数据"
+      :data="tableData"
+      :loading="loading"
+      :total="total"
+      v-model:page="query.page"
+      v-model:size="query.size"
+      @refresh="loadData"
+      @pagination-change="loadData"
+      stripe
+      row-key="id"
+      empty-text="暂无符合条件的数据"
+      @row-dblclick="onPlanRowDoubleClick"
+    >
+      <template #toolbar>
+        <el-button :loading="exporting" @click="onExport">导出CSV</el-button>
+      </template>
+
+      <template #search>
+      <el-form :model="query" inline class="filter-form" @submit.prevent="onSearch">
             <el-form-item label="医院">
               <el-input v-model="query.hospitalName" clearable style="width: 200px" placeholder="请输入医院名称" />
             </el-form-item>
@@ -71,15 +91,14 @@
               </el-select>
             </el-form-item>
             <el-form-item class="filter-actions">
-              <el-button type="primary" @click="onSearch">查询</el-button>
-              <el-button @click="onReset">重置</el-button>
-              <el-button :loading="exporting" @click="onExport">导出CSV</el-button>
-            </el-form-item>
+          <el-button type="primary" @click="onSearch">查询</el-button>
+          <el-button @click="onReset">重置</el-button>
+        </el-form-item>
           </el-form>
-        </AppFilterCard>
+    </template>
 
-        <AppTableCard>
-          <el-table :data="tableData" v-loading="loading" stripe max-height="520" scrollbar-always-on empty-text="暂无符合条件的数据" @row-dblclick="onPlanRowDoubleClick">
+    
+    
             <el-table-column prop="hospitalName" label="医院" min-width="220" show-overflow-tooltip sortable />
             <el-table-column prop="productName" label="产品" min-width="180" show-overflow-tooltip sortable />
             <el-table-column prop="province" label="省份" width="100" show-overflow-tooltip sortable />
@@ -112,20 +131,11 @@
                 <el-button v-if="isSameStatus(scope.row.status, '已完成')" link @click="goToResultTab(scope.row)">查看结果</el-button>
               </template>
             </el-table-column>
-          </el-table>
+    
 
-      <div class="pager">
-        <el-pagination
-          v-model:current-page="query.page"
-          v-model:page-size="query.size"
-          :page-sizes="[15, 30, 50, 100]"
-          layout="total, sizes, prev, pager, next"
-          :total="total"
-          @size-change="(size: number) => { query.size = size; query.page = 1; loadData() }"
-          @current-change="(page: number) => { query.page = page; loadData() }"
-        />
-      </div>
-    </AppTableCard>
+
+    
+    </ProTable>
       </el-tab-pane>
 
       <!-- ===================== 巡检结果 Tab ===================== -->
@@ -245,7 +255,7 @@
         </AppTableCard>
 
         <!-- 详情弹窗 -->
-        <AppFormDialog v-model="detailVisible" title="巡检结果详情" width="720px">
+        <ProDrawer v-model="detailVisible" title="巡检结果详情" width="720px">
           <template v-if="detailRow">
             <el-descriptions :column="2" border size="small" class="result-desc">
               <el-descriptions-item label="医院">{{ detailRow.hospitalName }}</el-descriptions-item>
@@ -286,12 +296,12 @@
               </el-table>
             </div>
           </template>
-        </AppFormDialog>
+        </ProDrawer>
 
       </el-tab-pane>
     </el-tabs>
 
-    <AppFormDialog v-model="planDetailVisible" title="巡检计划详情" width="680px">
+    <ProDrawer v-model="planDetailVisible" title="巡检计划详情" width="680px">
       <template v-if="planDetailRow">
         <el-descriptions :column="2" border size="small" class="result-desc">
           <el-descriptions-item label="医院">{{ planDetailRow.hospitalName }}</el-descriptions-item>
@@ -317,9 +327,9 @@
           <el-button plain @click="goToResultTab(planDetailRow)">去巡检结果</el-button>
         </div>
       </template>
-    </AppFormDialog>
+    </ProDrawer>
 
-    <AppFormDialog v-model="planEditVisible" :title="editingPlanId ? '编辑巡检计划' : '新增巡检计划'" width="620px">
+    <ProDrawer v-model="planEditVisible" :title="editingPlanId ? '编辑巡检计划' : '新增巡检计划'" width="620px">
       <el-form label-width="100px">
         <el-form-item label="医院">
           <el-input v-model="planEditForm.hospitalName" clearable />
@@ -377,7 +387,7 @@
         <el-button @click="planEditVisible = false">取消</el-button>
         <el-button type="primary" :loading="planSubmitting" @click="submitPlanEdit">保存</el-button>
       </template>
-    </AppFormDialog>
+    </ProDrawer>
   </div>
 </template>
 
@@ -404,9 +414,9 @@ import { useFilterStatePersist } from '../../composables/useFilterStatePersist'
 import { useLinkedRealtimeRefresh } from '../../composables/useLinkedRealtimeRefresh'
 import { useAccessControl } from '../../composables/useAccessControl'
 import { normalizeStatusText, resolveInspectionStatusTag } from '../../utils/statusTag'
-import AppFilterCard from '../../components/AppFilterCard.vue'
-import AppTableCard from '../../components/AppTableCard.vue'
-import AppFormDialog from '../../components/AppFormDialog.vue'
+import ProTable from '../../components/ProTable.vue'
+import ProDrawer from '../../components/ProDrawer.vue'
+
 
 // ---- Tab 切换 ----
 const activeTab = ref('plan')
