@@ -7,7 +7,35 @@
       </div>
     </div>
 
-    <AppFilterCard>
+    
+
+    <ProTable
+      title="项目列表"
+      :data="tableData"
+      :loading="loading"
+      :total="total"
+      v-model:page="query.page"
+      v-model:size="query.size"
+      @refresh="loadData"
+      @pagination-change="loadData"
+      stripe
+      empty-text="暂无符合条件的数据"
+      @selection-change="onSelectionChange"
+      @row-dblclick="onRowDoubleClick"
+    >
+      <template #toolbar>
+        <el-button :loading="exporting" @click="onExport">导出CSV</el-button>
+        <el-button
+            v-if="canManageProjects"
+            type="primary"
+            plain
+            :disabled="selectedProjectIds.length === 0"
+            @click="openBatchEdit"
+          >批量编辑（{{ selectedProjectIds.length }}）</el-button>
+      </template>
+
+      
+      <template #search>
       <el-form :model="query" inline class="filter-form" @submit.prevent="onSearch">
         <el-form-item label="医院名称">
           <el-input v-model="query.hospitalName" placeholder="请输入医院名称" clearable @keyup.enter="onSearch" />
@@ -58,20 +86,9 @@
         <el-form-item class="filter-actions">
           <el-button type="primary" @click="onSearch">查询</el-button>
           <el-button @click="onReset">重置</el-button>
-          <el-button :loading="exporting" @click="onExport">导出CSV</el-button>
-          <el-button
-            v-if="canManageProjects"
-            type="primary"
-            plain
-            :disabled="selectedProjectIds.length === 0"
-            @click="openBatchEdit"
-          >批量编辑（{{ selectedProjectIds.length }}）</el-button>
         </el-form-item>
       </el-form>
-    </AppFilterCard>
-
-    <AppTableCard>
-      <el-table :data="tableData" v-loading="loading" stripe max-height="520" scrollbar-always-on empty-text="暂无符合条件的数据" @selection-change="onSelectionChange" @row-dblclick="onRowDoubleClick">
+    </template>
         <el-table-column v-if="canManageProjects" type="selection" width="46" />
         <el-table-column prop="hospitalName" label="医院名称" min-width="220" show-overflow-tooltip sortable />
         <el-table-column prop="productName" label="产品" min-width="180" show-overflow-tooltip sortable />
@@ -98,22 +115,12 @@
             <el-button link type="primary" @click="onOpenEdit(scope.row)">编辑</el-button>
           </template>
         </el-table-column>
-      </el-table>
+      
 
-      <div class="pager">
-        <el-pagination
-          v-model:current-page="query.page"
-          v-model:page-size="query.size"
-          :page-sizes="[15, 30, 50, 100]"
-          layout="total, sizes, prev, pager, next"
-          :total="total"
-          @size-change="(size: number) => { query.size = size; query.page = 1; loadData() }"
-          @current-change="(page: number) => { query.page = page; loadData() }"
-        />
-      </div>
-    </AppTableCard>
+      
+    </ProTable>
 
-    <AppFormDialog v-model="batchEditVisible" title="批量编辑项目台账" width="560px">
+    <ProDrawer v-model="batchEditVisible" title="批量编辑项目台账" width="560px">
       <el-form ref="batchFormRef" :model="batchEditForm" :rules="batchEditRules" label-width="110px">
         <el-form-item label="合同状态" prop="contractStatus">
           <el-select v-model="batchEditForm.contractStatus" clearable placeholder="不修改" style="width: 100%">
@@ -139,9 +146,9 @@
         <el-button @click="batchEditVisible = false">取消</el-button>
         <el-button type="primary" :loading="batchUpdating" @click="submitBatchEdit">提交</el-button>
       </template>
-    </AppFormDialog>
+    </ProDrawer>
 
-    <AppFormDialog v-model="editVisible" title="编辑项目台账" width="560px">
+    <ProDrawer v-model="editVisible" title="编辑项目台账" width="560px">
       <el-form ref="editFormRef" :model="editForm" :rules="editFormRules" label-width="110px">
         <el-form-item label="合同状态" prop="contractStatus">
           <el-select v-model="editForm.contractStatus" clearable placeholder="请选择合同状态" style="width: 100%">
@@ -167,7 +174,7 @@
         <el-button :disabled="editSubmitting" @click="editVisible = false">取消</el-button>
         <el-button type="primary" :loading="editSubmitting" @click="submitEdit">保存</el-button>
       </template>
-    </AppFormDialog>
+    </ProDrawer>
   </div>
 </template>
 
@@ -184,9 +191,9 @@ import { useFilterStatePersist } from '../../composables/useFilterStatePersist'
 import { useLinkedRealtimeRefresh } from '../../composables/useLinkedRealtimeRefresh'
 import { useAccessControl } from '../../composables/useAccessControl'
 import { useResilientLoad } from '../../composables/useResilientLoad'
-import AppFilterCard from '../../components/AppFilterCard.vue'
-import AppTableCard from '../../components/AppTableCard.vue'
-import AppFormDialog from '../../components/AppFormDialog.vue'
+import ProTable from '../../components/ProTable.vue'
+import ProDrawer from '../../components/ProDrawer.vue'
+
 
 const loading = ref(false)
 const exporting = ref(false)

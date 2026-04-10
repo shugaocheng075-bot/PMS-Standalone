@@ -26,7 +26,26 @@
       <el-col :span="6"><el-card shadow="never" class="stat-card stats-card clickable" :class="{ active: activeStatFilter === 'onsite' }" @click="onStatClick('onsite')"><div class="t">驻场人数</div><div class="v danger">{{ summary.onsiteCount }}</div></el-card></el-col>
     </el-row>
 
-    <AppFilterCard>
+    
+
+    <ProTable
+      title="数据列表"
+      :data="tableData"
+      :loading="loading"
+      :total="total"
+      v-model:page="query.page"
+      v-model:size="query.size"
+      @refresh="loadData"
+      @pagination-change="loadData"
+      stripe
+      empty-text="暂无符合条件的数据"
+      @row-dblclick="onRowDoubleClick"
+    >
+      <template #toolbar>
+        
+      </template>
+
+      <template #search>
       <el-form :model="query" inline class="filter-form" @submit.prevent="onSearch">
         <el-form-item label="姓名"><el-input v-model="query.name" clearable @keyup.enter="onSearch" /></el-form-item>
         <el-form-item label="部门">
@@ -56,21 +75,10 @@
           <el-button @click="onReset">重置</el-button>
         </el-form-item>
       </el-form>
-    </AppFilterCard>
+    </template>
 
-    <AppTableCard>
-      <el-table
-        class="permission-table"
-        :data="tableData"
-        v-loading="loading"
-        stripe
-        border
-        size="small"
-        :max-height="tableMaxHeight"
-        scrollbar-always-on
-        empty-text="暂无符合条件的数据"
-        @row-dblclick="onRowDoubleClick"
-      >
+    
+      
         <el-table-column label="员工编号" width="110" show-overflow-tooltip>
           <template #default="scope">
             {{ getWebsiteField(scope.row, ['employeeId', '员工编号']) }}
@@ -148,23 +156,16 @@
             >修改</el-button>
           </template>
         </el-table-column>
-      </el-table>
+      
 
       <div class="pager">
         <div class="pager-total">共 {{ displayTotal }} 条</div>
-        <el-pagination
-          v-model:current-page="query.page"
-          v-model:page-size="query.size"
-          :page-sizes="[15, 30, 50, 100]"
-          layout="sizes, prev, pager, next"
-          :total="displayTotal"
-          @size-change="(size: number) => { query.size = size; query.page = 1; loadData() }"
-          @current-change="(page: number) => { query.page = page; loadData() }"
-        />
+        
       </div>
-    </AppTableCard>
+    
+    </ProTable>
 
-    <AppFormDialog v-model="editVisible" :title="editMode === 'create' ? '新增人员' : '编辑人员'" width="900px">
+    <ProDrawer v-model="editVisible" :title="editMode === 'create' ? '新增人员' : '编辑人员'" width="900px">
       <el-form ref="editFormRef" :model="editForm" :rules="editRules" label-width="110px">
         <el-row :gutter="16">
           <el-col :span="12"><el-form-item label="员工编号"><el-input v-model="editForm.employeeId" /></el-form-item></el-col>
@@ -196,9 +197,9 @@
         <el-button :disabled="submitLoading" @click="editVisible = false">取消</el-button>
         <el-button type="primary" :loading="submitLoading" :disabled="submitLoading" @click="onSaveEdit">保存</el-button>
       </template>
-    </AppFormDialog>
+    </ProDrawer>
 
-    <AppFormDialog v-model="detailVisible" title="人员详情" width="560px">
+    <ProDrawer v-model="detailVisible" title="人员详情" width="560px">
       <el-descriptions v-if="detailItem" :column="2" border>
         <el-descriptions-item label="姓名">{{ detailItem.name }}</el-descriptions-item>
         <el-descriptions-item label="角色">{{ detailItem.roleType }}</el-descriptions-item>
@@ -210,9 +211,9 @@
       <template #footer>
         <el-button type="primary" @click="detailVisible = false">关闭</el-button>
       </template>
-    </AppFormDialog>
+    </ProDrawer>
 
-    <AppFormDialog v-model="permissionVisible" title="权限配置" width="760px">
+    <ProDrawer v-model="permissionVisible" title="权限配置" width="760px">
       <el-skeleton :loading="permissionLoading" animated :rows="5">
         <template #default>
           <template v-if="permissionTarget">
@@ -299,7 +300,7 @@
         <el-button :disabled="permissionSubmitLoading" @click="permissionVisible = false">取消</el-button>
         <el-button type="primary" :loading="permissionSubmitLoading" @click="onSavePermission">保存权限</el-button>
       </template>
-    </AppFormDialog>
+    </ProDrawer>
   </div>
 </template>
 
@@ -337,9 +338,9 @@ import { DEPARTMENT_OPTIONS, GROUP_OPTIONS } from '../../constants/filterOptions
 import { useFilterStatePersist } from '../../composables/useFilterStatePersist'
 import { useLinkedRealtimeRefresh } from '../../composables/useLinkedRealtimeRefresh'
 import { useAccessControl } from '../../composables/useAccessControl'
-import AppFilterCard from '../../components/AppFilterCard.vue'
-import AppTableCard from '../../components/AppTableCard.vue'
-import AppFormDialog from '../../components/AppFormDialog.vue'
+import ProTable from '../../components/ProTable.vue'
+import ProDrawer from '../../components/ProDrawer.vue'
+
 
 const loading = ref(false)
 const syncLoading = ref(false)
