@@ -1,12 +1,12 @@
-<template>
+﻿<template>
   <div class="page-shell">
     <div class="page-head">
       <div>
         <h2 class="page-title">工时管理</h2>
         <div class="page-subtitle">项目工时登记、统计与查询</div>
       </div>
-      <el-button v-if="canManage" type="primary" @click="onOpenCreate">新增工时</el-button>
-      <el-button :loading="exporting" @click="onExport">导出Excel</el-button>
+
+
     </div>
 
     <el-row :gutter="16" class="stats-row">
@@ -17,7 +17,28 @@
       <el-col :span="4"><el-card shadow="never" class="stat-card stats-card clickable" :class="{ active: query.workType === '出差' }" @click="onTypeClick('出差')"><div class="t">出差</div><div class="v danger">{{ summary.travelCount }}</div></el-card></el-col>
     </el-row>
 
-    <AppFilterCard>
+    
+
+    <ProTable
+      title="明细数据"
+      :data="tableData"
+      :loading="loading"
+      :total="total"
+      v-model:page="query.page"
+      v-model:size="query.size"
+      @refresh="loadData"
+      @pagination-change="loadData"
+      stripe
+      row-key="id"
+      empty-text="暂无符合条件的数据"
+            @row-dblclick="onRowDoubleClick"
+    >
+      <template #toolbar>
+        <el-button v-if="canManage" type="primary" @click="onOpenCreate">新增工时</el-button>
+        <el-button :loading="exporting" @click="onExport">导出Excel</el-button>
+      </template>
+
+      <template #search>
       <el-form :model="query" inline class="filter-form" @submit.prevent="onSearch">
         <el-form-item label="人员"><el-input v-model="query.personnelName" clearable @keyup.enter="onSearch" /></el-form-item>
         <el-form-item label="医院名称">
@@ -51,10 +72,10 @@
           <el-button @click="onReset">重置</el-button>
         </el-form-item>
       </el-form>
-    </AppFilterCard>
+    </template>
 
-    <AppTableCard>
-      <el-table :data="tableData" v-loading="loading" stripe max-height="520" scrollbar-always-on empty-text="暂无符合条件的数据" @row-dblclick="onRowDoubleClick">
+    
+
         <el-table-column prop="id" label="ID" width="70" />
         <el-table-column prop="personnelName" label="人员" width="100" />
         <el-table-column prop="hospitalName" label="医院名称" min-width="180" show-overflow-tooltip />
@@ -95,22 +116,13 @@
             >删除</el-button>
           </template>
         </el-table-column>
-      </el-table>
 
-      <div class="pager">
-        <el-pagination
-          v-model:current-page="query.page"
-          v-model:page-size="query.size"
-          :page-sizes="[15, 30, 50, 100]"
-          layout="total, sizes, prev, pager, next"
-          :total="total"
-          @size-change="onPageSizeChange"
-          @current-change="onCurrentPageChange"
-        />
-      </div>
-    </AppTableCard>
 
-    <AppFormDialog v-model="dialogVisible" :title="editingId ? '编辑工时' : '新增工时'" width="600px">
+
+    
+    </ProTable>
+
+    <ProDrawer v-model="dialogVisible" :title="editingId ? '编辑工时' : '新增工时'" width="600px">
       <el-form ref="formRef" :model="form" :rules="formRules" label-width="90px">
         <el-form-item label="医院名称" prop="hospitalName" required>
           <el-select v-model="form.hospitalName" filterable placeholder="请选择医院" style="width: 100%">
@@ -144,9 +156,9 @@
         <el-button :disabled="submitLoading" @click="dialogVisible = false">取消</el-button>
         <el-button type="primary" :loading="submitLoading" :disabled="submitLoading" @click="onSubmit">确定</el-button>
       </template>
-    </AppFormDialog>
+    </ProDrawer>
 
-    <AppFormDialog v-model="detailVisible" title="工时详情" width="620px">
+    <ProDrawer v-model="detailVisible" title="工时详情" width="620px">
       <el-descriptions v-if="detailItem" :column="2" border>
         <el-descriptions-item label="人员">{{ detailItem.personnelName || '-' }}</el-descriptions-item>
         <el-descriptions-item label="医院名称">{{ detailItem.hospitalName || '-' }}</el-descriptions-item>
@@ -159,7 +171,7 @@
       <template #footer>
         <el-button type="primary" @click="detailVisible = false">关闭</el-button>
       </template>
-    </AppFormDialog>
+    </ProDrawer>
   </div>
 </template>
 
@@ -184,9 +196,8 @@ import { useResilientLoad } from '../../composables/useResilientLoad'
 import { getErrorMessage } from '../../utils/error'
 import { useFilterStatePersist } from '../../composables/useFilterStatePersist'
 import { useLinkedRealtimeRefresh } from '../../composables/useLinkedRealtimeRefresh'
-import AppFilterCard from '../../components/AppFilterCard.vue'
-import AppTableCard from '../../components/AppTableCard.vue'
-import AppFormDialog from '../../components/AppFormDialog.vue'
+import ProTable from '../../components/ProTable.vue'
+
 
 const access = useAccessControl()
 const canManage = computed(() => access.isManager() && access.canPermission('workhours.manage'))
@@ -468,16 +479,9 @@ const applyRouteFilters = () => {
   query.page = 1
 }
 
-const onPageSizeChange = (size: number) => {
-  query.size = size
-  query.page = 1
-  loadData()
-}
 
-const onCurrentPageChange = (page: number) => {
-  query.page = page
-  loadData()
-}
+
+
 
 const resetForm = () => {
   Object.assign(form, {
@@ -695,3 +699,4 @@ onMounted(async () => {
   await syncDialogFromRoute()
 })
 </script>
+
