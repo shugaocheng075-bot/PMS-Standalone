@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="page-shell">
     <div class="page-head">
       <div>
@@ -7,7 +7,7 @@
       </div>
     </div>
 
-    <AppFilterCard>
+    <el-card shadow="never" style="margin-bottom: 16px;">
       <el-space wrap>
         <el-button v-if="canManageMaintenance" type="primary" :loading="loading.importing" @click="onAutoImport">自动重导入</el-button>
         <el-button v-if="canManageMaintenance" type="warning" :loading="loading.cleaning" @click="onCleanup">执行清洗</el-button>
@@ -21,7 +21,7 @@
       <div v-if="lastResult" style="margin-top: 12px; color: var(--el-text-color-secondary)">
         {{ lastResult }}
       </div>
-    </AppFilterCard>
+    </el-card>
 
     <el-row v-if="canManageMaintenance" :gutter="16" style="margin-bottom: 16px;">
       <el-col :xs="24" :sm="12">
@@ -96,7 +96,7 @@
       </el-col>
     </el-row>
 
-    <AppFilterCard>
+    <el-card shadow="never" style="margin-bottom: 16px;">
       <el-form :model="form" inline class="filter-form" @submit.prevent="onReassign">
         <el-form-item label="医院">
           <el-input v-model="form.hospitalName" clearable style="width: 220px" @keyup.enter="onReassign" />
@@ -111,9 +111,9 @@
           <el-button type="primary" :loading="loading.reassign" @click="onReassign">调整归属</el-button>
         </el-form-item>
       </el-form>
-    </AppFilterCard>
+    </el-card>
 
-    <AppTableCard>
+    <el-card shadow="never" class="table-card">
       <el-table :data="auditRows" v-loading="loading.audit" stripe max-height="520" scrollbar-always-on empty-text="暂无可审计数据">
         <el-table-column prop="hospitalName" label="医院" min-width="220" show-overflow-tooltip sortable />
         <el-table-column prop="productName" label="产品" min-width="180" show-overflow-tooltip sortable />
@@ -126,7 +126,7 @@
       <div class="pager" style="margin-top: 12px; color: var(--el-text-color-secondary)">
         共 {{ auditRows.length }} 条医院+产品归属记录
       </div>
-    </AppTableCard>
+    </el-card>
   </div>
 </template>
 
@@ -139,8 +139,6 @@ import { getErrorMessage } from '../../utils/error'
 import { useLinkedRealtimeRefresh } from '../../composables/useLinkedRealtimeRefresh'
 import { useAccessControl } from '../../composables/useAccessControl'
 import type { UploadFile } from 'element-plus'
-import AppFilterCard from '../../components/AppFilterCard.vue'
-import AppTableCard from '../../components/AppTableCard.vue'
 
 const auditRows = ref<Array<{ hospitalName: string; productName: string; groupName: string; hospitalLevel: string; province: string; amount: number }>>([])
 const lastResult = ref('')
@@ -387,3 +385,5 @@ onMounted(async () => {
 
 <style scoped>
 </style>
+
+
