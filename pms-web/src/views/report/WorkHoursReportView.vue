@@ -1,41 +1,24 @@
 <template>
   <div ref="pageRef" class="page-shell report-page">
-    <div class="page-head">
-      <div>
-        <h2 class="page-title">工时报表</h2>
-        <div class="page-subtitle">按月管理项目工时报表，支持导入 / 导出 / 自动计算</div>
-      </div>
-      <div class="head-actions">
-        <el-date-picker
-          v-model="selectedMonth"
-          type="month"
-          placeholder="选择月份"
-          value-format="YYYY-MM"
-          style="width: 160px"
-          @change="onMonthChange"
-        />
-        <el-button size="small" :loading="loading" @click="loadReport">刷新</el-button>
-        <el-button size="small" type="warning" :loading="regenerating" @click="onRegenerate">重新计算工时</el-button>
-        <el-button size="small" type="success" @click="triggerImport" :loading="importing">导入 Excel</el-button>
-        <el-button size="small" type="primary" @click="onExportExcel" :disabled="rows.length === 0">导出 Excel</el-button>
-        <el-button size="small" @click="onPrint" :disabled="rows.length === 0">打印</el-button>
-        <el-button size="small" @click="onAddRow">新增行</el-button>
+    <ProTable
+      title="明细数据"
+      :data="rows"
+      :loading="loading"
+      stripe
+      row-key="id"
+      empty-text="暂无符合条件的数据"
+      @row-dblclick="onRowDblClick"
+    >
+      <template #toolbar>
+        <el-date-picker v-model="selectedMonth" type="month" placeholder="选择月份" value-format="YYYY-MM" style="width: 160px" @change="onMonthChange" />
+        <el-button :loading="loading" @click="loadReport">刷新</el-button>
+        <el-button type="warning" :loading="regenerating" @click="onRegenerate">重新计算工时</el-button>
+        <el-button type="success" @click="triggerImport" :loading="importing">导入 Excel</el-button>
+        <el-button type="primary" @click="onExportExcel" :disabled="rows.length === 0">导出 Excel</el-button>
+        <el-button @click="onPrint" :disabled="rows.length === 0">打印</el-button>
+        <el-button @click="onAddRow">新增行</el-button>
         <input ref="fileInputRef" type="file" accept=".xlsx,.xls" style="display:none" @change="onFileSelected" />
-      </div>
-    </div>
-
-    <AppTableCard>
-      <el-table
-        :data="rows"
-        stripe
-        border
-        max-height="640"
-        scrollbar-always-on
-        empty-text="暂无数据"
-        v-loading="loading"
-        highlight-current-row
-        @row-dblclick="onRowDblClick"
-      >
+      </template>
         <el-table-column prop="opportunityNumber" label="机会号" width="140" show-overflow-tooltip>
           <template #default="{ row }">
             <el-input v-if="editingId === row.id" v-model="editForm.opportunityNumber" size="small" />
@@ -138,12 +121,12 @@
             </template>
           </template>
         </el-table-column>
-      </el-table>
+      
       <div class="table-footer">
         <span>共 {{ rows.length }} 条记录</span>
         <span v-if="totalManDays > 0" style="margin-left:16px">总工时：{{ totalManDays }} 人天</span>
       </div>
-    </AppTableCard>
+    </ProTable>
   </div>
 </template>
 
@@ -162,7 +145,7 @@ import {
 } from '../../api/modules/report'
 import type { WorkHoursReportRow, WorkHoursReportRowUpdatePayload } from '../../types/report'
 import { getErrorMessage } from '../../utils/error'
-import AppTableCard from '../../components/AppTableCard.vue'
+import ProTable from '../../components/ProTable.vue'
 
 const { printArea } = usePrint()
 const pageRef = ref<HTMLElement | null>(null)
@@ -431,3 +414,5 @@ onMounted(() => { loadReport() })
   font-size: 13px;
 }
 </style>
+
+
