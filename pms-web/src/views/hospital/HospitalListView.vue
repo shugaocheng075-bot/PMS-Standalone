@@ -5,7 +5,7 @@
         <h2 class="page-title">医院管理</h2>
         <div class="page-subtitle">医院与客户分级管理、区域筛选与联系信息维护</div>
       </div>
-      <el-button v-if="canManageHospital" type="primary" @click="onOpenCreate">新增医院</el-button>
+      
     </div>
 
     <el-row :gutter="16" class="stats-row">
@@ -15,7 +15,28 @@
       <el-col :span="6"><el-card shadow="never" class="stat-card stats-card clickable" :class="{ active: query.tier === '一级' }" @click="onStatClick('一级')"><div class="t">一级医院</div><div class="v danger">{{ summary.oneTierCount }}</div></el-card></el-col>
     </el-row>
 
-    <AppFilterCard>
+    
+
+    <ProTable
+      title="明细数据列表"
+      :data="tableData"
+      :loading="loading"
+      :total="total"
+      v-model:page="query.page"
+      v-model:size="query.size"
+      @refresh="loadData"
+      @pagination-change="loadData"
+      stripe
+      row-key="id"
+      empty-text="暂无符合条件的数据"
+            @row-dblclick="onRowDoubleClick"
+    >
+      <template #toolbar>
+        <el-button v-if="canManageHospital" type="primary" @click="onOpenCreate">新增医院</el-button>
+        <el-button :loading="exporting" @click="onExport">导出CSV</el-button>
+      </template>
+
+      <template #search>
       <el-form :model="query" inline class="filter-form" @submit.prevent="onSearch">
         <el-form-item label="医院名称"><el-input v-model="query.hospitalName" clearable @keyup.enter="onSearch" /></el-form-item>
         <el-form-item label="医院等级">
@@ -36,13 +57,12 @@
         <el-form-item class="filter-actions">
           <el-button type="primary" @click="onSearch">查询</el-button>
           <el-button @click="onReset">重置</el-button>
-          <el-button :loading="exporting" @click="onExport">导出CSV</el-button>
         </el-form-item>
       </el-form>
-    </AppFilterCard>
+    </template>
 
-    <AppTableCard>
-      <el-table :data="tableData" v-loading="loading" stripe max-height="520" scrollbar-always-on empty-text="暂无符合条件的数据" @row-dblclick="onRowDoubleClick">
+    
+      
         <el-table-column prop="hospitalName" label="医院名称" min-width="220" show-overflow-tooltip sortable />
         <el-table-column prop="tier" label="等级" width="100" sortable>
           <template #default="scope">
@@ -94,22 +114,13 @@
             >删除</el-button>
           </template>
         </el-table-column>
-      </el-table>
+      
 
-      <div class="pager">
-        <el-pagination
-          v-model:current-page="query.page"
-          v-model:page-size="query.size"
-          :page-sizes="[15, 30, 50, 100]"
-          layout="total, sizes, prev, pager, next"
-          :total="total"
-          @size-change="(size: number) => { query.size = size; query.page = 1; loadData() }"
-          @current-change="(page: number) => { query.page = page; loadData() }"
-        />
-      </div>
-    </AppTableCard>
+      
+    
+    </ProTable>
 
-    <AppFormDialog v-model="editVisible" :title="editMode === 'create' ? '新增医院' : '编辑医院'" width="620px">
+    <ProDrawer v-model="editVisible" :title="editMode === 'create' ? '新增医院' : '编辑医院'" width="620px">
       <el-form ref="editFormRef" :model="editForm" :rules="editRules" label-width="90px">
         <el-form-item label="医院名称" prop="hospitalName"><el-input v-model="editForm.hospitalName" /></el-form-item>
         <el-form-item label="医院等级">
@@ -130,9 +141,9 @@
         <el-button :disabled="submitLoading" @click="editVisible = false">取消</el-button>
         <el-button type="primary" :loading="submitLoading" :disabled="submitLoading" @click="onSaveEdit">保存</el-button>
       </template>
-    </AppFormDialog>
+    </ProDrawer>
 
-    <AppFormDialog v-model="ratingVisible" title="更新评级" width="460px">
+    <ProDrawer v-model="ratingVisible" title="更新评级" width="460px">
       <el-form :model="ratingForm" label-width="95px">
         <el-form-item label="EMR评级"><el-input v-model="ratingForm.emrRatingLevel" /></el-form-item>
         <el-form-item label="互联互通评级"><el-input v-model="ratingForm.interopRatingLevel" /></el-form-item>
@@ -141,9 +152,9 @@
         <el-button :disabled="ratingLoading" @click="ratingVisible = false">取消</el-button>
         <el-button type="primary" :loading="ratingLoading" :disabled="ratingLoading" @click="onSaveRating">保存</el-button>
       </template>
-    </AppFormDialog>
+    </ProDrawer>
 
-    <AppFormDialog v-model="detailVisible" title="医院详情" width="620px">
+    <ProDrawer v-model="detailVisible" title="医院详情" width="620px">
       <el-descriptions v-if="detailItem" :column="2" border>
         <el-descriptions-item label="医院名称">{{ detailItem.hospitalName }}</el-descriptions-item>
         <el-descriptions-item label="等级">{{ detailItem.tier }}</el-descriptions-item>
@@ -159,7 +170,7 @@
       <template #footer>
         <el-button type="primary" @click="detailVisible = false">关闭</el-button>
       </template>
-    </AppFormDialog>
+    </ProDrawer>
   </div>
 </template>
 
@@ -185,9 +196,9 @@ import { CITY_OPTIONS, PROVINCE_OPTIONS } from '../../constants/filterOptions'
 import { useFilterStatePersist } from '../../composables/useFilterStatePersist'
 import { useLinkedRealtimeRefresh } from '../../composables/useLinkedRealtimeRefresh'
 import { useAccessControl } from '../../composables/useAccessControl'
-import AppFilterCard from '../../components/AppFilterCard.vue'
-import AppTableCard from '../../components/AppTableCard.vue'
-import AppFormDialog from '../../components/AppFormDialog.vue'
+import ProTable from '../../components/ProTable.vue'
+import ProDrawer from '../../components/ProDrawer.vue'
+
 
 const loading = ref(false)
 const exporting = ref(false)
