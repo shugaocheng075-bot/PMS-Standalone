@@ -1,5 +1,9 @@
 # Progress
 
+2026-04-22: 新增 VS Code 任务编排与本地停服能力。新增 `.vscode/tasks.json`（PMS: Start Dev / Stop Dev / Build Backend / Build Frontend / Build Full），补充 `scripts/stop-dev.ps1` + `scripts/stop-dev.cmd`（按端口 5111/5173 与专用开发窗口标题停止进程），并新增 `scripts/build-frontend.ps1`（自动加载 NVM + Node 22.15.0 后执行前端构建，规避 shell 无 npm PATH 问题）。验证：`dotnet build PMS.sln` 通过（0 warning, 0 error），`powershell -ExecutionPolicy Bypass -File .\scripts\build-frontend.ps1` 通过（vite build success），`powershell -ExecutionPolicy Bypass -File .\scripts\stop-dev.ps1` 可执行并在无进程时正确提示。
+
+2026-04-22: 新机器环境接入完成。安装 Git、.NET 8 SDK、NVM + Node 22.15.0，恢复前后端依赖；新增 scripts/start-dev.ps1 与 scripts/start-dev.cmd 作为本地一键启动入口；补充传统 PMS.sln 以绕过 PMS.slnx 在当前 dotnet restore 下的兼容问题。验证：dotnet restore PMS.sln 通过，前端 5173 与后端 5111 本地可达。
+
 2026-04-10: 恢复本机通过 bjgoodwill.fun 的外网访问。执行 `scripts/setup-domain-tunnel.ps1` 刷新 Cloudflare Tunnel DNS 与运行配置，启动本机 API（5111）、Vite 前端（5173）与 `pms-bjgoodwill` 隧道；验证：本地前端 200，本地 `/api/health` 401，外网 `https://bjgoodwill.fun/` 200 登录页，`https://bjgoodwill.fun/api/health` 与 `https://api.bjgoodwill.fun/api/health` 401。
 
 2026-03-07: 巡检计划、年度报告补齐前端编辑态；月报来源页到交接/巡检/年报的跳转补充 action 与更精确的医院/产品上下文，并在目标页支持单条命中自动打开。验证：前端诊断无错，npm run build 通过。

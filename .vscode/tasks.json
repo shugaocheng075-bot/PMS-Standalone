@@ -1,0 +1,60 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "PMS: Start Dev (API + Web)",
+      "type": "shell",
+      "command": "powershell.exe",
+      "args": [
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}\\scripts\\start-dev.ps1"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "PMS: Stop Dev",
+      "type": "shell",
+      "command": "powershell.exe",
+      "args": [
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}\\scripts\\stop-dev.ps1"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "PMS: Build Backend",
+      "type": "shell",
+      "command": "dotnet",
+      "args": [
+        "build",
+        "${workspaceFolder}\\PMS.sln"
+      ],
+      "problemMatcher": "$msCompile"
+    },
+    {
+      "label": "PMS: Build Frontend",
+      "type": "shell",
+      "command": "powershell.exe",
+      "args": [
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}\\scripts\\build-frontend.ps1"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "PMS: Build Full",
+      "dependsOrder": "sequence",
+      "dependsOn": [
+        "PMS: Build Backend",
+        "PMS: Build Frontend"
+      ],
+      "problemMatcher": []
+    }
+  ]
+}
