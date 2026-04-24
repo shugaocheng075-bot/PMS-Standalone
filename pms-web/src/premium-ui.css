@@ -1,0 +1,675 @@
+/* ========================================================
+   大厂级 沉浸式高级 UI 全局覆写 (2026 优化)
+   ======================================================== */
+
+/* -------- 1. 圆角系统与柔和基础 -------- */
+:root {
+  --el-border-radius-base: 8px; /* 组件圆角由原有的12px收紧到8px，更显专业 */
+  --el-border-radius-small: 6px;
+  --el-border-radius-large: 12px;
+  --el-color-primary: #165dff; /* 略微深邃科技感的蓝 */
+  --el-text-color-primary: #1d2129; /* 头条/阿里系深色 */
+  --el-text-color-regular: #4e5969; 
+  --el-text-color-secondary: #86909c;
+  --el-border-color-lighter: #f2f3f5;
+  --el-border-color-light: #e5e6eb;
+  --el-border-color: #e5e6eb;
+  --el-bg-color-page: #f2f3f5;
+  --el-fill-color-blank: #ffffff;
+  --el-fill-color-light: #f7f8fa;
+  --el-box-shadow-light: 0 4px 10px rgba(0, 0, 0, 0.04);
+}
+
+/* -------- 2. 卡片 (Card) 高级化：取消生硬边框，改用轻质阴影 -------- */
+.el-card {
+  border: 1px solid rgba(229, 230, 235, 0.4) !important;
+  border-radius: 12px !important;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.02), 0 2px 4px rgba(0, 0, 0, 0.01) !important;
+  transition: box-shadow 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+  background: #fff;
+}
+.el-card:hover {
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.04), 0 2px 6px rgba(0, 0, 0, 0.02) !important;
+}
+.el-card.filter-card,
+.el-card.table-card {
+  margin-top: 16px;
+}
+.el-card__header {
+  border-bottom: 1px solid var(--el-border-color-lighter) !important;
+  padding: 16px 20px !important;
+  font-weight: 600;
+  font-size: 16px;
+  letter-spacing: 0.02em;
+}
+
+/* -------- 3. 表格 (Table) 现代化：浅灰头、白底、只留暗浅横线 -------- */
+.el-table {
+  --el-table-border-color: #f2f3f5;
+  --el-table-header-bg-color: #f7f8fa;
+  border-radius: 8px; /* 表格外层圆角 */
+  overflow: hidden;
+}
+.el-table .el-table__cell.is-left {
+  text-align: left;
+}
+.el-table th.el-table__cell {
+  background-color: var(--el-table-header-bg-color) !important;
+  color: var(--el-text-color-primary) !important;
+  font-weight: 500 !important; /* 避免600过黑 */
+  border-bottom: 1px solid #e5e6eb !important; /* 精致底线 */
+  height: 44px; /* 控制头高 */
+  padding: 8px 16px !important;
+  border-right: none !important; /* 去除竖边框 */
+}
+.el-table td.el-table__cell {
+  border-bottom: 1px solid #f2f3f5 !important;
+  padding: 12px 16px !important;
+  border-right: none !important; /* 去除竖边框，保持留白美 */
+  color: var(--el-text-color-regular) !important;
+}
+.el-table--border::after,
+.el-table--group::after,
+.el-table::before {
+  display: none !important; /* 去除外边框和底边框导致的多线问题 */
+}
+/* 鼠标悬停时的优雅条带色 */
+.el-table--enable-row-hover .el-table__body tr:hover > td.el-table__cell {
+  background-color: #f6f8fa !important;
+}
+
+/* -------- 4. 按钮强化：渐变、微阴影、触感 -------- */
+.el-button--primary:not(.is-link):not(.is-plain):not(.is-text) {
+  background: linear-gradient(135deg, #2b73ff 0%, #165dff 100%) !important;
+  border: none !important;
+  box-shadow: 0 4px 10px rgba(22, 93, 255, 0.2);
+  color: #fff !important;
+}
+.el-button--primary:hover {
+  background: linear-gradient(135deg, #4080ff 0%, #2b73ff 100%) !important;
+  box-shadow: 0 6px 14px rgba(22, 93, 255, 0.3) !important;
+}
+.el-button.is-link, .el-button.is-text {
+  background: transparent !important;
+  transition: all 0.2s ease !important;
+}
+.el-button.is-link:hover, .el-button.is-text:hover {
+  background: #f2f3f5 !important; /* B端常见的淡淡底色悬浮反馈 */
+  border-radius: 6px !important;
+  transform: none !important; /* 抛弃缩放或上移，保留原位纯反馈 */
+}
+
+/* -------- 5. 输入框与选择器、数字框：空态轻盈、聚焦透亮 -------- */
+.el-input__wrapper,
+.el-textarea__inner,
+.el-select__wrapper {
+  background-color: #f2f3f5 !important;
+  box-shadow: none !important;
+  border: 1px solid transparent !important;
+  transition: all 0.2s ease-in-out !important;
+  border-radius: 6px !important;
+}
+.el-input__wrapper:hover,
+.el-textarea__inner:hover,
+.el-select__wrapper:hover {
+  background-color: #e5e6eb !important;
+}
+.el-input__wrapper.is-focus,
+.el-textarea__inner:focus,
+.el-select__wrapper.is-focused,
+.el-input-number .el-input__wrapper.is-focus {
+  background-color: #ffffff !important;
+  border: 1px solid var(--el-color-primary) !important;
+  box-shadow: 0 0 0 2px rgba(22, 93, 255, 0.15) !important;
+}
+/* 数字输入框的加减按钮融入背景 */
+.el-input-number__increase, .el-input-number__decrease {
+  background-color: transparent !important;
+}
+
+/* -------- 6. 弹窗 (Dialog) 与抽屉 (Drawer) 细节 -------- */
+.el-dialog, .el-drawer {
+  border-radius: 12px !important;
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.12), 0 8px 16px rgba(0, 0, 0, 0.08) !important;
+}
+.el-dialog__header, .el-drawer__header {
+  margin-right: 0 !important;
+  padding: 20px 24px !important;
+  border-bottom: 1px solid var(--el-border-color-lighter);
+  font-weight: 600;
+  color: var(--el-text-color-primary) !important;
+}
+.el-dialog__body, .el-drawer__body {
+  padding: 24px !important;
+}
+.el-dialog__title {
+  font-weight: 600;
+  font-size: 16px;
+}
+.el-dialog__footer, .el-drawer__footer {
+  border-top: 1px solid var(--el-border-color-lighter);
+  padding: 16px 24px !important;
+}
+
+/* -------- 7. 通知 Badge 和分页 Pagination -------- */
+.el-badge__content {
+  border: none !important;
+  box-shadow: 0 2px 6px rgba(243, 90, 74, 0.3) !important;
+}
+.el-pagination.is-background .el-pager li {
+  background: white;
+  border: 1px solid #e5e6eb;
+  border-radius: 6px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+.el-pagination.is-background .el-pager li.is-active {
+  background-color: var(--el-color-primary) !important;
+  border-color: var(--el-color-primary) !important;
+  box-shadow: 0 2px 6px rgba(22, 93, 255, 0.2);
+  color: #fff !important;
+}
+.el-pagination.is-background .el-pager li:hover:not(.is-active) {
+  border-color: var(--el-color-primary);
+  color: var(--el-color-primary);
+}
+
+/* -------- 8. Tabs 的优雅下滑线形态 -------- */
+.el-tabs__nav-wrap::after {
+  height: 1px !important;
+  background-color: #e5e6eb !important;
+}
+.el-tabs__active-bar {
+  height: 3px !important;
+  border-radius: 3px 3px 0 0;
+}
+.el-tabs__item {
+  font-weight: 500;
+  font-size: 14px;
+  color: var(--el-text-color-regular);
+  transition: color 0.3s;
+}
+.el-tabs__item.is-active {
+  font-weight: 600;
+  color: var(--el-text-color-primary) !important;
+}
+/* ========================================================
+   极简商务高级风 (Minimalist Business Premium) 核心增量补丁
+   针对：仪表盘数据大屏、表格列表、审批表单、侧边栏布局
+   ======================================================== */
+
+/* 1. 侧边栏 & 顶栏 & 全局布局：去渐变、纯净化、降饱和度 */
+.app-shell {
+  background: #f0f2f5 !important; /* 经典商务静谧灰底 */
+}
+.app-shell::before { display: none !important; } /* 去掉背景光晕装饰 */
+
+.top-nav {
+  background: #ffffff !important;
+  border-bottom: 1px solid rgba(0,0,0,0.06) !important;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.02) !important;
+  color: #1d2129 !important;
+}
+.top-nav::before, .top-nav::after { display: none !important; } /* 极简去线 */
+.nav-icon {
+  background: transparent !important;
+  border-color: #e5e6eb !important;
+  color: #4e5969 !important;
+}
+.nav-icon:hover {
+  background: #f2f3f5 !important;
+  color: #1d2129 !important;
+}
+.user-name, .nav-suite-tag, .product-badge, .company-main, .company-sub, .product-caption {
+  color: #1d2129 !important;
+}
+.product-badge {
+  border-color: #165dff !important;
+  color: #165dff !important;
+  background: rgba(22,93,255,0.05) !important;
+}
+.nav-divider { background: #e5e6eb !important; }
+.logout-btn { color: #4e5969 !important; }
+.logout-btn:hover { background: #f2f3f5 !important; color: #1d2129 !important; }
+
+/* 侧边栏静谧白 */
+.left-pane {
+  background: #ffffff !important;
+  border: none !important;
+  box-shadow: 1px 0 8px rgba(0,0,0,0.03) !important;
+  border-radius: 0 !important;
+}
+.left-search { background: #ffffff !important; }
+/* 激活菜单扁平化 */
+.side-menu :deep(.el-menu-item.is-active) {
+  background: #e8f3ff !important;
+  color: #165dff !important;
+  box-shadow: none !important;
+  border-right: 3px solid #165dff !important;
+  border-radius: 4px !important;
+}
+
+/* 2. 数据看板模块：加大间距，低饱和边框 */
+.dashboard-page .el-row {
+  margin-bottom: 24px !important; /* 加大模块间距 */
+}
+.stat-card .v {
+  font-size: 28px !important; /* 适度缩小过大数字 */
+  font-weight: 600 !important;
+}
+.stat-card .el-card__body, .stats-card .el-card__body {
+  padding: 24px !important; /* 呼吸感 */
+}
+
+/* 3. 筛选栏 & 表单：紧凑、工整、规范对齐 */
+.el-form--inline .el-form-item {
+  margin-right: 24px !important;
+  margin-bottom: 18px !important;
+}
+.el-form-item__label {
+  font-weight: 500 !important;
+  color: #4e5969 !important;
+}
+.filter-card .el-card__body {
+  padding: 20px 24px 2px 24px !important; /* 底部预留补偿 */
+}
+/* 表格高度与行高舒适化 */
+.el-table .el-table__cell {
+  padding: 14px 16px !important; /* 增加行高 */
+}
+.el-table {
+  font-size: 14px !important;
+}
+/* 分页距表格留白 */
+.pager {
+  margin-top: 24px !important;
+  padding-bottom: 12px !important;
+}
+
+/* 4. 详情与审批表单抽屉内边距调整 */
+.el-drawer__body, .el-dialog__body {
+  padding: 32px 40px !important; /* 更充裕的左右阅读留白 */
+}
+.el-descriptions__label {
+  color: #86909c !important;
+  font-weight: 400 !important;
+}
+.el-descriptions__content {
+  font-weight: 500 !important;
+  color: #1d2129 !important;
+}
+
+/* 5. 页面骨架与标题：去装饰化，强化信息层级 */
+body {
+  background: #f3f5f7 !important;
+}
+
+.page-shell {
+  gap: 12px !important;
+  padding: 14px 16px !important;
+}
+
+.page-head {
+  padding: 14px 16px !important;
+  border-radius: 16px !important;
+  border: 1px solid #e7ebf0 !important;
+  background: rgba(255, 255, 255, 0.92) !important;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.04) !important;
+}
+
+.page-title {
+  margin: 0 !important;
+  font-size: 22px !important;
+  font-weight: 700 !important;
+  letter-spacing: -0.02em;
+  color: #1f2937 !important;
+}
+
+.page-title::before {
+  display: none !important;
+}
+
+.page-subtitle {
+  margin-top: 4px !important;
+  font-size: 12px !important;
+  color: #7b8794 !important;
+}
+
+/* 6. 列表筛选与分页：长列表阅读优先 */
+.filter-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 6px;
+  align-items: flex-end;
+}
+
+.el-form--inline .el-form-item {
+  margin-right: 12px !important;
+  margin-bottom: 10px !important;
+}
+
+.filter-actions {
+  margin-left: auto;
+}
+
+.pager {
+  margin-top: 0 !important;
+  padding-top: 10px !important;
+}
+
+.el-table th.el-table__cell > .cell {
+  white-space: nowrap !important;
+  word-break: keep-all !important;
+  display: inline-flex !important;
+  align-items: center !important;
+}
+
+.el-table td.el-table__cell .cell {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  word-break: keep-all;
+  line-height: 1.35;
+}
+
+.el-table th.el-table__cell .caret-wrapper {
+  display: inline-flex;
+  flex-direction: column;
+  justify-content: center;
+  margin-left: 4px;
+}
+
+.table-action-group {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 4px 8px;
+  align-items: center;
+  white-space: nowrap;
+}
+
+.table-action-group .el-button {
+  white-space: nowrap;
+}
+
+/* 7. 按钮与标签：商务化低饱和反馈 */
+.el-button {
+  min-height: 32px;
+  padding-inline: 12px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+}
+
+.el-button--default {
+  border-color: #dfe5ec !important;
+  color: #334155 !important;
+  background: #ffffff !important;
+}
+
+.el-button--default:hover {
+  border-color: #cbd5e1 !important;
+  background: #f8fafc !important;
+}
+
+.el-tag {
+  border-radius: 999px !important;
+  border-color: transparent !important;
+  font-weight: 600;
+}
+
+/* 8. 表单详情页：对齐和留白统一 */
+.el-form-item__content {
+  min-height: 40px;
+}
+
+.metrics-grid {
+  gap: 10px;
+}
+
+.metric-card {
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: 14px;
+}
+
+.metric-card-head {
+  gap: 8px;
+}
+
+.metric-title {
+  font-size: 12px;
+}
+
+.metric-context {
+  padding: 3px 7px;
+  font-size: 10px;
+}
+
+.metric-value {
+  font-size: 24px;
+}
+
+.metric-note {
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.el-table th.el-table__cell {
+  height: 40px;
+  padding: 6px 12px !important;
+  font-size: 13px;
+}
+
+.el-table td.el-table__cell {
+  padding: 8px 12px !important;
+  font-size: 13px;
+}
+
+.app-form-dialog .el-form,
+.pro-drawer .el-form {
+  display: grid;
+  gap: 2px;
+}
+
+.app-form-dialog .el-form .el-form-item,
+.pro-drawer .el-form .el-form-item {
+  margin-bottom: 18px;
+}
+
+.el-descriptions {
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+/* 9. 指标卡与工作台任务卡：统一高频业务面板的商务密度 */
+.metrics-grid {
+  display: grid;
+  gap: 14px;
+}
+
+.metrics-grid--4 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.metrics-grid--5 {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.metrics-grid--6 {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+.metrics-grid--audit {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.metric-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  padding: 16px 18px;
+  border: 1px solid #e7ebf0;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 12px 26px rgba(15, 23, 42, 0.04);
+  text-align: left;
+}
+
+.metric-card--action {
+  cursor: pointer;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.metric-card--action:hover {
+  border-color: #d7e4f7;
+  box-shadow: 0 16px 32px rgba(15, 23, 42, 0.06);
+  transform: translateY(-1px);
+}
+
+.metric-card--action.is-active {
+  border-color: #cddaea;
+  background: linear-gradient(180deg, rgba(247, 250, 253, 0.98) 0%, rgba(255, 255, 255, 0.98) 100%);
+  box-shadow: 0 16px 32px rgba(31, 41, 55, 0.08);
+}
+
+.metric-card--action.is-active .metric-context {
+  background: #edf3fa;
+  color: #516170;
+}
+
+.metric-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.metric-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #526071;
+}
+
+.metric-context {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: #f8fafc;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.metric-value {
+  font-size: 30px;
+  line-height: 1;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  color: #0f172a;
+}
+
+.metric-note {
+  font-size: 12px;
+  line-height: 1.6;
+  color: #7b8794;
+}
+
+.workbench-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.todo-card {
+  min-height: 220px;
+}
+
+.todo-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 10px;
+  margin-inline: -10px;
+  border-bottom: 1px solid #eef2f6;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: background-color 0.18s ease, border-color 0.18s ease;
+}
+
+.todo-item:last-child {
+  border-bottom: none;
+}
+
+.todo-item:hover {
+  background: #f8fafc;
+}
+
+.todo-main {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+
+.todo-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1f2937;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.todo-sub {
+  font-size: 12px;
+  line-height: 1.6;
+  color: #7b8794;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.empty-tip {
+  display: flex;
+  align-items: center;
+  min-height: 120px;
+  color: #7b8794;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.quick-actions {
+  display: grid !important;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px !important;
+}
+
+.quick-actions .el-button {
+  justify-content: flex-start;
+}
+
+@media (max-width: 1280px) {
+  .metrics-grid--4,
+  .metrics-grid--5,
+  .metrics-grid--6 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .workbench-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .metrics-grid--4,
+  .metrics-grid--5,
+  .metrics-grid--6,
+  .metrics-grid--audit {
+    grid-template-columns: 1fr;
+  }
+}
+
