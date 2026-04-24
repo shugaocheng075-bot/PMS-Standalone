@@ -1,0 +1,22 @@
+﻿{
+  "cookies": [],
+  "origins": [
+    {
+      "origin": "http://localhost:5173",
+      "localStorage": [
+        {
+          "name": "pms-auth-token",
+          "value": "qi6B2eSbPoy_KT9FnHh58D4tpJLglRMwRJgiFRu884A"
+        },
+        {
+          "name": "pms-auth-session",
+          "value": "1"
+        },
+        {
+          "name": "pms-current-personnel-id",
+          "value": "1"
+        }
+      ]
+    }
+  ]
+}

@@ -1,58 +1,11 @@
 <template>
   <div ref="pageRef" class="page-shell report-page">
-    <div class="report-hero">
-      <div class="report-hero-main">
-        <div class="report-hero-kicker-row">
-          <span class="report-hero-kicker">WorkHours Reporting Desk</span>
-          <span class="report-hero-badge">{{ selectedMonth }} 月</span>
-        </div>
-        <h2 class="report-hero-title">工时报表工作台</h2>
-        <div class="report-hero-subtitle">
-          围绕当前月份集中处理工时明细、导入、重算和导出动作，先在首屏确认记录规模、覆盖范围和投入强度，再进入表格逐行调整异常数据。
-        </div>
-
-        <div class="report-hero-signals">
-          <div v-for="item in heroSignals" :key="item.label" class="report-signal-card">
-            <span class="report-signal-label">{{ item.label }}</span>
-            <strong class="report-signal-value">{{ item.value }}</strong>
-            <span class="report-signal-note">{{ item.note }}</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="report-hero-side">
-        <div class="report-control-card">
-          <div class="report-control-copy">
-            <span class="report-control-title">月度控制</span>
-            <span class="report-control-note">当前月份共有 {{ rows.length }} 条明细，可刷新、重算或新增行继续修正。</span>
-          </div>
-          <div class="report-control-actions">
-            <el-date-picker v-model="selectedMonth" type="month" placeholder="选择月份" value-format="YYYY-MM" style="width: 160px" @change="onMonthChange" />
-            <el-button :loading="loading" @click="loadReport" icon="Refresh">刷新</el-button>
-            <el-button @click="onAddRow" icon="Plus">新增行</el-button>
-          </div>
-        </div>
-
-        <div class="report-quick-grid">
-          <button type="button" class="report-quick-action" @click="onRegenerate">
-            <span class="report-quick-title">重新计算工时</span>
-            <span class="report-quick-note">按当前项目数据重建本月工时报表</span>
-          </button>
-          <button type="button" class="report-quick-action" @click="triggerImport">
-            <span class="report-quick-title">导入 Excel</span>
-            <span class="report-quick-note">覆盖导入当月工时明细并回填列表</span>
-          </button>
-          <button type="button" class="report-quick-action" @click="onExportExcel" :disabled="rows.length === 0">
-            <span class="report-quick-title">导出 Excel</span>
-            <span class="report-quick-note">输出当前月份工时报表用于归档与分发</span>
-          </button>
-          <button type="button" class="report-quick-action" @click="onPrint" :disabled="rows.length === 0">
-            <span class="report-quick-title">打印报表</span>
-            <span class="report-quick-note">按当前页面内容快速生成打印视图</span>
-          </button>
-        </div>
-      </div>
-    </div>
+    <div class="apple-page-header">
+  <div class="apple-page-header-content">
+    <h2 class="apple-page-title">工时报表</h2>
+    <p class="apple-page-subtitle">围绕当前月份集中处理工时明细、导入、重算和导出。</p>
+  </div>
+</div>
 
     <ProTable
       title="工时明细数据"
@@ -221,43 +174,13 @@ const selectedMonth = ref(`${now.getFullYear()}-${String(now.getMonth() + 1).pad
 
 const totalManDays = computed(() => rows.value.reduce((sum, r) => sum + (r.workHoursManDays || 0), 0))
 
-const uniqueHospitalCount = computed(() => new Set(rows.value.map((row) => row.hospitalName).filter(Boolean)).size)
-const uniqueProductCount = computed(() => new Set(rows.value.map((row) => row.productName).filter(Boolean)).size)
-const uniquePersonnelCount = computed(() => {
-  const names = new Set<string>()
+// removed uniqueHospitalCount
+// removed uniqueProductCount
+// removed uniquePersonnelCount
 
-  rows.value.forEach((row) => {
-    ;[row.personnel1, row.personnel2, row.personnel3, row.personnel4, row.personnel5]
-      .map((item) => item?.trim())
-      .filter((item): item is string => Boolean(item))
-      .forEach((item) => names.add(item))
-  })
 
-  return names.size
-})
 
-const heroSignals = computed(() => [
-  {
-    label: '本月记录',
-    value: String(rows.value.length),
-    note: '当前月份工时报表中的全部明细行数',
-  },
-  {
-    label: '总工时',
-    value: `${totalManDays.value} 人天`,
-    note: '按照当前表内数据聚合的累计投入强度',
-  },
-  {
-    label: '覆盖医院',
-    value: String(uniqueHospitalCount.value),
-    note: '本月产生工时记录的医院数量',
-  },
-  {
-    label: '参与人员',
-    value: String(uniquePersonnelCount.value),
-    note: `涉及 ${uniqueProductCount.value} 个产品方向的实施记录`,
-  },
-])
+// removed heroSignals
 
 const editForm = reactive<WorkHoursReportRowUpdatePayload>({
   opportunityNumber: '',
@@ -491,6 +414,36 @@ onMounted(() => { loadReport() })
 </script>
 
 <style scoped>
+.report-page {
+  padding: 24px;
+  background: #f5f5f7;
+  min-height: 100vh;
+}
+.apple-page-header {
+  background: #fff;
+  padding: 24px 32px;
+  border-radius: 16px;
+  margin-bottom: 24px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.03);
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+.apple-page-title {
+  font-size: 28px;
+  font-weight: 600;
+  color: #1d1d1f;
+  margin: 0 0 8px;
+  letter-spacing: -0.02em;
+}
+.apple-page-subtitle {
+  font-size: 15px;
+  color: #86868b;
+  margin: 0;
+  max-width: 600px;
+  line-height: 1.5;
+}
+
 .report-page {
   display: flex;
   flex-direction: column;
