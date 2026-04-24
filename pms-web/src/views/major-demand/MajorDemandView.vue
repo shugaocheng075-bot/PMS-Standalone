@@ -24,8 +24,8 @@
         </el-form-item>
 
         <el-form-item class="filter-actions">
-          <el-button type="primary" @click="onSearch">查询</el-button>
-          <el-button @click="onReset">重置</el-button>
+          <el-button type="primary" @click="onSearch" icon="Search">查询</el-button>
+          <el-button @click="onReset" icon="Refresh">重置</el-button>
         </el-form-item>
       </el-form>
 
@@ -37,7 +37,7 @@
         <el-button :disabled="!selectedRowIds.length || !batchForm.status" @click="onBatchStatus">批量更新状态</el-button>
 
         <el-input v-model="batchForm.owner" placeholder="批量负责人" style="width: 150px" />
-        <el-button :disabled="!selectedRowIds.length" @click="onBatchOwner">批量分配负责人</el-button>
+        <el-button :disabled="!selectedRowIds.length" @click="onBatchOwner" icon="User">批量分配负责人</el-button>
 
         <el-date-picker
           v-model="batchForm.dueDate"
@@ -65,8 +65,8 @@
       @row-dblclick="onRowDoubleClick"
     >
       <template #toolbar>
-        <el-button type="success" @click="onAddRow">新增</el-button>
-        <el-button :loading="loading.exporting" @click="onExport">导出 Excel</el-button>
+        <el-button v-if="canManageMajorDemand" type="success" @click="onAddRow" icon="Plus">新增</el-button>
+        <el-button :loading="loading.exporting" @click="onExport" icon="Download">导出 Excel</el-button>
       </template>
 
       
@@ -92,7 +92,16 @@
           </template>
         </el-table-column>
         <el-table-column prop="_owner" label="负责人" min-width="100" show-overflow-tooltip />
-        <el-table-column prop="_dueDate" label="截止日期" min-width="120" show-overflow-tooltip />
+        <el-table-column prop="_dueDate" label="截止日期" min-width="170">
+          <template #default="scope">
+            <div class="deadline-cell">
+              <span>{{ scope.row._dueDate || '-' }}</span>
+              <el-tag v-if="scope.row._dueDate" size="small" :type="demandDeadlineTagType(scope.row._dueDate)">
+                {{ formatDemandDeadline(scope.row._dueDate) }}
+              </el-tag>
+            </div>
+          </template>
+        </el-table-column>
         <el-table-column
           v-for="column in remainingColumns"
           :key="column"
@@ -101,11 +110,35 @@
           min-width="180"
           show-overflow-tooltip
         />
-        <el-table-column label="操作" fixed="right" width="260">
+        <el-table-column label="操作" fixed="right" width="420">
           <template #default="scope">
             <el-space>
-              <el-button link type="primary" @click="openEdit(scope.row)">编辑</el-button>
-              <el-button link type="primary" @click="openDetail(scope.row)">详情</el-button>
+              <el-button
+                v-if="canManageMajorDemand && canAcceptDemand(scope.row._status)"
+                link
+                type="primary"
+                :loading="isActionLoading(scope.row._rowId, 'accept')"
+                :disabled="isRowBusy(scope.row._rowId)"
+                @click="onAccept(scope.row)"
+              >受理</el-button>
+              <el-button
+                v-if="canManageMajorDemand && canCompleteDemand(scope.row._status)"
+                link
+                type="success"
+                :loading="isActionLoading(scope.row._rowId, 'complete')"
+                :disabled="isRowBusy(scope.row._rowId)"
+                @click="onComplete(scope.row)"
+              >完成</el-button>
+              <el-button
+                v-if="canManageMajorDemand && canReopenDemand(scope.row._status)"
+                link
+                type="warning"
+                :loading="isActionLoading(scope.row._rowId, 'reopen')"
+                :disabled="isRowBusy(scope.row._rowId)"
+                @click="onReopen(scope.row)"
+              >重开</el-button>
+              <el-button v-if="canManageMajorDemand" link type="primary" @click="openEdit(scope.row)" icon="Edit">编辑</el-button>
+              <el-button link type="primary" @click="openDetail(scope.row)" icon="Document">详情</el-button>
               <el-button
                 link
                 type="primary"
@@ -139,10 +172,18 @@
           <el-descriptions-item label="状态">{{ activeWorkflow?.status || '待评估' }}</el-descriptions-item>
           <el-descriptions-item label="负责人">{{ activeWorkflow?.owner || '-' }}</el-descriptions-item>
           <el-descriptions-item label="截止日期">{{ activeWorkflow?.dueDate || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="受理时间">{{ formatTime(activeWorkflow?.acceptedAt || '') }}</el-descriptions-item>
+          <el-descriptions-item label="完成时间">{{ formatTime(activeWorkflow?.completedAt || '') }}</el-descriptions-item>
           <el-descriptions-item v-for="column in columns" :key="`desc-${column}`" :label="column">
             {{ activeRow[column] || '-' }}
           </el-descriptions-item>
         </el-descriptions>
+
+        <div v-if="canManageMajorDemand" class="detail-actions">
+          <el-button v-if="canAcceptDemand(activeWorkflow?.status || '')" plain type="primary" :loading="isActionLoading(activeRowId, 'accept')" :disabled="isRowBusy(activeRowId)" @click="onAccept(activeRow)">受理</el-button>
+          <el-button v-if="canCompleteDemand(activeWorkflow?.status || '')" plain type="success" :loading="isActionLoading(activeRowId, 'complete')" :disabled="isRowBusy(activeRowId)" @click="onComplete(activeRow)">完成</el-button>
+          <el-button v-if="canReopenDemand(activeWorkflow?.status || '')" plain type="warning" :loading="isActionLoading(activeRowId, 'reopen')" :disabled="isRowBusy(activeRowId)" @click="onReopen(activeRow)">重开</el-button>
+        </div>
 
         <h4 style="margin: 16px 0 8px">评论</h4>
         <el-timeline v-if="(activeWorkflow?.comments.length ?? 0) > 0">
@@ -175,8 +216,8 @@
     <ProDrawer v-model="commentVisible" title="新增评论" width="520px">
       <el-input v-model="commentContent" type="textarea" :rows="4" maxlength="500" show-word-limit />
       <template #footer>
-        <el-button @click="commentVisible = false">取消</el-button>
-        <el-button type="primary" :loading="loading.commenting" @click="submitComment">提交</el-button>
+        <el-button @click="commentVisible = false" icon="Close">取消</el-button>
+        <el-button type="primary" :loading="loading.commenting" @click="submitComment" icon="Check">提交</el-button>
       </template>
     </ProDrawer>
 
@@ -198,25 +239,28 @@
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="editVisible = false">取消</el-button>
-        <el-button type="primary" :loading="loading.saving" @click="submitEdit">保存</el-button>
+        <el-button @click="editVisible = false" icon="Close">取消</el-button>
+        <el-button type="primary" :loading="loading.saving" @click="submitEdit" icon="Check">保存</el-button>
       </template>
     </ProDrawer>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
-import { ElMessage } from 'element-plus'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { useRoute, useRouter } from 'vue-router'
 import {
+  acceptMajorDemand,
   addMajorDemandComment,
   addMajorDemandRow,
   batchAssignMajorDemandOwner,
   batchUpdateMajorDemandDueDate,
   batchUpdateMajorDemandStatus,
+  completeMajorDemand,
   exportMajorDemandExcel,
   fetchMajorDemands,
+  reopenMajorDemand,
   updateMajorDemandCell,
   type MajorDemandWorkflow,
 } from '../../api/modules/majorDemand'
@@ -246,6 +290,9 @@ const pageSize = ref(15)
 const editVisible = ref(false)
 const editRowId = ref('')
 const editForm = ref<Record<string, string>>({})
+const actionLoadingKey = ref('')
+const nowTick = ref(Date.now())
+let nowTimer: number | null = null
 const route = useRoute()
 const router = useRouter()
 
@@ -321,18 +368,10 @@ const { restore: restoreFilterState, clear: clearFilterState } = useFilterStateP
 })
 
 const canManageMajorDemand = computed(() => {
-  if (!access.isManager()) {
-    return false
-  }
-
   return access.canPermission('major-demand.manage') || access.canPermission('maintenance.manage')
 })
 const canCommentMajorDemand = computed(() => {
-  if (!access.canPermission('major-demand.manage')) {
-    return false
-  }
-
-  return access.isManager() || access.isOperator()
+  return canManageMajorDemand.value
 })
 
 const statusOptions = ['待评估', '待处理', '处理中', '待验证', '已完成', '已关闭']
@@ -379,6 +418,8 @@ const displayRows = computed(() => {
         _status: workflow?.status ?? '待评估',
         _owner: workflow?.owner ?? '',
         _dueDate: workflow?.dueDate ?? '',
+        _acceptedAt: workflow?.acceptedAt ?? '',
+        _completedAt: workflow?.completedAt ?? '',
       }
     })
 })
@@ -436,6 +477,70 @@ const resolveProgressPercent = (rawValue: unknown): number | null => {
 
 const statusTagType = (status: string) => resolveMajorDemandStatusTag(status)
 
+const parseDemandDeadline = (value: string) => {
+  if (!value) {
+    return null
+  }
+
+  const trimmed = value.trim()
+  const normalized = /^\d{4}-\d{2}-\d{2}$/.test(trimmed) ? `${trimmed}T23:59:59` : trimmed
+  const date = new Date(normalized)
+  return Number.isNaN(date.getTime()) ? null : date
+}
+
+const formatDemandDeadline = (value: string) => {
+  const dueAt = parseDemandDeadline(value)
+  if (!dueAt) {
+    return '未设置'
+  }
+
+  const diff = dueAt.getTime() - nowTick.value
+  const hours = Math.round(diff / 3600000)
+  if (hours < 0) {
+    return `逾期 ${Math.abs(hours)}h`
+  }
+  if (hours < 24) {
+    return `${hours}h 内`
+  }
+
+  return `${Math.ceil(hours / 24)} 天内`
+}
+
+const demandDeadlineTagType = (value: string) => {
+  const dueAt = parseDemandDeadline(value)
+  if (!dueAt) {
+    return 'info'
+  }
+
+  const diff = dueAt.getTime() - nowTick.value
+  if (diff <= 0) {
+    return 'danger'
+  }
+  if (diff <= 24 * 3600000) {
+    return 'warning'
+  }
+  return 'success'
+}
+
+const canAcceptDemand = (status: string) => {
+  const normalized = normalizeStatusText(status)
+  return ['待评估', '待处理', '处理中', '待验证'].includes(normalized)
+}
+
+const canCompleteDemand = (status: string) => {
+  const normalized = normalizeStatusText(status)
+  return normalized === '处理中' || normalized === '待验证'
+}
+
+const canReopenDemand = (status: string) => {
+  const normalized = normalizeStatusText(status)
+  return normalized === '已完成' || normalized === '已关闭'
+}
+
+const workflowActionKey = (rowId: string, action: string) => `${rowId}:${action}`
+const isActionLoading = (rowId: string, action: string) => actionLoadingKey.value === workflowActionKey(rowId, action)
+const isRowBusy = (rowId: string) => actionLoadingKey.value.startsWith(`${rowId}:`)
+
 const formatTime = (value: string) => {
   if (!value) return '-'
   const date = new Date(value)
@@ -465,11 +570,24 @@ const loadData = async () => {
     sourceFilePath.value = res.data.sourceFilePath ?? ''
     importedAt.value = res.data.importedAt ? String(res.data.importedAt) : ''
     selectedRowIds.value = selectedRowIds.value.filter((id) => rows.value.some((item) => item._RowId === id))
-    currentPage.value = 1
   } catch (error) {
     ElMessage.error(getErrorMessage(error, '加载重大需求数据失败，请稍后重试'))
   } finally {
     loading.fetching = false
+  }
+}
+
+const runWorkflowAction = async (rowId: string, action: string, runner: () => Promise<void>, message: string) => {
+  actionLoadingKey.value = workflowActionKey(rowId, action)
+  try {
+    await runner()
+    ElMessage.success(message)
+    await loadData()
+    notifyDataChanged('major-demand')
+  } catch (error) {
+    ElMessage.error(getErrorMessage(error, `${message}失败`))
+  } finally {
+    actionLoadingKey.value = ''
   }
 }
 
@@ -618,6 +736,95 @@ const submitComment = async () => {
   }
 }
 
+const onAccept = async (row: Record<string, string>) => {
+  if (!canManageMajorDemand.value) {
+    ElMessage.warning('当前账号无重大需求管理权限')
+    return
+  }
+
+  const rowId = row._rowId ?? ''
+  if (!rowId) {
+    return
+  }
+
+  try {
+    const { value } = await ElMessageBox.prompt('可选填写负责人，留空则沿用当前负责人或操作人。', '受理重大需求', {
+      inputValue: row._owner ?? '',
+      inputPlaceholder: '负责人',
+      confirmButtonText: '受理',
+      cancelButtonText: '取消',
+    })
+
+    await runWorkflowAction(rowId, 'accept', async () => {
+      await acceptMajorDemand(rowId, value?.trim() ? { owner: value.trim() } : undefined)
+    }, '需求已受理')
+  } catch (error) {
+    if (error === 'cancel' || error === 'close') {
+      return
+    }
+    ElMessage.error(getErrorMessage(error, '需求受理失败'))
+  }
+}
+
+const onComplete = async (row: Record<string, string>) => {
+  if (!canManageMajorDemand.value) {
+    ElMessage.warning('当前账号无重大需求管理权限')
+    return
+  }
+
+  const rowId = row._rowId ?? ''
+  if (!rowId) {
+    return
+  }
+
+  try {
+    const { value } = await ElMessageBox.prompt('请填写完成说明。', '完成重大需求', {
+      inputPlaceholder: '例如：已完成系统上线与现场培训',
+      confirmButtonText: '完成',
+      cancelButtonText: '取消',
+      inputValidator: (inputValue) => inputValue.trim().length > 0 || '请输入完成说明',
+    })
+
+    await runWorkflowAction(rowId, 'complete', async () => {
+      await completeMajorDemand(rowId, { note: value.trim() })
+    }, '需求已完成')
+  } catch (error) {
+    if (error === 'cancel' || error === 'close') {
+      return
+    }
+    ElMessage.error(getErrorMessage(error, '完成重大需求失败'))
+  }
+}
+
+const onReopen = async (row: Record<string, string>) => {
+  if (!canManageMajorDemand.value) {
+    ElMessage.warning('当前账号无重大需求管理权限')
+    return
+  }
+
+  const rowId = row._rowId ?? ''
+  if (!rowId) {
+    return
+  }
+
+  try {
+    const { value } = await ElMessageBox.prompt('可选填写重开原因。', '重开重大需求', {
+      inputPlaceholder: '重开原因',
+      confirmButtonText: '重开',
+      cancelButtonText: '取消',
+    })
+
+    await runWorkflowAction(rowId, 'reopen', async () => {
+      await reopenMajorDemand(rowId, value?.trim() ? { reason: value.trim() } : undefined)
+    }, '需求已重开')
+  } catch (error) {
+    if (error === 'cancel' || error === 'close') {
+      return
+    }
+    ElMessage.error(getErrorMessage(error, '重开重大需求失败'))
+  }
+}
+
 const openEdit = (row: Record<string, string>) => {
   editRowId.value = row._rowId ?? ''
   editForm.value = { ...row }
@@ -657,6 +864,11 @@ const submitEdit = async () => {
 }
 
 const onAddRow = async () => {
+  if (!canManageMajorDemand.value) {
+    ElMessage.warning('当前账号无重大需求管理权限')
+    return
+  }
+
   try {
     await addMajorDemandRow()
     ElMessage.success('新增成功')
@@ -686,6 +898,10 @@ const onExport = async () => {
 }
 
 onMounted(async () => {
+  nowTimer = window.setInterval(() => {
+    nowTick.value = Date.now()
+  }, 60000)
+
   await access.ensureAccessProfileLoaded()
   restoreFilterState()
   applyRouteFilters()
@@ -693,6 +909,13 @@ onMounted(async () => {
     tasks: [loadData],
   })
   syncPanelFromRoute()
+})
+
+onBeforeUnmount(() => {
+  if (nowTimer !== null) {
+    window.clearInterval(nowTimer)
+    nowTimer = null
+  }
 })
 
 watch(detailVisible, (visible) => {
@@ -714,4 +937,16 @@ watch(() => route.fullPath, () => {
 </script>
 
 <style scoped>
+.deadline-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.detail-actions {
+  margin-top: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
 </style>

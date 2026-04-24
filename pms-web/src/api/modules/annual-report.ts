@@ -20,6 +20,22 @@ export function createAnnualReport(payload: AnnualReportUpsert) {
   return request.post<any, ApiResponse<AnnualReportItem>>('/annual-reports', payload)
 }
 
+export function startAnnualReport(id: number) {
+  return request.patch<any, ApiResponse<AnnualReportItem>>(`/annual-reports/${id}/start`)
+}
+
+export function submitAnnualReport(id: number) {
+  return request.patch<any, ApiResponse<AnnualReportItem>>(`/annual-reports/${id}/submit`)
+}
+
+export function completeAnnualReport(id: number) {
+  return request.patch<any, ApiResponse<AnnualReportItem>>(`/annual-reports/${id}/complete`)
+}
+
+export function reopenAnnualReport(id: number) {
+  return request.patch<any, ApiResponse<AnnualReportItem>>(`/annual-reports/${id}/reopen`)
+}
+
 export function deleteAnnualReport(id: number) {
   return request.delete<any, ApiResponse<boolean>>(`/annual-reports/${id}`)
 }

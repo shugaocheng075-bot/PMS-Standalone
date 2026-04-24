@@ -8,12 +8,7 @@
       
     </div>
 
-    <el-row :gutter="16" class="stats-row">
-      <el-col :span="6"><el-card shadow="never" class="stat-card stats-card clickable" :class="{ active: query.tier === '' }" @click="onStatClick('')"><div class="t">全部医院</div><div class="v">{{ summary.total }}</div></el-card></el-col>
-      <el-col :span="6"><el-card shadow="never" class="stat-card stats-card clickable" :class="{ active: query.tier === '三级' }" @click="onStatClick('三级')"><div class="t">三级医院</div><div class="v success">{{ summary.threeTierCount }}</div></el-card></el-col>
-      <el-col :span="6"><el-card shadow="never" class="stat-card stats-card clickable" :class="{ active: query.tier === '二级' }" @click="onStatClick('二级')"><div class="t">二级医院</div><div class="v warning">{{ summary.twoTierCount }}</div></el-card></el-col>
-      <el-col :span="6"><el-card shadow="never" class="stat-card stats-card clickable" :class="{ active: query.tier === '一级' }" @click="onStatClick('一级')"><div class="t">一级医院</div><div class="v danger">{{ summary.oneTierCount }}</div></el-card></el-col>
-    </el-row>
+    <SummaryMetrics :items="summaryCards" :columns="4" @select="onSummaryCardSelect" />
 
     
 
@@ -32,8 +27,8 @@
             @row-dblclick="onRowDoubleClick"
     >
       <template #toolbar>
-        <el-button v-if="canManageHospital" type="primary" @click="onOpenCreate">新增医院</el-button>
-        <el-button :loading="exporting" @click="onExport">导出CSV</el-button>
+        <el-button v-if="canManageHospital" type="primary" @click="onOpenCreate" icon="Plus">新增医院</el-button>
+        <el-button :loading="exporting" @click="onExport" icon="Download">导出CSV</el-button>
       </template>
 
       <template #search>
@@ -55,15 +50,15 @@
           </el-select>
         </el-form-item>
         <el-form-item class="filter-actions">
-          <el-button type="primary" @click="onSearch">查询</el-button>
-          <el-button @click="onReset">重置</el-button>
+          <el-button type="primary" @click="onSearch" icon="Search">查询</el-button>
+          <el-button @click="onReset" icon="Refresh">重置</el-button>
         </el-form-item>
       </el-form>
     </template>
 
     
       
-        <el-table-column prop="hospitalName" label="医院名称" min-width="220" show-overflow-tooltip sortable />
+        <el-table-column prop="hospitalName" label="医院名称" min-width="240" show-overflow-tooltip sortable />
         <el-table-column prop="tier" label="等级" width="100" sortable>
           <template #default="scope">
             <el-tag :type="tierTag(scope.row.tier)">{{ scope.row.tier }}</el-tag>
@@ -71,47 +66,51 @@
         </el-table-column>
         <el-table-column prop="province" label="省份" width="100" show-overflow-tooltip sortable />
         <el-table-column prop="city" label="城市" width="100" show-overflow-tooltip sortable />
-        <el-table-column prop="address" label="地址" min-width="220" show-overflow-tooltip />
-        <el-table-column prop="contactPerson" label="联系人" width="100" show-overflow-tooltip />
-        <el-table-column prop="contactPhone" label="联系电话" width="140" show-overflow-tooltip />
-        <el-table-column prop="departmentCount" label="科室数量" width="100" align="right" sortable />
-        <el-table-column label="评级" min-width="180">
+        <el-table-column prop="address" label="地址" min-width="240" show-overflow-tooltip />
+        <el-table-column prop="contactPerson" label="联系人" width="110" show-overflow-tooltip />
+        <el-table-column prop="contactPhone" label="联系电话" width="150" show-overflow-tooltip />
+        <el-table-column prop="departmentCount" label="科室数量" width="110" align="right" sortable />
+        <el-table-column label="评级" min-width="220">
           <template #default="scope">
-            <span>EMR: {{ scope.row.emrRatingLevel || '-' }}</span>
-            <span style="margin-left: 10px">互联互通: {{ scope.row.interopRatingLevel || '-' }}</span>
+            <div class="rating-inline">
+              <span>EMR: {{ scope.row.emrRatingLevel || '-' }}</span>
+              <span>互联互通: {{ scope.row.interopRatingLevel || '-' }}</span>
+            </div>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="210" fixed="right">
+        <el-table-column label="操作" width="250" fixed="right">
           <template #default="scope">
-            <el-button
-              type="primary"
-              link
-              :loading="detailLoadingId === scope.row.id"
-              :disabled="submitLoading || deletingId === scope.row.id || ratingLoading"
-              @click="onOpenDetail(scope.row.id)"
-            >详情</el-button>
-            <el-button
-              v-if="canManageHospital"
-              type="primary"
-              link
-              :disabled="submitLoading || deletingId === scope.row.id || ratingLoading"
-              @click="onOpenEdit(scope.row)"
-            >编辑</el-button>
-            <el-button
-              v-if="canManageHospital"
-              type="primary"
-              link
-              :disabled="submitLoading || deletingId === scope.row.id || ratingLoading"
-              @click="onOpenRating(scope.row)"
-            >评级</el-button>
-            <el-button
-              v-if="canManageHospital"
-              type="danger"
-              link
-              :loading="deletingId === scope.row.id"
-              :disabled="submitLoading || deletingId === scope.row.id || ratingLoading"
-              @click="onDelete(scope.row)"
-            >删除</el-button>
+            <div class="hospital-action-group">
+              <el-button
+                type="primary"
+                link
+                :loading="detailLoadingId === scope.row.id"
+                :disabled="submitLoading || deletingId === scope.row.id || ratingLoading"
+                @click="onOpenDetail(scope.row.id)"
+               icon="Document">详情</el-button>
+              <el-button
+                v-if="canManageHospital"
+                type="primary"
+                link
+                :disabled="submitLoading || deletingId === scope.row.id || ratingLoading"
+                @click="onOpenEdit(scope.row)"
+               icon="Edit">编辑</el-button>
+              <el-button
+                v-if="canManageHospital"
+                type="primary"
+                link
+                :disabled="submitLoading || deletingId === scope.row.id || ratingLoading"
+                @click="onOpenRating(scope.row)"
+              >评级</el-button>
+              <el-button
+                v-if="canManageHospital"
+                type="danger"
+                link
+                :loading="deletingId === scope.row.id"
+                :disabled="submitLoading || deletingId === scope.row.id || ratingLoading"
+                @click="onDelete(scope.row)"
+               icon="Delete">删除</el-button>
+            </div>
           </template>
         </el-table-column>
       
@@ -138,8 +137,8 @@
         <el-form-item label="科室数量" prop="departmentCount"><el-input v-model="editForm.departmentCount" /></el-form-item>
       </el-form>
       <template #footer>
-        <el-button :disabled="submitLoading" @click="editVisible = false">取消</el-button>
-        <el-button type="primary" :loading="submitLoading" :disabled="submitLoading" @click="onSaveEdit">保存</el-button>
+        <el-button :disabled="submitLoading" @click="editVisible = false" icon="Close">取消</el-button>
+        <el-button type="primary" :loading="submitLoading" :disabled="submitLoading" @click="onSaveEdit" icon="Check">保存</el-button>
       </template>
     </ProDrawer>
 
@@ -149,8 +148,8 @@
         <el-form-item label="互联互通评级"><el-input v-model="ratingForm.interopRatingLevel" /></el-form-item>
       </el-form>
       <template #footer>
-        <el-button :disabled="ratingLoading" @click="ratingVisible = false">取消</el-button>
-        <el-button type="primary" :loading="ratingLoading" :disabled="ratingLoading" @click="onSaveRating">保存</el-button>
+        <el-button :disabled="ratingLoading" @click="ratingVisible = false" icon="Close">取消</el-button>
+        <el-button type="primary" :loading="ratingLoading" :disabled="ratingLoading" @click="onSaveRating" icon="Check">保存</el-button>
       </template>
     </ProDrawer>
 
@@ -198,6 +197,7 @@ import { useLinkedRealtimeRefresh } from '../../composables/useLinkedRealtimeRef
 import { useAccessControl } from '../../composables/useAccessControl'
 import ProTable from '../../components/ProTable.vue'
 import ProDrawer from '../../components/ProDrawer.vue'
+import SummaryMetrics from '../../components/SummaryMetrics.vue'
 
 
 const loading = ref(false)
@@ -220,6 +220,55 @@ const query = reactive({
   page: 1,
   size: 15,
 })
+
+type HospitalSummaryCard = {
+  key: string
+  title: string
+  value: number
+  context: string
+  note: string
+  color: string
+  active: boolean
+}
+
+const summaryCards = computed<HospitalSummaryCard[]>(() => [
+  {
+    key: 'all',
+    title: '全部医院',
+    value: summary.value.total,
+    context: '医院层级',
+    note: '查看全部医院与客户分布概览',
+    color: '#3f4f63',
+    active: query.tier === '',
+  },
+  {
+    key: '三级',
+    title: '三级医院',
+    value: summary.value.threeTierCount,
+    context: '医院层级',
+    note: '聚焦三级医院客户与覆盖情况',
+    color: '#7d9f92',
+    active: query.tier === '三级',
+  },
+  {
+    key: '二级',
+    title: '二级医院',
+    value: summary.value.twoTierCount,
+    context: '医院层级',
+    note: '查看二级医院客户与联系信息',
+    color: '#c7a06c',
+    active: query.tier === '二级',
+  },
+  {
+    key: '一级',
+    title: '一级医院',
+    value: summary.value.oneTierCount,
+    context: '医院层级',
+    note: '查看一级医院客户与区域分布',
+    color: '#c58a87',
+    active: query.tier === '一级',
+  },
+])
 const route = useRoute()
 const router = useRouter()
 
@@ -437,6 +486,14 @@ const onStatClick = (tier: string) => {
   query.page = 1
   void updateRouteQuery({ tier: undefined })
   loadData()
+}
+
+const onSummaryCardSelect = (card: { key?: string | number }) => {
+  if (typeof card.key !== 'string') {
+    return
+  }
+
+  onStatClick(card.key === 'all' ? '' : card.key)
 }
 
 const onSearch = () => {
@@ -747,4 +804,18 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+.rating-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  white-space: nowrap;
+}
+
+.hospital-action-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+}
 </style>

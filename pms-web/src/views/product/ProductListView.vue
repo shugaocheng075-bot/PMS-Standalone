@@ -8,12 +8,7 @@
       
     </div>
 
-    <el-row :gutter="16" class="stats-row">
-      <el-col :span="6"><el-card shadow="never" class="stat-card stats-card clickable" :class="{ active: query.status === '' }" @click="onStatClick('')"><div class="t">产品总数</div><div class="v">{{ summary.total }}</div></el-card></el-col>
-      <el-col :span="6"><el-card shadow="never" class="stat-card stats-card clickable" :class="{ active: query.status === '运行中' }" @click="onStatClick('运行中')"><div class="t">运行中</div><div class="v success">{{ summary.implementationCount }}</div></el-card></el-col>
-      <el-col :span="6"><el-card shadow="never" class="stat-card stats-card clickable" :class="{ active: query.status === '试运行' }" @click="onStatClick('试运行')"><div class="t">试运行</div><div class="v warning">{{ summary.maintenanceCount }}</div></el-card></el-col>
-      <el-col :span="6"><el-card shadow="never" class="stat-card stats-card clickable" :class="{ active: query.status === '已停用' }" @click="onStatClick('已停用')"><div class="t">已停用</div><div class="v danger">{{ summary.stoppedCount }}</div></el-card></el-col>
-    </el-row>
+    <SummaryMetrics :items="summaryCards" :columns="4" @select="onSummaryCardSelect" />
 
     
 
@@ -33,7 +28,7 @@
       @row-dblclick="onRowDoubleClick"
     >
       <template #toolbar>
-        <el-button v-if="canManageProduct" type="primary" @click="onOpenCreate">新增产品</el-button>
+        <el-button v-if="canManageProduct" type="primary" @click="onOpenCreate" icon="Plus">新增产品</el-button>
         <el-button
             v-if="canManageProduct"
             type="danger"
@@ -41,7 +36,7 @@
             :disabled="selectedProductIds.length === 0"
             :loading="batchDeleting"
             @click="onBatchDelete"
-          >批量删除（{{ selectedProductIds.length }}）</el-button>
+           icon="Delete">批量删除（{{ selectedProductIds.length }}）</el-button>
       </template>
 
       <template #search>
@@ -58,8 +53,8 @@
           </el-select>
         </el-form-item>
         <el-form-item class="filter-actions">
-          <el-button type="primary" @click="onSearch">查询</el-button>
-          <el-button @click="onReset">重置</el-button>
+          <el-button type="primary" @click="onSearch" icon="Search">查询</el-button>
+          <el-button @click="onReset" icon="Refresh">重置</el-button>
         </el-form-item>
       </el-form>
     </template>
@@ -78,28 +73,30 @@
         <el-table-column prop="deployHospitalCount" label="部署医院数" width="120" align="right" sortable />
         <el-table-column label="操作" width="220" fixed="right">
           <template #default="scope">
-            <el-button
-              type="primary"
-              link
-              :loading="detailLoadingId === scope.row.id"
-              :disabled="submitLoading || deletingId === scope.row.id"
-              @click="onOpenDetail(scope.row.id)"
-            >详情</el-button>
-            <el-button
-              v-if="canManageProduct"
-              type="primary"
-              link
-              :disabled="submitLoading || deletingId === scope.row.id"
-              @click="onOpenEdit(scope.row)"
-            >编辑</el-button>
-            <el-button
-              v-if="canManageProduct"
-              type="danger"
-              link
-              :loading="deletingId === scope.row.id"
-              :disabled="submitLoading || deletingId === scope.row.id"
-              @click="onDelete(scope.row)"
-            >删除</el-button>
+            <div class="table-action-group">
+              <el-button
+                type="primary"
+                link
+                :loading="detailLoadingId === scope.row.id"
+                :disabled="submitLoading || deletingId === scope.row.id"
+                @click="onOpenDetail(scope.row.id)"
+               icon="Document">详情</el-button>
+              <el-button
+                v-if="canManageProduct"
+                type="primary"
+                link
+                :disabled="submitLoading || deletingId === scope.row.id"
+                @click="onOpenEdit(scope.row)"
+               icon="Edit">编辑</el-button>
+              <el-button
+                v-if="canManageProduct"
+                type="danger"
+                link
+                :loading="deletingId === scope.row.id"
+                :disabled="submitLoading || deletingId === scope.row.id"
+                @click="onDelete(scope.row)"
+               icon="Delete">删除</el-button>
+            </div>
           </template>
         </el-table-column>
       
@@ -125,8 +122,8 @@
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button :disabled="submitLoading" @click="editVisible = false">取消</el-button>
-        <el-button type="primary" :loading="submitLoading" :disabled="submitLoading" @click="onSaveEdit">保存</el-button>
+        <el-button :disabled="submitLoading" @click="editVisible = false" icon="Close">取消</el-button>
+        <el-button type="primary" :loading="submitLoading" :disabled="submitLoading" @click="onSaveEdit" icon="Check">保存</el-button>
       </template>
     </ProDrawer>
 
@@ -168,6 +165,7 @@ import { useFilterStatePersist } from '../../composables/useFilterStatePersist'
 import { resolveProductStatusTag } from '../../utils/statusTag'
 import ProTable from '../../components/ProTable.vue'
 import ProDrawer from '../../components/ProDrawer.vue'
+import SummaryMetrics from '../../components/SummaryMetrics.vue'
 
 
 const loading = ref(false)
@@ -182,6 +180,55 @@ const query = reactive({
   page: 1,
   size: 15,
 })
+
+type ProductSummaryCard = {
+  key: string
+  title: string
+  value: number
+  context: string
+  note: string
+  color: string
+  active: boolean
+}
+
+const summaryCards = computed<ProductSummaryCard[]>(() => [
+  {
+    key: 'all',
+    title: '产品总数',
+    value: summary.value.total,
+    context: '全量视图',
+    note: '查看全部产品与部署统计概览',
+    color: '#3f4f63',
+    active: query.status === '',
+  },
+  {
+    key: '运行中',
+    title: '运行中',
+    value: summary.value.implementationCount,
+    context: '状态筛选',
+    note: '聚焦当前稳定运行的产品',
+    color: '#7d9f92',
+    active: query.status === '运行中',
+  },
+  {
+    key: '试运行',
+    title: '试运行',
+    value: summary.value.maintenanceCount,
+    context: '状态筛选',
+    note: '跟进仍处于试运行阶段的产品',
+    color: '#c7a06c',
+    active: query.status === '试运行',
+  },
+  {
+    key: '已停用',
+    title: '已停用',
+    value: summary.value.stoppedCount,
+    context: '状态筛选',
+    note: '查看已停用产品与历史部署情况',
+    color: '#c58a87',
+    active: query.status === '已停用',
+  },
+])
 const categoryOptions = ref<string[]>(['EMR', '临床辅助', '管理', 'AI', '移动'])
 const statusOptions = ref<string[]>(['运行中', '试运行', '已停用'])
 const route = useRoute()
@@ -346,6 +393,14 @@ const onStatClick = (status: string) => {
   query.page = 1
   void updateRouteQuery({ status: undefined })
   loadData()
+}
+
+const onSummaryCardSelect = (card: { key?: string | number }) => {
+  if (typeof card.key !== 'string') {
+    return
+  }
+
+  onStatClick(card.key === 'all' ? '' : card.key)
 }
 
 const onSearch = () => {

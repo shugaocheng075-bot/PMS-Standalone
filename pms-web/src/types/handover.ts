@@ -10,6 +10,8 @@ export interface HandoverItem {
   stage: string
   type: string
   emailSentDate?: string | null
+  startedAt?: string | null
+  completedAt?: string | null
 }
 
 export interface HandoverSummary {

@@ -138,18 +138,38 @@ public class AnnualReportsController(
         [FromBody] AnnualReportUpsertDto dto,
         CancellationToken cancellationToken = default)
     {
-        var updated = await annualReportService.UpdateAsync(id, dto, cancellationToken);
-        if (updated is null)
+        var existing = await GetScopedAnnualReportAsync(id, cancellationToken);
+        if (existing is null)
         {
             return NotFound(new ApiResponse<object> { Code = 404, Message = "未找到对应年度报告" });
         }
 
-        return Ok(ApiResponse<AnnualReportItemDto>.Success(updated));
+        try
+        {
+            var updated = await annualReportService.UpdateAsync(id, dto, cancellationToken);
+            if (updated is null)
+            {
+                return NotFound(new ApiResponse<object> { Code = 404, Message = "未找到对应年度报告" });
+            }
+
+            return Ok(ApiResponse<AnnualReportItemDto>.Success(updated));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { code = 400, message = ex.Message });
+        }
     }
 
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] AnnualReportUpsertDto dto, CancellationToken cancellationToken = default)
     {
+        var personnelId = HttpContext.GetCurrentPersonnelId();
+        var dataScope = await accessControlService.GetDataScopeAsync(personnelId, cancellationToken);
+        if (!HospitalScopeHelper.IsHospitalAccessible(dataScope, dto.HospitalName ?? string.Empty))
+        {
+            return Forbid();
+        }
+
         var created = await annualReportService.CreateAsync(dto, cancellationToken);
         return Ok(ApiResponse<AnnualReportItemDto>.Success(created));
     }
@@ -157,13 +177,130 @@ public class AnnualReportsController(
     [HttpDelete("{id:long}")]
     public async Task<IActionResult> Delete(long id, CancellationToken cancellationToken = default)
     {
-        var removed = await annualReportService.DeleteAsync(id, cancellationToken);
-        if (!removed)
+        var existing = await GetScopedAnnualReportAsync(id, cancellationToken);
+        if (existing is null)
         {
             return NotFound(new ApiResponse<object> { Code = 404, Message = "未找到对应年度报告" });
         }
 
-        return Ok(ApiResponse<bool>.Success(true));
+        try
+        {
+            var removed = await annualReportService.DeleteAsync(id, cancellationToken);
+            if (!removed)
+            {
+                return NotFound(new ApiResponse<object> { Code = 404, Message = "未找到对应年度报告" });
+            }
+
+            return Ok(ApiResponse<bool>.Success(true));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { code = 400, message = ex.Message });
+        }
+    }
+
+    [HttpPatch("{id:long}/start")]
+    public async Task<IActionResult> Start(long id, CancellationToken cancellationToken = default)
+    {
+        var existing = await GetScopedAnnualReportAsync(id, cancellationToken);
+        if (existing is null)
+        {
+            return NotFound(new ApiResponse<object> { Code = 404, Message = "未找到对应年度报告" });
+        }
+
+        try
+        {
+            var updated = await annualReportService.StartAsync(id, cancellationToken);
+            if (updated is null)
+            {
+                return NotFound(new ApiResponse<object> { Code = 404, Message = "未找到对应年度报告" });
+            }
+
+            return Ok(ApiResponse<AnnualReportItemDto>.Success(updated));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { code = 400, message = ex.Message });
+        }
+    }
+
+    [HttpPatch("{id:long}/submit")]
+    public async Task<IActionResult> Submit(long id, CancellationToken cancellationToken = default)
+    {
+        var existing = await GetScopedAnnualReportAsync(id, cancellationToken);
+        if (existing is null)
+        {
+            return NotFound(new ApiResponse<object> { Code = 404, Message = "未找到对应年度报告" });
+        }
+
+        try
+        {
+            var updated = await annualReportService.SubmitAsync(id, cancellationToken);
+            if (updated is null)
+            {
+                return NotFound(new ApiResponse<object> { Code = 404, Message = "未找到对应年度报告" });
+            }
+
+            return Ok(ApiResponse<AnnualReportItemDto>.Success(updated));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { code = 400, message = ex.Message });
+        }
+    }
+
+    [HttpPatch("{id:long}/complete")]
+    public async Task<IActionResult> Complete(long id, CancellationToken cancellationToken = default)
+    {
+        var existing = await GetScopedAnnualReportAsync(id, cancellationToken);
+        if (existing is null)
+        {
+            return NotFound(new ApiResponse<object> { Code = 404, Message = "未找到对应年度报告" });
+        }
+
+        var personnelId = HttpContext.GetCurrentPersonnelId();
+        var profile = await accessControlService.GetUserProfileAsync(personnelId);
+        var reviewer = string.IsNullOrWhiteSpace(profile?.PersonnelName) ? "unknown" : profile!.PersonnelName;
+
+        try
+        {
+            var updated = await annualReportService.CompleteAsync(id, reviewer, cancellationToken);
+            if (updated is null)
+            {
+                return NotFound(new ApiResponse<object> { Code = 404, Message = "未找到对应年度报告" });
+            }
+
+            return Ok(ApiResponse<AnnualReportItemDto>.Success(updated));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { code = 400, message = ex.Message });
+        }
+    }
+
+    [HttpPatch("{id:long}/reopen")]
+    public async Task<IActionResult> Reopen(long id, CancellationToken cancellationToken = default)
+    {
+        var existing = await GetScopedAnnualReportAsync(id, cancellationToken);
+        if (existing is null)
+        {
+            return NotFound(new ApiResponse<object> { Code = 404, Message = "未找到对应年度报告" });
+        }
+
+        try
+        {
+            var updated = await annualReportService.ReopenAsync(id, cancellationToken);
+            if (updated is null)
+            {
+                return NotFound(new ApiResponse<object> { Code = 404, Message = "未找到对应年度报告" });
+            }
+
+            return Ok(ApiResponse<AnnualReportItemDto>.Success(updated));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { code = 400, message = ex.Message });
+        }
     }
 
     [HttpGet("export")]
@@ -237,5 +374,23 @@ public class AnnualReportsController(
             return $"\"{text.Replace("\"", "\"\"")}\"";
         }
         return text;
+    }
+
+    private async Task<AnnualReportItemDto?> GetScopedAnnualReportAsync(long id, CancellationToken cancellationToken)
+    {
+        var item = await annualReportService.GetByIdAsync(id, cancellationToken);
+        if (item is null)
+        {
+            return null;
+        }
+
+        var personnelId = HttpContext.GetCurrentPersonnelId();
+        var dataScope = await accessControlService.GetDataScopeAsync(personnelId, cancellationToken);
+        if (!HospitalScopeHelper.IsHospitalAccessible(dataScope, item.HospitalName))
+        {
+            return null;
+        }
+
+        return item;
     }
 }

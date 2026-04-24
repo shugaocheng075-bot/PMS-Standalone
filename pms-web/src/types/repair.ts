@@ -19,6 +19,10 @@ export interface RepairRecordItem {
   workHoursDetail: string
   status: string
   urgency: string
+  assigneeName: string
+  acceptedAt?: string
+  slaDueAt?: string
+  completedAt?: string
   createdAt: string
   updatedAt: string
 }
@@ -42,6 +46,19 @@ export interface RepairRecordUpsert {
   registrationStatus: string
   status: string
   urgency: string
+  assigneeName?: string
+}
+
+export interface RepairRecordAcceptRequest {
+  assigneeName?: string
+}
+
+export interface RepairRecordResolveRequest {
+  resolution: string
+}
+
+export interface RepairRecordReopenRequest {
+  reason?: string
 }
 
 export interface RepairRecordQuery {
@@ -57,4 +74,5 @@ export interface RepairRecordSummary {
   pendingCount: number
   inProgressCount: number
   completedCount: number
+  closedCount?: number
 }

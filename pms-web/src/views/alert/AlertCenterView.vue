@@ -1,50 +1,64 @@
 <template>
   <div class="page-shell">
-    <div class="page-head">
-      <div>
-        <h2 class="page-title">统一预警中心</h2>
-        <div class="page-subtitle">聚合合同、交接、巡检待办，支持一键跳转处理</div>
+    <div class="alert-hero">
+      <div class="alert-hero-main">
+        <div class="alert-hero-kicker-row">
+          <span class="alert-hero-kicker">Risk Command Center</span>
+          <span class="alert-hero-badge">{{ activeFilterLabel }}</span>
+        </div>
+        <h2 class="alert-hero-title">统一预警中心</h2>
+        <div class="alert-hero-subtitle">
+          聚合合同、交接、巡检三类待办风险，先从这里判断风险浓度和来源分布，再继续下钻到具体执行模块处理，不必在多个列表之间反复切换。
+        </div>
+
+        <div class="alert-hero-signals">
+          <div v-for="item in heroSignals" :key="item.label" class="alert-signal-card">
+            <span class="alert-signal-label">{{ item.label }}</span>
+            <strong class="alert-signal-value">{{ item.value }}</strong>
+            <span class="alert-signal-note">{{ item.note }}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="alert-hero-side">
+        <div class="alert-control-card">
+          <div class="alert-control-copy">
+            <span class="alert-control-title">风险操作</span>
+            <span class="alert-control-note">当前列表共 {{ total }} 条风险项，可继续筛选、重置或导出。</span>
+          </div>
+          <div class="alert-control-actions">
+            <el-button size="small" @click="onSearch" icon="Search">刷新列表</el-button>
+            <el-button size="small" @click="onReset" icon="Refresh">重置筛选</el-button>
+            <el-button size="small" :loading="exporting" @click="onExport" icon="Download">导出</el-button>
+          </div>
+        </div>
+
+        <div class="alert-quick-grid">
+          <button v-for="action in quickActions" :key="action.title" type="button" class="alert-quick-action" @click="action.onClick()">
+            <span class="alert-quick-title">{{ action.title }}</span>
+            <span class="alert-quick-note">{{ action.note }}</span>
+          </button>
+        </div>
       </div>
     </div>
 
-    <el-row :gutter="12" class="stats-row">
-      <el-col :xs="24" :sm="8" :md="4">
-        <el-card shadow="never" class="stat-card" @click="filterByLevel('严重')">
-          <div class="t">严重</div>
-          <div class="v danger">{{ summary.severe }}</div>
-        </el-card>
-      </el-col>
-      <el-col :xs="24" :sm="8" :md="4">
-        <el-card shadow="never" class="stat-card" @click="filterByLevel('警告')">
-          <div class="t">警告</div>
-          <div class="v warning">{{ summary.warning }}</div>
-        </el-card>
-      </el-col>
-      <el-col :xs="24" :sm="8" :md="4">
-        <el-card shadow="never" class="stat-card" @click="filterByLevel('提醒')">
-          <div class="t">提醒</div>
-          <div class="v info">{{ summary.reminder }}</div>
-        </el-card>
-      </el-col>
-      <el-col :xs="24" :sm="8" :md="4">
-        <el-card shadow="never" class="stat-card" @click="filterBySource('合同')">
-          <div class="t">合同</div>
-          <div class="v">{{ summary.contract }}</div>
-        </el-card>
-      </el-col>
-      <el-col :xs="24" :sm="8" :md="4">
-        <el-card shadow="never" class="stat-card" @click="filterBySource('交接')">
-          <div class="t">交接</div>
-          <div class="v">{{ summary.handover }}</div>
-        </el-card>
-      </el-col>
-      <el-col :xs="24" :sm="8" :md="4">
-        <el-card shadow="never" class="stat-card" @click="filterBySource('巡检')">
-          <div class="t">巡检</div>
-          <div class="v">{{ summary.inspection }}</div>
-        </el-card>
-      </el-col>
-    </el-row>
+    <div class="metrics-grid metrics-grid--6">
+      <button
+        v-for="card in summaryCards"
+        :key="card.title"
+        type="button"
+        class="metric-card metric-card--action"
+        :class="{ 'is-active': card.active }"
+        @click="card.onClick()"
+      >
+        <div class="metric-card-head">
+          <span class="metric-title">{{ card.title }}</span>
+          <span class="metric-context">{{ card.context }}</span>
+        </div>
+        <div class="metric-value" :style="{ color: card.color }">{{ card.value }}</div>
+        <div class="metric-note">{{ card.note }}</div>
+      </button>
+    </div>
 
     <AppFilterCard>
       <el-form :model="query" inline class="filter-form" @submit.prevent="onSearch">
@@ -66,9 +80,9 @@
           <el-input v-model="query.keyword" clearable placeholder="医院/负责人/内容" style="width: 220px" @keyup.enter="onSearch" />
         </el-form-item>
         <el-form-item class="filter-actions">
-          <el-button type="primary" @click="onSearch">查询</el-button>
-          <el-button @click="onReset">重置</el-button>
-          <el-button :loading="exporting" @click="onExport">导出CSV</el-button>
+          <el-button type="primary" @click="onSearch" icon="Search">查询</el-button>
+          <el-button @click="onReset" icon="Refresh">重置</el-button>
+          <el-button :loading="exporting" @click="onExport" icon="Download">导出CSV</el-button>
         </el-form-item>
       </el-form>
     </AppFilterCard>
@@ -88,7 +102,7 @@
         <el-table-column prop="overdueDays" label="超期天数" width="100" align="right" />
         <el-table-column label="操作" width="120" fixed="right">
           <template #default="scope">
-            <el-button link type="primary" @click="onGoto(scope.row)">去处理</el-button>
+            <el-button link type="primary" @click="onGoto(scope.row)" icon="Service">去处理</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -109,7 +123,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref, watch } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { fetchAlertCenter, exportAlertCenter, type AlertCenterItem } from '../../api/modules/alertCenter'
@@ -144,6 +158,102 @@ const query = reactive({
   page: 1,
   size: 15,
 })
+
+const summaryCards = computed(() => [
+  {
+    title: '严重',
+    context: '级别筛选',
+    note: '优先处理高风险待办项',
+    value: summary.severe,
+    color: '#c58a87',
+    active: query.level === '严重',
+    onClick: () => filterByLevel('严重'),
+  },
+  {
+    title: '警告',
+    context: '级别筛选',
+    note: '跟进临近阈值的风险项',
+    value: summary.warning,
+    color: '#c7a06c',
+    active: query.level === '警告',
+    onClick: () => filterByLevel('警告'),
+  },
+  {
+    title: '提醒',
+    context: '级别筛选',
+    note: '常规待办与预警提醒汇总',
+    value: summary.reminder,
+    color: '#7c98bc',
+    active: query.level === '提醒',
+    onClick: () => filterByLevel('提醒'),
+  },
+  {
+    title: '合同',
+    context: '来源筛选',
+    note: '查看合同临期与到期提醒',
+    value: summary.contract,
+    color: '#7c98bc',
+    active: query.source === '合同',
+    onClick: () => filterBySource('合同'),
+  },
+  {
+    title: '交接',
+    context: '来源筛选',
+    note: '聚焦交接阶段待推进事项',
+    value: summary.handover,
+    color: '#8db3a8',
+    active: query.source === '交接',
+    onClick: () => filterBySource('交接'),
+  },
+  {
+    title: '巡检',
+    context: '来源筛选',
+    note: '查看巡检任务与健康等级异常',
+    value: summary.inspection,
+    color: '#9388bf',
+    active: query.source === '巡检',
+    onClick: () => filterBySource('巡检'),
+  },
+])
+
+const activeFilterLabel = computed(() => {
+  if (query.level) {
+    return `级别：${query.level}`
+  }
+
+  if (query.source) {
+    return `来源：${query.source}`
+  }
+
+  if (query.keyword) {
+    return `检索：${query.keyword}`
+  }
+
+  return '全量风险视图'
+})
+
+const heroSignals = computed(() => [
+  {
+    label: '风险总量',
+    value: String(summary.total),
+    note: '当前数据范围内聚合的全部预警条目',
+  },
+  {
+    label: '严重风险',
+    value: String(summary.severe),
+    note: '需要优先处理的高风险待办项',
+  },
+  {
+    label: '合同来源',
+    value: String(summary.contract),
+    note: '合同临期与到期类风险数量',
+  },
+  {
+    label: '交接 + 巡检',
+    value: String(summary.handover + summary.inspection),
+    note: '执行链路中的交接与巡检积压总量',
+  },
+])
 
 type AlertFilterState = {
   source: string
@@ -288,6 +398,29 @@ const filterByLevel = (level: string) => {
   loadData()
 }
 
+const quickActions = computed(() => [
+  {
+    title: '严重风险',
+    note: '只看高优先级风险待办',
+    onClick: () => filterByLevel('严重'),
+  },
+  {
+    title: '合同预警',
+    note: '切到合同临期与到期提醒',
+    onClick: () => filterBySource('合同'),
+  },
+  {
+    title: '交接待办',
+    note: '聚焦交接阶段未完成事项',
+    onClick: () => filterBySource('交接'),
+  },
+  {
+    title: '巡检异常',
+    note: '查看巡检执行与健康等级异常',
+    onClick: () => filterBySource('巡检'),
+  },
+])
+
 const onGoto = (row: AlertCenterItem) => {
   router.push({
     path: row.relatedPath,
@@ -313,4 +446,226 @@ watch(() => route.fullPath, () => {
 </script>
 
 <style scoped>
+.alert-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.18fr) minmax(320px, 0.82fr);
+  gap: 16px;
+  padding: 24px;
+  border-radius: 28px;
+  color: #ffffff;
+  background:
+    radial-gradient(circle at 12% 18%, rgba(255, 184, 184, 0.18), transparent 22%),
+    radial-gradient(circle at 100% 0, rgba(236, 214, 122, 0.14), transparent 24%),
+    linear-gradient(145deg, #3f2d52 0%, #6b3b59 48%, #8b5737 100%);
+  box-shadow: 0 26px 44px rgba(80, 43, 53, 0.18);
+}
+
+.alert-hero-main {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+
+.alert-hero-kicker-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.alert-hero-kicker,
+.alert-hero-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 7px 12px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.alert-hero-kicker {
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.08);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.alert-hero-badge {
+  background: rgba(255, 255, 255, 0.14);
+  color: #f9f4ef;
+}
+
+.alert-hero-title {
+  margin: 0;
+  font-size: 34px;
+  line-height: 1.12;
+  font-weight: 700;
+}
+
+.alert-hero-subtitle {
+  max-width: 700px;
+  font-size: 14px;
+  line-height: 1.85;
+  color: rgba(249, 241, 233, 0.84);
+}
+
+.alert-hero-signals {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.alert-signal-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.11), rgba(255, 255, 255, 0.05));
+}
+
+.alert-signal-label {
+  font-size: 12px;
+  color: rgba(248, 235, 228, 0.76);
+}
+
+.alert-signal-value {
+  font-size: 28px;
+  line-height: 1;
+  font-weight: 700;
+}
+
+.alert-signal-note {
+  font-size: 12px;
+  line-height: 1.7;
+  color: rgba(246, 236, 230, 0.76);
+}
+
+.alert-hero-side {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.alert-control-card,
+.alert-quick-action {
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 20px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.08));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+.alert-control-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px;
+}
+
+.alert-control-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.alert-control-title {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.alert-control-note {
+  font-size: 12px;
+  line-height: 1.7;
+  color: rgba(245, 234, 226, 0.74);
+}
+
+.alert-control-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.alert-control-actions :deep(.el-button) {
+  min-height: 40px;
+}
+
+.alert-quick-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.alert-quick-action {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+  color: #ffffff;
+  text-align: left;
+  cursor: pointer;
+  transition: transform 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+}
+
+.alert-quick-action:hover {
+  transform: translateY(-1px);
+  border-color: rgba(255, 255, 255, 0.24);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.09));
+}
+
+.alert-quick-title {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.alert-quick-note {
+  font-size: 12px;
+  line-height: 1.65;
+  color: rgba(247, 236, 229, 0.76);
+}
+
+.metric-card--action {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 245, 243, 0.96));
+}
+
+.metric-card--action::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto auto 0;
+  width: 100%;
+  height: 4px;
+  background: linear-gradient(90deg, #8b5737 0%, #c58a87 100%);
+  opacity: 0.92;
+}
+
+@media (max-width: 1280px) {
+  .alert-hero {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .alert-hero {
+    padding: 18px;
+  }
+
+  .alert-hero-title {
+    font-size: 28px;
+  }
+
+  .alert-hero-signals,
+  .alert-quick-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .alert-control-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
 </style>

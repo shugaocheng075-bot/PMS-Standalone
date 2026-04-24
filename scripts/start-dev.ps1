@@ -29,11 +29,14 @@ function Start-DevWindow {
         [string]$Command
     )
 
-    $escapedCommand = $Command.Replace('"', '""')
+    $titleLiteral = $Title.Replace("'", "''")
+    $fullCommand = "`$Host.UI.RawUI.WindowTitle = '$titleLiteral'; $Command"
+    $encodedCommand = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($fullCommand))
+
     Start-Process powershell.exe -ArgumentList @(
         '-NoExit',
-        '-Command',
-        "`$Host.UI.RawUI.WindowTitle = '$Title'; $escapedCommand"
+        '-EncodedCommand',
+        $encodedCommand
     ) | Out-Null
 }
 

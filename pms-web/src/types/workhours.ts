@@ -12,6 +12,9 @@ export interface WorkHoursItem {
   opportunityNumber: string
   productName: string
   implementationStatus: string
+  status: string
+  confirmedBy: string | null
+  confirmedAt: string | null
 }
 
 export interface WorkHoursUpsert {

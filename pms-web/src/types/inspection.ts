@@ -8,6 +8,9 @@ export interface InspectionPlanItem {
   inspector: string
   planDate: string
   actualDate?: string | null
+  startedAt?: string | null
+  completedAt?: string | null
+  slaDueAt?: string | null
   status: '已计划' | '执行中' | '已完成' | '已取消'
   inspectionType: '现场' | '远程'
   priority: '高' | '中' | '低' | string
@@ -27,6 +30,18 @@ export interface InspectionPlanUpsert {
   inspectionType?: '现场' | '远程'
   priority?: '高' | '中' | '低' | string
   remarks?: string
+}
+
+export interface InspectionPlanStartPayload {
+  inspector?: string
+}
+
+export interface InspectionPlanCompletePayload {
+  remarks?: string
+}
+
+export interface InspectionPlanReopenPayload {
+  reason?: string
 }
 
 export interface InspectionSummary {

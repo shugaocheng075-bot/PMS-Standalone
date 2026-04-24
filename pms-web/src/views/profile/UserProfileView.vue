@@ -1,13 +1,20 @@
 <template>
   <div class="page-shell">
     <div class="page-head">
-      <h2 class="page-title">个人资料</h2>
+      <div>
+        <h2 class="page-title">个人资料</h2>
+        <div class="page-subtitle">查看当前身份信息、数据范围和已授权权限，并在此完成密码修改。</div>
+      </div>
     </div>
 
-    <el-row :gutter="20">
-      <el-col :span="12">
-        <el-card shadow="never">
-          <template #header><span>基本信息</span></template>
+    <div class="detail-grid">
+      <AppTableCard>
+        <template #header>
+          <div class="panel-head">
+            <span class="panel-title">基本信息</span>
+          </div>
+        </template>
+        <div class="detail-section-subtitle">当前登录身份、系统角色和权限基础信息一览。</div>
           <el-descriptions :column="1" border>
             <el-descriptions-item label="姓名">{{ profile?.personnelName ?? '-' }}</el-descriptions-item>
             <el-descriptions-item label="角色类型">{{ profile?.roleType ?? '-' }}</el-descriptions-item>
@@ -20,13 +27,16 @@
             </el-descriptions-item>
             <el-descriptions-item label="权限数量">{{ profile?.permissions?.length ?? 0 }}</el-descriptions-item>
           </el-descriptions>
-        </el-card>
-      </el-col>
+      </AppTableCard>
 
-      <el-col :span="12">
-        <el-card shadow="never">
-          <template #header><span>修改密码</span></template>
-          <el-form ref="formRef" :model="form" :rules="rules" label-width="100px" style="max-width: 400px">
+      <AppTableCard>
+        <template #header>
+          <div class="panel-head">
+            <span class="panel-title">修改密码</span>
+          </div>
+        </template>
+        <div class="detail-section-subtitle">建议定期更新密码，密码修改后即时生效。</div>
+        <el-form ref="formRef" :model="form" :rules="rules" label-width="100px" class="password-form">
             <el-form-item label="原密码" prop="oldPassword">
               <el-input v-model="form.oldPassword" type="password" show-password />
             </el-form-item>
@@ -36,36 +46,47 @@
             <el-form-item label="确认密码" prop="confirmPassword">
               <el-input v-model="form.confirmPassword" type="password" show-password />
             </el-form-item>
-            <el-form-item>
-              <el-button type="primary" :loading="submitting" @click="onChangePassword">修改密码</el-button>
+            <el-form-item class="form-actions">
+              <el-button type="primary" :loading="submitting" @click="onChangePassword" icon="Edit">修改密码</el-button>
             </el-form-item>
           </el-form>
-        </el-card>
-      </el-col>
-    </el-row>
+      </AppTableCard>
+    </div>
 
-    <el-card shadow="never" style="margin-top: 20px">
-      <template #header><span>数据范围</span></template>
+    <AppTableCard>
+      <template #header>
+        <div class="panel-head">
+          <span class="panel-title">数据范围</span>
+        </div>
+      </template>
+      <div class="detail-section-subtitle">当前身份可访问的数据范围和医院集合。</div>
       <el-descriptions :column="1" border>
         <el-descriptions-item label="范围类型">
           {{ scopeLabel }}
         </el-descriptions-item>
         <el-descriptions-item label="可访问医院">
-          <template v-if="hospitalNames.length">
-            <el-tag v-for="h in hospitalNames" :key="h" size="small" style="margin: 2px 4px">{{ h }}</el-tag>
+          <template v-if="hospitalNames.length"> 
+            <div class="tag-cloud">
+              <el-tag v-for="h in hospitalNames" :key="h" size="small">{{ h }}</el-tag>
+            </div>
           </template>
           <span v-else>全部（不限制）</span>
         </el-descriptions-item>
       </el-descriptions>
-    </el-card>
+    </AppTableCard>
 
-    <el-card shadow="never" style="margin-top: 20px">
-      <template #header><span>已授权权限</span></template>
-      <div class="permission-tags">
-        <el-tag v-for="p in profile?.permissions ?? []" :key="p" size="small" style="margin: 2px 4px">{{ p }}</el-tag>
+    <AppTableCard>
+      <template #header>
+        <div class="panel-head">
+          <span class="panel-title">已授权权限</span>
+        </div>
+      </template>
+      <div class="detail-section-subtitle">当前身份已开放的功能权限列表。</div>
+      <div class="tag-cloud permission-tags">
+        <el-tag v-for="p in profile?.permissions ?? []" :key="p" size="small">{{ p }}</el-tag>
         <span v-if="!profile?.permissions?.length">暂无权限</span>
       </div>
-    </el-card>
+    </AppTableCard>
   </div>
 </template>
 
@@ -73,6 +94,7 @@
 import { computed, reactive, ref } from 'vue'
 import type { FormInstance, FormRules } from 'element-plus'
 import { ElMessage } from 'element-plus'
+import AppTableCard from '../../components/AppTableCard.vue'
 import { useAccessControl } from '../../composables/useAccessControl'
 import { changePassword } from '../../api/modules/auth'
 import { getErrorMessage } from '../../utils/error'
@@ -126,3 +148,18 @@ const onChangePassword = async () => {
   }
 }
 </script>
+
+<style scoped>
+.password-form {
+  max-width: 440px;
+  margin-top: 16px;
+}
+
+.form-actions {
+  margin-bottom: 0;
+}
+
+.permission-tags {
+  margin-top: 16px;
+}
+</style>

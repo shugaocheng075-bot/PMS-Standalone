@@ -15,7 +15,8 @@ public class PermissionMiddleware(RequestDelegate next)
             return;
         }
 
-        if (path.StartsWith("/api/auth/login", StringComparison.OrdinalIgnoreCase))
+        var trimmedPath = path.TrimEnd('/');
+        if (string.Equals(trimmedPath, "/api/auth/login", StringComparison.OrdinalIgnoreCase))
         {
             await next(context);
             return;

@@ -23,6 +23,8 @@ public class MajorDemandWorkflowItem
     public string Status { get; set; } = "待评估";
     public string Owner { get; set; } = string.Empty;
     public string DueDate { get; set; } = string.Empty;
+    public DateTime? AcceptedAt { get; set; }
+    public DateTime? CompletedAt { get; set; }
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
     public List<MajorDemandComment> Comments { get; set; } = [];
     public List<MajorDemandLog> Logs { get; set; } = [];
@@ -291,6 +293,126 @@ public static class InMemoryMajorDemandStore
         }
     }
 
+    public static MajorDemandWorkflowItem? Accept(string rowId, string actor, string? owner = null)
+    {
+        lock (SyncRoot)
+        {
+            var workflow = Snapshot.WorkflowItems.FirstOrDefault(x => string.Equals(x.RowId, rowId, StringComparison.OrdinalIgnoreCase));
+            if (workflow is null)
+            {
+                return null;
+            }
+
+            if (workflow.Status == "已完成" || workflow.Status == "已关闭")
+            {
+                throw new InvalidOperationException("已完成或已关闭的需求不能再次受理");
+            }
+
+            var now = DateTime.UtcNow;
+            var before = workflow.Status;
+            var resolvedOwner = string.IsNullOrWhiteSpace(owner) ? actor.Trim() : owner.Trim();
+
+            workflow.Status = "处理中";
+            workflow.Owner = resolvedOwner;
+            workflow.AcceptedAt ??= now;
+            workflow.CompletedAt = null;
+            if (string.IsNullOrWhiteSpace(workflow.DueDate))
+            {
+                workflow.DueDate = now.Date.AddDays(7).ToString("yyyy-MM-dd");
+            }
+            workflow.UpdatedAt = now;
+            workflow.Logs.Add(new MajorDemandLog
+            {
+                Action = "需求受理",
+                Detail = $"{before} -> 处理中；负责人：{workflow.Owner}",
+                CreatedBy = actor,
+                CreatedAt = now
+            });
+
+            Persist();
+            return CloneWorkflowItem(workflow);
+        }
+    }
+
+    public static MajorDemandWorkflowItem? Complete(string rowId, string note, string actor)
+    {
+        lock (SyncRoot)
+        {
+            var workflow = Snapshot.WorkflowItems.FirstOrDefault(x => string.Equals(x.RowId, rowId, StringComparison.OrdinalIgnoreCase));
+            if (workflow is null)
+            {
+                return null;
+            }
+
+            if (workflow.Status == "已完成" || workflow.Status == "已关闭")
+            {
+                throw new InvalidOperationException("当前需求已完成或已关闭");
+            }
+
+            if (string.IsNullOrWhiteSpace(note))
+            {
+                throw new InvalidOperationException("请填写完成说明");
+            }
+
+            var now = DateTime.UtcNow;
+            var before = workflow.Status;
+            workflow.Status = "已完成";
+            workflow.AcceptedAt ??= now;
+            workflow.CompletedAt = now;
+            workflow.UpdatedAt = now;
+            workflow.Logs.Add(new MajorDemandLog
+            {
+                Action = "需求完成",
+                Detail = $"{before} -> 已完成；{note.Trim()}",
+                CreatedBy = actor,
+                CreatedAt = now
+            });
+
+            Persist();
+            return CloneWorkflowItem(workflow);
+        }
+    }
+
+    public static MajorDemandWorkflowItem? Reopen(string rowId, string? reason, string actor)
+    {
+        lock (SyncRoot)
+        {
+            var workflow = Snapshot.WorkflowItems.FirstOrDefault(x => string.Equals(x.RowId, rowId, StringComparison.OrdinalIgnoreCase));
+            if (workflow is null)
+            {
+                return null;
+            }
+
+            if (workflow.Status != "已完成" && workflow.Status != "已关闭")
+            {
+                throw new InvalidOperationException("仅已完成或已关闭的需求可重开");
+            }
+
+            var now = DateTime.UtcNow;
+            var before = workflow.Status;
+            workflow.Status = "待处理";
+            workflow.AcceptedAt = null;
+            workflow.CompletedAt = null;
+            if (string.IsNullOrWhiteSpace(workflow.DueDate))
+            {
+                workflow.DueDate = now.Date.AddDays(7).ToString("yyyy-MM-dd");
+            }
+            workflow.UpdatedAt = now;
+            workflow.Logs.Add(new MajorDemandLog
+            {
+                Action = "需求重开",
+                Detail = string.IsNullOrWhiteSpace(reason)
+                    ? $"{before} -> 待处理"
+                    : $"{before} -> 待处理；{reason.Trim()}",
+                CreatedBy = actor,
+                CreatedAt = now
+            });
+
+            Persist();
+            return CloneWorkflowItem(workflow);
+        }
+    }
+
     public static bool UpdateCell(string rowId, string columnName, string value)
     {
         lock (SyncRoot)
@@ -478,6 +600,8 @@ public static class InMemoryMajorDemandStore
             Status = item.Status,
             Owner = item.Owner,
             DueDate = item.DueDate,
+            AcceptedAt = item.AcceptedAt,
+            CompletedAt = item.CompletedAt,
             UpdatedAt = item.UpdatedAt,
             Comments = item.Comments
                 .Select(x => new MajorDemandComment

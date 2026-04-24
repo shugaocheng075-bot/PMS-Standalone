@@ -1,5 +1,6 @@
 <template>
   <el-dialog
+    class="app-form-dialog"
     :model-value="modelValue"
     :title="title"
     :width="resolvedWidth"
@@ -9,9 +10,13 @@
     v-bind="$attrs"
     @update:model-value="onUpdate"
   >
-    <slot />
+    <div class="app-form-dialog-content">
+      <slot />
+    </div>
     <template v-if="$slots.footer" #footer>
-      <slot name="footer" />
+      <div class="app-form-dialog-footer">
+        <slot name="footer" />
+      </div>
     </template>
   </el-dialog>
 </template>
@@ -55,3 +60,35 @@ const onUpdate = (value: boolean) => {
   emit('update:modelValue', value)
 }
 </script>
+
+<style scoped>
+.app-form-dialog-content {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.app-form-dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+:deep(.app-form-dialog .el-dialog__header) {
+  padding: 20px 24px 16px;
+}
+
+:deep(.app-form-dialog .el-dialog__body) {
+  padding: 24px;
+}
+
+:deep(.app-form-dialog .el-dialog__footer) {
+  padding: 16px 24px 20px;
+}
+
+:deep(.app-form-dialog .el-dialog__title) {
+  font-size: 18px;
+  font-weight: 700;
+  color: #1f2937;
+}
+</style>

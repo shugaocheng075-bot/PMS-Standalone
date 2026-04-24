@@ -1,7 +1,36 @@
 <template>
   <div class="map-page" v-loading="mapLoading">
-    <div class="map-head">
-      <h2 class="map-title">项目地图看板</h2>
+    <div class="map-hero">
+      <div class="map-hero-main">
+        <div class="map-hero-kicker-row">
+          <span class="map-hero-kicker">Project Map</span>
+          <span class="map-hero-badge">{{ mapHeroFilterLabel }}</span>
+        </div>
+        <h2 class="map-hero-title">待办项目地图</h2>
+        <div class="map-hero-subtitle">按区域、状态与实施节点快速检索任务与项目</div>
+        <div class="map-hero-signals">
+          <div v-for="item in mapHeroSignals" :key="item.label" class="map-hero-signal-card">
+            <span class="map-hero-signal-label">{{ item.label }}</span>
+            <strong class="map-hero-signal-value">{{ item.value }}</strong>
+            <span class="map-hero-signal-note">{{ item.note }}</span>
+          </div>
+        </div>
+      </div>
+      <div class="map-hero-side">
+        <div class="map-control-card">
+          <div class="map-control-title">地图操作台</div>
+          <div class="map-control-note">{{ mapLevel === 'country' ? '当前为全国视图' : `已下钻至：${selectedProvince}` }}</div>
+          <div class="map-control-actions">
+            <el-button v-if="mapLevel === 'province'" size="small" @click="backToCountry" icon="Back">返回全国</el-button>
+          </div>
+        </div>
+        <div class="map-quick-grid">
+          <button v-for="action in mapQuickActions" :key="action.title" class="map-quick-action" @click="action.onClick()">
+            <span class="map-quick-title">{{ action.title }}</span>
+            <span class="map-quick-note">{{ action.note }}</span>
+          </button>
+        </div>
+      </div>
     </div>
 
     <div class="map-layout">
@@ -44,7 +73,7 @@
         <div class="panel-toolbar center-toolbar">
           <div class="toolbar-left">{{ mapLevel === 'country' ? '全国' : `${selectedProvince || '省级'}（城市）` }}</div>
           <div class="toolbar-right">
-            <el-button v-if="mapLevel === 'province'" size="small" @click="backToCountry">返回全国</el-button>
+            <el-button v-if="mapLevel === 'province'" size="small" @click="backToCountry" icon="Back">返回全国</el-button>
             <el-select v-model="statusFilter" size="small" placeholder="项目状态" clearable style="width: 132px">
               <el-option v-for="status in statusOptions" :key="status" :label="status" :value="status" />
             </el-select>
@@ -346,6 +375,47 @@ const detailRows = computed<DetailRow[]>(() => {
   }))
 })
 
+const mapHeroFilterLabel = computed(() => {
+  if (statusFilter.value) return `状态：${statusFilter.value}`
+  if (keyword.value) return `搜索：${keyword.value}`
+  if (mapLevel.value === 'province') return `省级：${selectedProvince.value}`
+  return '全国项目概览'
+})
+
+const mapHeroSignals = computed(() => {
+  const overdueTotal = filteredProjects.value.filter((p) => p.overdueDays > 0).length
+  const totalAmount = filteredProjects.value.reduce((sum, p) => sum + Number(p.maintenanceAmount || 0), 0)
+  return [
+    { label: '覆盖省份', value: provinceStats.value.length, note: '个地区' },
+    { label: '当前项目', value: filteredProjects.value.length, note: '个项目' },
+    { label: '超期项目', value: overdueTotal, note: '需关注' },
+    { label: '合同总额', value: `${(totalAmount / 10000).toFixed(0)}万`, note: '年度维保' },
+  ]
+})
+
+const mapQuickActions = computed(() => [
+  {
+    title: '超期合同',
+    note: `${filteredProjects.value.filter((p) => p.overdueDays > 0).length} 个`,
+    onClick: () => { statusFilter.value = '超期未签署'; keyword.value = '' },
+  },
+  {
+    title: '免费维护',
+    note: `${allProjects.value.filter((p) => p.contractStatus === '免费维护期').length} 个`,
+    onClick: () => { statusFilter.value = '免费维护期'; keyword.value = '' },
+  },
+  {
+    title: '已签署',
+    note: `${allProjects.value.filter((p) => p.contractStatus === '合同已签署').length} 个`,
+    onClick: () => { statusFilter.value = '合同已签署'; keyword.value = '' },
+  },
+  {
+    title: '全部重置',
+    note: '清除所有筛选',
+    onClick: () => { statusFilter.value = ''; keyword.value = ''; dateRange.value = []; if (mapLevel.value === 'province') backToCountry() },
+  },
+])
+
 const updateMap = () => {
   if (!chartRef.value) {
     return
@@ -557,54 +627,258 @@ watch([provinceStats, cityStats, statusFilter, dateRange, keyword, mapLevel], ()
 .map-page {
   display: flex;
   flex-direction: column;
+  gap: 16px;
+}
+
+/* ===== Map Hero ===== */
+.map-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.18fr) minmax(300px, 0.82fr);
+  gap: 16px;
+  padding: 24px;
+  border-radius: 28px;
+  color: #ffffff;
+  background:
+    radial-gradient(ellipse 80% 60% at 18% 30%, rgba(47, 142, 130, 0.24) 0%, transparent 70%),
+    linear-gradient(135deg, #152b45 0%, #1d4060 48%, #1f6058 100%);
+  box-shadow: 0 26px 44px rgba(21, 43, 69, 0.38), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.map-hero-kicker-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.map-hero-kicker {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  opacity: 0.65;
+}
+
+.map-hero-badge {
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14);
+  font-size: 11px;
+  font-weight: 600;
+  opacity: 0.9;
+}
+
+.map-hero-title {
+  margin: 0 0 6px;
+  font-size: 28px;
+  font-weight: 800;
+  line-height: 1.2;
+  letter-spacing: -0.5px;
+}
+
+.map-hero-subtitle {
+  font-size: 13px;
+  opacity: 0.7;
+  margin-bottom: 18px;
+}
+
+.map-hero-signals {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+
+.map-hero-signal-card {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 10px 12px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(4px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  transition: background 0.2s;
+}
+
+.map-hero-signal-card:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.map-hero-signal-label {
+  font-size: 11px;
+  font-weight: 600;
+  opacity: 0.7;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.map-hero-signal-value {
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1.15;
+}
+
+.map-hero-signal-note {
+  font-size: 11px;
+  opacity: 0.6;
+}
+
+.map-hero-side {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.map-control-card {
+  padding: 16px 18px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+.map-control-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #fff;
+  margin-bottom: 4px;
+}
+
+.map-control-note {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.65);
+  margin-bottom: 12px;
+}
+
+.map-control-actions {
+  display: flex;
+  flex-wrap: wrap;
   gap: 8px;
 }
 
-.map-head {
-  min-height: 40px;
-  display: flex;
-  align-items: center;
-  padding: 0 12px;
-  border: 1px solid #d7e1ef;
-  border-radius: 4px;
-  background: linear-gradient(90deg, #eef2f8 0%, #f4f7fb 100%);
+.map-control-actions :deep(.el-button) {
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.25);
+  color: #fff;
 }
 
-.map-title {
-  margin: 0;
-  font-size: 28px;
+.map-control-actions :deep(.el-button:hover) {
+  background: rgba(255, 255, 255, 0.24);
+}
+
+.map-quick-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  flex: 1;
+}
+
+.map-quick-action {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 10px 12px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  cursor: pointer;
+  text-align: left;
+  color: #fff;
+  transition: background 0.2s, transform 0.15s;
+}
+
+.map-quick-action:hover {
+  background: rgba(255, 255, 255, 0.18);
+  transform: translateY(-1px);
+}
+
+.map-quick-title {
+  font-size: 13px;
   font-weight: 700;
-  color: #2b4b86;
+}
+
+.map-quick-note {
+  font-size: 11px;
+  opacity: 0.65;
+}
+
+@media (max-width: 1400px) {
+  .map-hero {
+    grid-template-columns: 1fr;
+  }
+
+  .map-hero-signals {
+    grid-template-columns: repeat(4, 1fr);
+  }
+
+  .map-quick-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .map-hero {
+    padding: 16px;
+  }
+
+  .map-hero-signals {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 1400px) {
+  .map-hero {
+    grid-template-columns: 1fr;
+  }
+
+  .map-hero-signals {
+    grid-template-columns: repeat(4, 1fr);
+  }
+
+  .map-quick-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .map-hero {
+    padding: 16px;
+  }
+
+  .map-hero-signals {
+    grid-template-columns: repeat(2, 1fr);
+  }
 }
 
 .map-layout {
   display: grid;
   grid-template-columns: 240px 1fr 200px;
-  gap: 8px;
+  gap: 16px;
   min-height: calc(100vh - 154px);
 }
 
 .panel {
-  border: 1px solid #d7e6f3;
-  border-radius: 4px;
-  background: linear-gradient(180deg, #f9fbfe 0%, #f4f8fd 100%);
+  border: 1px solid #e7ebf0;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.04);
 }
 
 .left-panel,
 .right-panel {
-  padding: 8px;
+  padding: 16px;
 }
 
 .panel-toolbar {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  margin-bottom: 8px;
+  gap: 10px;
+  margin-bottom: 12px;
 }
 
 .summary-text {
-  margin-bottom: 8px;
-  color: #2f83c2;
+  margin-bottom: 12px;
+  color: #64748b;
   font-size: 12px;
   font-weight: 600;
 }
@@ -612,7 +886,7 @@ watch([provinceStats, cityStats, statusFilter, dateRange, keyword, mapLevel], ()
 .center-panel {
   display: flex;
   flex-direction: column;
-  padding: 8px;
+  padding: 16px;
 }
 
 .center-toolbar {
@@ -623,9 +897,9 @@ watch([provinceStats, cityStats, statusFilter, dateRange, keyword, mapLevel], ()
 }
 
 .toolbar-left {
-  font-size: 30px;
+  font-size: 22px;
   font-weight: 700;
-  color: #234c7d;
+  color: #1f2937;
 }
 
 .toolbar-right {
@@ -636,30 +910,29 @@ watch([provinceStats, cityStats, statusFilter, dateRange, keyword, mapLevel], ()
 
 .map-box {
   height: 420px;
-  border: 1px solid #d8e6f4;
-  border-radius: 4px;
-  background: #f8fbff;
+  border: 1px solid #edf2f6;
+  border-radius: 14px;
+  background: #f8fafc;
 }
 
 .detail-head {
-  margin-top: 8px;
-  margin-bottom: 6px;
-  padding-left: 6px;
-  border-left: 3px solid #3f9ad8;
-  color: #294a73;
+  margin-top: 14px;
+  margin-bottom: 10px;
+  color: #334155;
+  font-size: 15px;
   font-weight: 700;
 }
 
 .abn-title {
-  font-size: 30px;
+  font-size: 22px;
   font-weight: 700;
-  color: #233f67;
+  color: #1f2937;
 }
 
 .abn-divider {
-  height: 2px;
-  margin: 8px 0 10px;
-  background: #da4f5d;
+  height: 1px;
+  margin: 10px 0 14px;
+  background: #edf2f6;
 }
 
 @media (max-width: 1400px) {

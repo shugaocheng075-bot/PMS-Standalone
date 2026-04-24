@@ -11,6 +11,9 @@ public class InspectionPlanItemDto
     public string Inspector { get; set; } = string.Empty;
     public DateTime PlanDate { get; set; }
     public DateTime? ActualDate { get; set; }
+    public DateTime? StartedAt { get; set; }
+    public DateTime? CompletedAt { get; set; }
+    public DateTime? SlaDueAt { get; set; }
     public string Status { get; set; } = string.Empty;
     public string InspectionType { get; set; } = string.Empty;
     public string Priority { get; set; } = string.Empty;
@@ -31,4 +34,19 @@ public class InspectionPlanUpsertDto
     public string? InspectionType { get; set; }
     public string? Priority { get; set; }
     public string? Remarks { get; set; }
+}
+
+public class InspectionPlanStartDto
+{
+    public string? Inspector { get; set; }
+}
+
+public class InspectionPlanCompleteDto
+{
+    public string? Remarks { get; set; }
+}
+
+public class InspectionPlanReopenDto
+{
+    public string? Reason { get; set; }
 }

@@ -121,11 +121,11 @@ public class InMemoryAnnualReportService : IAnnualReportService
                 MaintenanceEndDate = (dto.MaintenanceEndDate ?? string.Empty).Trim(),
                 DueMonth = ComputeDueMonth((dto.MaintenanceEndDate ?? string.Empty).Trim()),
                 ReportYear = dto.ReportYear ?? ComputeReportYear((dto.MaintenanceStartDate ?? string.Empty).Trim(), (dto.MaintenanceEndDate ?? string.Empty).Trim()),
-                Status = (dto.Status ?? "未开始").Trim(),
+                Status = "未开始",
                 Priority = (dto.Priority ?? ResolvePriorityByDueMonth(ComputeDueMonth((dto.MaintenanceEndDate ?? string.Empty).Trim()), now.ToString("yyyy-MM"))).Trim(),
-                SubmitDate = dto.SubmitDate,
-                Reviewer = (dto.Reviewer ?? string.Empty).Trim(),
-                ReviewDate = dto.ReviewDate,
+                SubmitDate = null,
+                Reviewer = string.Empty,
+                ReviewDate = null,
                 Remarks = (dto.Remarks ?? string.Empty).Trim(),
             };
 
@@ -142,6 +142,7 @@ public class InMemoryAnnualReportService : IAnnualReportService
             var custom = CustomRows.FirstOrDefault(x => x.Id == id);
             if (custom is not null)
             {
+                EnsureEditable(custom.Status);
                 ApplyUpsert(custom, dto);
                 PersistCustomRows();
                 return Task.FromResult<AnnualReportItemDto?>(custom);
@@ -153,6 +154,7 @@ public class InMemoryAnnualReportService : IAnnualReportService
                 return Task.FromResult<AnnualReportItemDto?>(null);
             }
 
+            EnsureEditable(current.Status);
             ApplyUpsert(current, dto);
 
             var existingIndex = Overrides.FindIndex(x => x.Id == id);
@@ -174,10 +176,120 @@ public class InMemoryAnnualReportService : IAnnualReportService
         }
     }
 
+    public Task<AnnualReportItemDto?> GetByIdAsync(long id, CancellationToken cancellationToken = default)
+    {
+        lock (SyncRoot)
+        {
+            var item = BuildSeed().FirstOrDefault(x => x.Id == id);
+            return Task.FromResult(item);
+        }
+    }
+
+    public Task<AnnualReportItemDto?> StartAsync(long id, CancellationToken cancellationToken = default)
+    {
+        lock (SyncRoot)
+        {
+            var item = BuildSeed().FirstOrDefault(x => x.Id == id);
+            if (item is null)
+            {
+                return Task.FromResult<AnnualReportItemDto?>(null);
+            }
+
+            if (item.Status != "未开始")
+            {
+                throw new InvalidOperationException($"仅未开始的年度报告可以开始编写，当前状态：{item.Status}");
+            }
+
+            item.Status = "编写中";
+            item.SubmitDate = null;
+            item.Reviewer = string.Empty;
+            item.ReviewDate = null;
+            return PersistWorkflowItem(item);
+        }
+    }
+
+    public Task<AnnualReportItemDto?> SubmitAsync(long id, CancellationToken cancellationToken = default)
+    {
+        lock (SyncRoot)
+        {
+            var item = BuildSeed().FirstOrDefault(x => x.Id == id);
+            if (item is null)
+            {
+                return Task.FromResult<AnnualReportItemDto?>(null);
+            }
+
+            if (item.Status != "编写中")
+            {
+                throw new InvalidOperationException($"仅编写中的年度报告可以提交，当前状态：{item.Status}");
+            }
+
+            item.Status = "已提交";
+            item.SubmitDate = DateTime.Today;
+            item.Reviewer = string.Empty;
+            item.ReviewDate = null;
+            return PersistWorkflowItem(item);
+        }
+    }
+
+    public Task<AnnualReportItemDto?> CompleteAsync(long id, string reviewer, CancellationToken cancellationToken = default)
+    {
+        lock (SyncRoot)
+        {
+            var item = BuildSeed().FirstOrDefault(x => x.Id == id);
+            if (item is null)
+            {
+                return Task.FromResult<AnnualReportItemDto?>(null);
+            }
+
+            if (item.Status != "已提交")
+            {
+                throw new InvalidOperationException($"仅已提交的年度报告可以完成评审，当前状态：{item.Status}");
+            }
+
+            item.Status = "已完成";
+            item.Reviewer = reviewer?.Trim() ?? string.Empty;
+            item.ReviewDate = DateTime.Today;
+            if (!item.SubmitDate.HasValue)
+            {
+                item.SubmitDate = DateTime.Today;
+            }
+            return PersistWorkflowItem(item);
+        }
+    }
+
+    public Task<AnnualReportItemDto?> ReopenAsync(long id, CancellationToken cancellationToken = default)
+    {
+        lock (SyncRoot)
+        {
+            var item = BuildSeed().FirstOrDefault(x => x.Id == id);
+            if (item is null)
+            {
+                return Task.FromResult<AnnualReportItemDto?>(null);
+            }
+
+            if (item.Status != "已提交" && item.Status != "已完成")
+            {
+                throw new InvalidOperationException($"仅已提交或已完成的年度报告可以重开，当前状态：{item.Status}");
+            }
+
+            item.Status = "编写中";
+            item.SubmitDate = null;
+            item.Reviewer = string.Empty;
+            item.ReviewDate = null;
+            return PersistWorkflowItem(item);
+        }
+    }
+
     public Task<bool> DeleteAsync(long id, CancellationToken cancellationToken = default)
     {
         lock (SyncRoot)
         {
+            var current = BuildSeed().FirstOrDefault(x => x.Id == id);
+            if (current is not null && current.Status != "未开始" && current.Status != "编写中")
+            {
+                throw new InvalidOperationException($"仅未开始或编写中的年度报告可以删除，当前状态：{current.Status}");
+            }
+
             var customRemoved = CustomRows.RemoveAll(x => x.Id == id) > 0;
             if (customRemoved)
             {
@@ -219,12 +331,48 @@ public class InMemoryAnnualReportService : IAnnualReportService
             current.DueMonth = ComputeDueMonth(dto.MaintenanceEndDate.Trim());
         }
         if (dto.ReportYear.HasValue) current.ReportYear = dto.ReportYear.Value;
-        if (dto.Status is not null) current.Status = dto.Status.Trim();
         if (dto.Priority is not null) current.Priority = dto.Priority.Trim();
-        if (dto.SubmitDate.HasValue || dto.SubmitDate is null) current.SubmitDate = dto.SubmitDate;
-        if (dto.Reviewer is not null) current.Reviewer = dto.Reviewer.Trim();
-        if (dto.ReviewDate.HasValue || dto.ReviewDate is null) current.ReviewDate = dto.ReviewDate;
         if (dto.Remarks is not null) current.Remarks = dto.Remarks.Trim();
+    }
+
+    private static void EnsureEditable(string status)
+    {
+        if (status != "未开始" && status != "编写中")
+        {
+            throw new InvalidOperationException($"仅未开始或编写中的年度报告可以编辑，当前状态：{status}");
+        }
+    }
+
+    private static Task<AnnualReportItemDto?> PersistWorkflowItem(AnnualReportItemDto item)
+    {
+        var custom = CustomRows.FirstOrDefault(x => x.Id == item.Id);
+        if (custom is not null)
+        {
+            CopyWorkflowState(custom, item);
+            PersistCustomRows();
+            return Task.FromResult<AnnualReportItemDto?>(custom);
+        }
+
+        var existingIndex = Overrides.FindIndex(x => x.Id == item.Id);
+        if (existingIndex >= 0)
+        {
+            Overrides[existingIndex] = item;
+        }
+        else
+        {
+            Overrides.Add(item);
+        }
+
+        PersistOverrides();
+        return Task.FromResult<AnnualReportItemDto?>(item);
+    }
+
+    private static void CopyWorkflowState(AnnualReportItemDto target, AnnualReportItemDto source)
+    {
+        target.Status = source.Status;
+        target.SubmitDate = source.SubmitDate;
+        target.Reviewer = source.Reviewer;
+        target.ReviewDate = source.ReviewDate;
     }
 
     /// <summary>

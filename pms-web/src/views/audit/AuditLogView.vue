@@ -7,26 +7,32 @@
       </div>
     </div>
 
-    <el-row :gutter="12" class="stats-row">
-      <el-col :xs="24" :sm="8" :md="4">
-        <el-card shadow="never" class="stat-card">
-          <div class="t">总记录</div>
-          <div class="v">{{ summary.total }}</div>
-        </el-card>
-      </el-col>
-      <el-col :xs="24" :sm="8" :md="4">
-        <el-card shadow="never" class="stat-card">
-          <div class="t">今日操作</div>
-          <div class="v primary">{{ summary.todayCount }}</div>
-        </el-card>
-      </el-col>
-      <el-col v-for="(count, action) in summary.actionCounts" :key="action" :xs="24" :sm="8" :md="4">
-        <el-card shadow="never" class="stat-card" @click="filterByAction(action as string)">
-          <div class="t">{{ actionLabel(action as string) }}</div>
-          <div class="v">{{ count }}</div>
-        </el-card>
-      </el-col>
-    </el-row>
+    <div class="metrics-grid metrics-grid--audit audit-summary-grid">
+      <div class="metric-card">
+        <div class="metric-card-head">
+          <span class="metric-title">总记录</span>
+          <span class="metric-context">日志规模</span>
+        </div>
+        <div class="metric-value">{{ summary.total }}</div>
+        <div class="metric-note">当前筛选口径下的全部日志记录数</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-card-head">
+          <span class="metric-title">今日操作</span>
+          <span class="metric-context">当日活跃</span>
+        </div>
+        <div class="metric-value audit-primary">{{ summary.todayCount }}</div>
+        <div class="metric-note">今日写入的操作事件总量</div>
+      </div>
+      <button v-for="(count, action) in summary.actionCounts" :key="action" type="button" class="metric-card metric-card--action" @click="filterByAction(action as string)">
+        <div class="metric-card-head">
+          <span class="metric-title">{{ actionLabel(action as string) }}</span>
+          <span class="metric-context">行为分布</span>
+        </div>
+        <div class="metric-value">{{ count }}</div>
+        <div class="metric-note">点击后按该操作类型筛选明细</div>
+      </button>
+    </div>
 
     
 
@@ -76,8 +82,8 @@
           />
         </el-form-item>
         <el-form-item class="filter-actions">
-          <el-button type="primary" @click="onSearch">查询</el-button>
-          <el-button @click="onReset">重置</el-button>
+          <el-button type="primary" @click="onSearch" icon="Search">查询</el-button>
+          <el-button @click="onReset" icon="Refresh">重置</el-button>
         </el-form-item>
       </el-form>
     </template>
@@ -305,11 +311,11 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.stats-row { margin-bottom: 12px; }
-.stat-card { cursor: pointer; text-align: center; }
-.stat-card .t { font-size: 13px; color: #888; }
-.stat-card .v { font-size: 22px; font-weight: 700; margin-top: 4px; }
-.stat-card .v.primary { color: var(--el-color-primary); }
-.stat-card .v.danger { color: var(--el-color-danger); }
-.pager { margin-top: 12px; display: flex; justify-content: flex-end; }
+.audit-summary-grid {
+  margin-bottom: 2px;
+}
+
+.audit-primary {
+  color: var(--el-color-primary);
+}
 </style>

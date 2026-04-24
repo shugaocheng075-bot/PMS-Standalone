@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using PMS.API.Middleware;
 using PMS.API.Models;
 using PMS.Application.Contracts.Access;
+using PMS.Application.Contracts.AuditLog;
 using PMS.Application.Contracts.Inspection;
 using PMS.Application.Contracts.Notification;
 using PMS.Application.Models;
@@ -15,7 +16,8 @@ namespace PMS.API.Controllers.Inspection;
 public class InspectionsController(
     IInspectionService inspectionService,
     IAccessControlService accessControlService,
-    INotificationService notificationService) : ControllerBase
+    INotificationService notificationService,
+    IAuditLogService auditLogService) : ControllerBase
 {
     // ─── 巡检计划 ───
 
@@ -139,6 +141,112 @@ public class InspectionsController(
         }
 
         return Ok(ApiResponse<InspectionPlanItemDto>.Success(updated));
+    }
+
+    [HttpPatch("{id:long}/start")]
+    public async Task<IActionResult> StartPlan(long id, [FromBody] InspectionPlanStartDto? dto, CancellationToken cancellationToken = default)
+    {
+        var personnelId = HttpContext.GetCurrentPersonnelId();
+        var existing = await inspectionService.GetByIdAsync(id, cancellationToken);
+        if (existing is null)
+        {
+            return NotFound(new ApiResponse<object> { Code = 404, Message = "未找到对应巡检计划" });
+        }
+
+        var dataScope = await accessControlService.GetDataScopeAsync(personnelId, cancellationToken);
+        if (!HospitalScopeHelper.IsHospitalAccessible(dataScope, existing.HospitalName))
+        {
+            return StatusCode(403, new { code = 403, message = "无权操作该医院的巡检计划" });
+        }
+
+        var operatorName = await GetOperatorNameAsync(personnelId, cancellationToken);
+        var inspector = string.IsNullOrWhiteSpace(dto?.Inspector) ? operatorName : dto!.Inspector!.Trim();
+
+        try
+        {
+            var updated = await inspectionService.StartAsync(id, inspector, cancellationToken);
+            if (updated is null)
+            {
+                return NotFound(new ApiResponse<object> { Code = 404, Message = "未找到对应巡检计划" });
+            }
+
+            await auditLogService.LogAsync(operatorName, personnelId, "开始巡检", "inspection", $"#{updated.Id}", $"巡检人：{updated.Inspector}", GetRequestIp(), cancellationToken);
+            return Ok(ApiResponse<InspectionPlanItemDto>.Success(updated));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { code = 400, message = ex.Message });
+        }
+    }
+
+    [HttpPatch("{id:long}/complete")]
+    public async Task<IActionResult> CompletePlan(long id, [FromBody] InspectionPlanCompleteDto? dto, CancellationToken cancellationToken = default)
+    {
+        var personnelId = HttpContext.GetCurrentPersonnelId();
+        var existing = await inspectionService.GetByIdAsync(id, cancellationToken);
+        if (existing is null)
+        {
+            return NotFound(new ApiResponse<object> { Code = 404, Message = "未找到对应巡检计划" });
+        }
+
+        var dataScope = await accessControlService.GetDataScopeAsync(personnelId, cancellationToken);
+        if (!HospitalScopeHelper.IsHospitalAccessible(dataScope, existing.HospitalName))
+        {
+            return StatusCode(403, new { code = 403, message = "无权操作该医院的巡检计划" });
+        }
+
+        var operatorName = await GetOperatorNameAsync(personnelId, cancellationToken);
+
+        try
+        {
+            var updated = await inspectionService.CompleteAsync(id, dto?.Remarks, cancellationToken);
+            if (updated is null)
+            {
+                return NotFound(new ApiResponse<object> { Code = 404, Message = "未找到对应巡检计划" });
+            }
+
+            await auditLogService.LogAsync(operatorName, personnelId, "完成巡检", "inspection", $"#{updated.Id}", dto?.Remarks?.Trim() ?? string.Empty, GetRequestIp(), cancellationToken);
+            return Ok(ApiResponse<InspectionPlanItemDto>.Success(updated));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { code = 400, message = ex.Message });
+        }
+    }
+
+    [HttpPatch("{id:long}/reopen")]
+    public async Task<IActionResult> ReopenPlan(long id, [FromBody] InspectionPlanReopenDto? dto, CancellationToken cancellationToken = default)
+    {
+        var personnelId = HttpContext.GetCurrentPersonnelId();
+        var existing = await inspectionService.GetByIdAsync(id, cancellationToken);
+        if (existing is null)
+        {
+            return NotFound(new ApiResponse<object> { Code = 404, Message = "未找到对应巡检计划" });
+        }
+
+        var dataScope = await accessControlService.GetDataScopeAsync(personnelId, cancellationToken);
+        if (!HospitalScopeHelper.IsHospitalAccessible(dataScope, existing.HospitalName))
+        {
+            return StatusCode(403, new { code = 403, message = "无权操作该医院的巡检计划" });
+        }
+
+        var operatorName = await GetOperatorNameAsync(personnelId, cancellationToken);
+
+        try
+        {
+            var updated = await inspectionService.ReopenAsync(id, dto?.Reason, cancellationToken);
+            if (updated is null)
+            {
+                return NotFound(new ApiResponse<object> { Code = 404, Message = "未找到对应巡检计划" });
+            }
+
+            await auditLogService.LogAsync(operatorName, personnelId, "重开巡检", "inspection", $"#{updated.Id}", dto?.Reason?.Trim() ?? string.Empty, GetRequestIp(), cancellationToken);
+            return Ok(ApiResponse<InspectionPlanItemDto>.Success(updated));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { code = 400, message = ex.Message });
+        }
     }
 
     [HttpPost]
@@ -402,5 +510,16 @@ public class InspectionsController(
             return $"\"{text.Replace("\"", "\"\"")}\"";
         }
         return text;
+    }
+
+    private async Task<string> GetOperatorNameAsync(int personnelId, CancellationToken cancellationToken)
+    {
+        var profile = await accessControlService.GetUserProfileAsync(personnelId, cancellationToken);
+        return profile?.PersonnelName ?? "未知";
+    }
+
+    private string GetRequestIp()
+    {
+        return HttpContext.Connection.RemoteIpAddress?.ToString() ?? string.Empty;
     }
 }

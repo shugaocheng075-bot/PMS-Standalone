@@ -154,6 +154,87 @@ public class MajorDemandsController(
         }));
     }
 
+    [HttpPost("{rowId}/accept")]
+    public async Task<IActionResult> Accept(string rowId, [FromBody] WorkflowAcceptRequest? request)
+    {
+        if (string.IsNullOrWhiteSpace(rowId))
+        {
+            return BadRequest(ApiResponse<object>.Success(new { message = "rowId 不能为空" }));
+        }
+
+        var allowedIds = await FilterRowIdsByHospitalScopeAsync([rowId]);
+        if (allowedIds.Count == 0)
+        {
+            return StatusCode(403, new { code = 403, message = "无权操作该医院的需求" });
+        }
+
+        try
+        {
+            var workflow = InMemoryMajorDemandStore.Accept(rowId, ResolveActor(), request?.Owner);
+            return workflow is null
+                ? NotFound(ApiResponse<object>.Success(new { message = "未匹配到对应需求" }))
+                : Ok(ApiResponse<object>.Success(new { workflow, message = "需求已受理" }));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { code = 400, message = ex.Message });
+        }
+    }
+
+    [HttpPost("{rowId}/complete")]
+    public async Task<IActionResult> Complete(string rowId, [FromBody] WorkflowCompleteRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(rowId) || string.IsNullOrWhiteSpace(request.Note))
+        {
+            return BadRequest(ApiResponse<object>.Success(new { message = "rowId 与 note 不能为空" }));
+        }
+
+        var allowedIds = await FilterRowIdsByHospitalScopeAsync([rowId]);
+        if (allowedIds.Count == 0)
+        {
+            return StatusCode(403, new { code = 403, message = "无权操作该医院的需求" });
+        }
+
+        try
+        {
+            var workflow = InMemoryMajorDemandStore.Complete(rowId, request.Note, ResolveActor());
+            return workflow is null
+                ? NotFound(ApiResponse<object>.Success(new { message = "未匹配到对应需求" }))
+                : Ok(ApiResponse<object>.Success(new { workflow, message = "需求已完成" }));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { code = 400, message = ex.Message });
+        }
+    }
+
+    [HttpPost("{rowId}/reopen")]
+    public async Task<IActionResult> Reopen(string rowId, [FromBody] WorkflowReopenRequest? request)
+    {
+        if (string.IsNullOrWhiteSpace(rowId))
+        {
+            return BadRequest(ApiResponse<object>.Success(new { message = "rowId 不能为空" }));
+        }
+
+        var allowedIds = await FilterRowIdsByHospitalScopeAsync([rowId]);
+        if (allowedIds.Count == 0)
+        {
+            return StatusCode(403, new { code = 403, message = "无权操作该医院的需求" });
+        }
+
+        try
+        {
+            var workflow = InMemoryMajorDemandStore.Reopen(rowId, request?.Reason, ResolveActor());
+            return workflow is null
+                ? NotFound(ApiResponse<object>.Success(new { message = "未匹配到对应需求" }))
+                : Ok(ApiResponse<object>.Success(new { workflow, message = "需求已重开" }));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { code = 400, message = ex.Message });
+        }
+    }
+
     [HttpGet("export")]
     public async Task<IActionResult> ExportCsv()
     {
@@ -440,6 +521,21 @@ public class MajorDemandsController(
     public class AddCommentRequest
     {
         public string Content { get; set; } = string.Empty;
+    }
+
+    public class WorkflowAcceptRequest
+    {
+        public string? Owner { get; set; }
+    }
+
+    public class WorkflowCompleteRequest
+    {
+        public string Note { get; set; } = string.Empty;
+    }
+
+    public class WorkflowReopenRequest
+    {
+        public string? Reason { get; set; }
     }
 
     public class UpdateCellRequest

@@ -9,14 +9,14 @@
 
     <el-card shadow="never" style="margin-bottom: 16px;">
       <el-space wrap>
-        <el-button v-if="canManageMaintenance" type="primary" :loading="loading.importing" @click="onAutoImport">自动重导入</el-button>
+        <el-button v-if="canManageMaintenance" type="primary" :loading="loading.importing" @click="onAutoImport" icon="Upload">自动重导入</el-button>
         <el-button v-if="canManageMaintenance" type="warning" :loading="loading.cleaning" @click="onCleanup">执行清洗</el-button>
-        <el-button :loading="loading.audit" @click="loadAudit">刷新审计列表</el-button>
+        <el-button :loading="loading.audit" @click="loadAudit" icon="Refresh">刷新审计列表</el-button>
       </el-space>
       <el-space wrap style="margin-top: 8px;">
-        <el-button size="small" @click="onDownloadTemplate('project-ledger')">下载项目台账模板</el-button>
-        <el-button size="small" @click="onDownloadTemplate('major-demand')">下载重大需求模板</el-button>
-        <el-button size="small" @click="onDownloadTemplate('workhours')">下载工时报表模板</el-button>
+        <el-button size="small" @click="onDownloadTemplate('project-ledger')" icon="Download">下载项目台账模板</el-button>
+        <el-button size="small" @click="onDownloadTemplate('major-demand')" icon="Download">下载重大需求模板</el-button>
+        <el-button size="small" @click="onDownloadTemplate('workhours')" icon="Download">下载工时报表模板</el-button>
       </el-space>
       <div v-if="lastResult" style="margin-top: 12px; color: var(--el-text-color-secondary)">
         {{ lastResult }}
@@ -47,7 +47,7 @@
           <div style="margin-top: 12px; display: flex; align-items: center; gap: 8px;">
             <el-input v-model="projectSheetName" placeholder="工作表名（默认：维护项目明细）" clearable style="flex: 1;" />
             <el-button size="small" :loading="loading.validateProject" :disabled="!projectFile" @click="onValidateProject">验证</el-button>
-            <el-button type="primary" :loading="loading.uploadProject" :disabled="!projectFile" @click="onUploadProject">导入</el-button>
+            <el-button type="primary" :loading="loading.uploadProject" :disabled="!projectFile" @click="onUploadProject" icon="Upload">导入</el-button>
           </div>
           <div v-if="validateProjectResult" style="margin-top: 8px; font-size: 13px;">
             <div v-if="validateProjectResult.errors.length" style="color: var(--el-color-danger)">
@@ -87,7 +87,7 @@
           </el-upload>
           <div style="margin-top: 12px; display: flex; align-items: center; gap: 8px;">
             <el-input v-model="demandSheetName" placeholder="工作表名（默认：重大需求明细）" clearable style="flex: 1;" />
-            <el-button type="primary" :loading="loading.uploadDemand" :disabled="!demandFile" @click="onUploadDemand">导入</el-button>
+            <el-button type="primary" :loading="loading.uploadDemand" :disabled="!demandFile" @click="onUploadDemand" icon="Upload">导入</el-button>
           </div>
           <div v-if="uploadDemandResult" style="margin-top: 8px; color: var(--el-color-success); font-size: 13px;">
             {{ uploadDemandResult }}

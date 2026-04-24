@@ -22,6 +22,18 @@ export function updateWorkHours(id: number, data: WorkHoursUpsert) {
   return request.put<any, ApiResponse<WorkHoursItem>>(`/workhours/${id}`, data)
 }
 
+export function submitWorkHours(id: number) {
+  return request.patch<any, ApiResponse<WorkHoursItem>>(`/workhours/${id}/submit`)
+}
+
+export function confirmWorkHours(id: number) {
+  return request.patch<any, ApiResponse<WorkHoursItem>>(`/workhours/${id}/confirm`)
+}
+
+export function rejectWorkHours(id: number) {
+  return request.patch<any, ApiResponse<WorkHoursItem>>(`/workhours/${id}/reject`)
+}
+
 export function deleteWorkHours(id: number) {
   return request.delete<any, ApiResponse<any>>(`/workhours/${id}`)
 }

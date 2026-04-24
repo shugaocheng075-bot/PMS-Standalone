@@ -152,6 +152,8 @@ public class InMemoryWorkHoursService : IWorkHoursService
         {
             var entity = Records.FirstOrDefault(x => x.Id == id);
             if (entity is null) return Task.FromResult<WorkHoursItemDto?>(null);
+            if (entity.Status != "draft" && entity.Status != "rejected")
+                throw new InvalidOperationException($"仅草稿或已退回的工时记录可以编辑，当前状态：{entity.Status}");
 
             entity.ProjectId = dto.ProjectId;
             entity.OpportunityNumber = dto.OpportunityNumber.Trim();
@@ -173,6 +175,11 @@ public class InMemoryWorkHoursService : IWorkHoursService
     {
         lock (SyncRoot)
         {
+            var entity = Records.FirstOrDefault(x => x.Id == id);
+            if (entity is null) return Task.FromResult(false);
+            if (entity.Status == "submitted")
+                throw new InvalidOperationException("已提交待确认的工时记录不可删除，请先处理为退回后再删除");
+
             var removed = Records.RemoveAll(x => x.Id == id);
             if (removed > 0) SqliteTableStore.Delete(TableName, id);
             return Task.FromResult(removed > 0);
@@ -213,8 +220,10 @@ public class InMemoryWorkHoursService : IWorkHoursService
         lock (SyncRoot)
         {
             var entity = Records.FirstOrDefault(x => x.Id == id);
-            if (entity is null || entity.Status != "draft") return Task.FromResult(false);
+            if (entity is null || (entity.Status != "draft" && entity.Status != "rejected")) return Task.FromResult(false);
             entity.Status = "submitted";
+            entity.ConfirmedBy = null;
+            entity.ConfirmedAt = null;
             entity.UpdatedAt = DateTime.UtcNow;
             SqliteTableStore.Update(TableName, entity, entity.Id);
             return Task.FromResult(true);

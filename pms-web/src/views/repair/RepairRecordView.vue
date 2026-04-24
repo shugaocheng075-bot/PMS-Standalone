@@ -7,13 +7,7 @@
       </div>
     </div>
 
-    <!-- 顶部状态卡片概览 -->
-    <el-row :gutter="16" class="stats-row">
-      <el-col :span="6"><el-card shadow="never" class="stat-card stats-card clickable" :class="{ active: query.status === '' }" @click="onStatClick('')"><div class="t">全部</div><div class="v">{{ summary.total }}</div></el-card></el-col> 
-      <el-col :span="6"><el-card shadow="never" class="stat-card stats-card clickable" :class="{ active: query.status === '待处理' }" @click="onStatClick('待处理')"><div class="t">待处理</div><div class="v danger">{{ summary.pendingCount }}</div></el-card></el-col>
-      <el-col :span="6"><el-card shadow="never" class="stat-card stats-card clickable" :class="{ active: query.status === '处理中' }" @click="onStatClick('处理中')"><div class="t">处理中</div><div class="v warning">{{ summary.inProgressCount }}</div></el-card></el-col>
-      <el-col :span="6"><el-card shadow="never" class="stat-card stats-card clickable" :class="{ active: query.status === '已完成' }" @click="onStatClick('已完成')"><div class="t">已完成</div><div class="v success">{{ summary.completedCount }}</div></el-card></el-col>
-    </el-row>
+    <SummaryMetrics :items="summaryCards" :columns="4" @select="onSummaryCardSelect" />
 
     <ProTable
       title="报修明细"
@@ -41,18 +35,19 @@
               <el-option label="待处理" value="待处理" />
               <el-option label="处理中" value="处理中" />
               <el-option label="已完成" value="已完成" />
+              <el-option label="已关闭" value="已关闭" />
             </el-select>
           </el-form-item>
           <el-form-item class="filter-actions">
-          <el-button type="primary" @click="onSearch">查询</el-button>
-          <el-button @click="onReset">重置</el-button>
+          <el-button type="primary" @click="onSearch" icon="Search">查询</el-button>
+          <el-button @click="onReset" icon="Refresh">重置</el-button>
         </el-form-item>
         </el-form>
       </template>
 
       <template #toolbar>
-        <el-button v-if="canCreate" type="primary" @click="onOpenCreate">新增报修</el-button>
-        <el-button :loading="exporting" @click="onExport">导出记录</el-button>
+        <el-button v-if="canCreate" type="primary" @click="onOpenCreate" icon="Plus">新增报修</el-button>
+        <el-button :loading="exporting" @click="onExport" icon="Download">导出记录</el-button>
       </template>
 
       <!-- Table Columns -->
@@ -72,35 +67,66 @@
           <el-tag :type="statusTag(scope.row.status)">{{ scope.row.status }}</el-tag>
         </template>
       </el-table-column>
+      <el-table-column label="处理SLA" width="150">
+        <template #default="scope">
+          <el-tag :type="slaTagType(scope.row)">{{ formatSlaText(scope.row) }}</el-tag>
+        </template>
+      </el-table-column>
       <el-table-column prop="description" label="问题描述" min-width="220" show-overflow-tooltip />
       <el-table-column prop="reportedAt" label="报修日期" width="170">    
         <template #default="scope">{{ formatTime(scope.row.reportedAt || '') }}</template>
       </el-table-column>
       <el-table-column prop="actualWorkHours" label="实际工时" width="100" />
-      <el-table-column label="操作" width="160" fixed="right">
+      <el-table-column label="操作" width="380" fixed="right">
         <template #default="scope">
-          <el-button
-            type="primary"
-            link
-            :loading="detailLoadingId === scope.row.id"
-            :disabled="submitLoading || deletingId === scope.row.id"
-            @click="onOpenDetail(scope.row.id)"
-          >详情</el-button>
-          <el-button
-            v-if="canEditOrDelete"
-            type="primary"
-            link
-            :disabled="submitLoading || deletingId === scope.row.id"
-            @click="onOpenEdit(scope.row)"
-          >编辑</el-button>
-          <el-button
-            v-if="canEditOrDelete"
-            type="danger"
-            link
-            :loading="deletingId === scope.row.id"
-            :disabled="submitLoading || deletingId === scope.row.id"
-            @click="onDelete(scope.row)"
-          >删除</el-button>
+          <div class="table-action-group">
+            <el-button
+              type="primary"
+              link
+              :loading="detailLoadingId === scope.row.id"
+              :disabled="isRowBusy(scope.row.id)"
+              @click="onOpenDetail(scope.row.id)"
+             icon="Document">详情</el-button>
+            <el-button
+              v-if="canOperateWorkflow && scope.row.status === '待处理'"
+              type="success"
+              link
+              :loading="isActionLoading('accept', scope.row.id)"
+              :disabled="isRowBusy(scope.row.id)"
+              @click="onAccept(scope.row)"
+             icon="Select">签收</el-button>
+            <el-button
+              v-if="canOperateWorkflow && scope.row.status === '处理中'"
+              type="success"
+              link
+              :loading="isActionLoading('resolve', scope.row.id)"
+              :disabled="isRowBusy(scope.row.id)"
+              @click="onResolve(scope.row)"
+             icon="CircleCheck">完成</el-button>
+            <el-button
+              v-if="canOperateWorkflow && (scope.row.status === '已完成' || scope.row.status === '已关闭')"
+              type="warning"
+              link
+              :loading="isActionLoading('reopen', scope.row.id)"
+              :disabled="isRowBusy(scope.row.id)"
+              @click="onReopen(scope.row)"
+             icon="RefreshLeft">重开</el-button>
+            <el-button
+              v-if="canEditOrDelete"
+              type="primary"
+              link
+              :disabled="isRowBusy(scope.row.id)"
+              @click="onOpenEdit(scope.row)"
+             icon="Edit">编辑</el-button>
+            <el-button
+              v-if="canEditOrDelete"
+              type="danger"
+              link
+              :loading="deletingId === scope.row.id"
+              :disabled="isRowBusy(scope.row.id)"
+              @click="onDelete(scope.row)"
+             icon="Delete">删除</el-button>
+          </div>
         </template>
       </el-table-column>
     </ProTable>
@@ -123,18 +149,11 @@
             <el-option label="非常紧急" value="非常紧急" />
           </el-select>
         </el-form-item>
-        <el-form-item label="状态">
-          <el-select v-model="form.status" style="width: 100%">
-            <el-option label="待处理" value="待处理" />
-            <el-option label="处理中" value="处理中" />
-            <el-option label="已完成" value="已完成" />
-          </el-select>
-        </el-form-item>
         <el-form-item label="问题描述"><el-input v-model="form.description" type="textarea" :rows="3" /></el-form-item>
         <el-form-item label="处理结果"><el-input v-model="form.resolution" type="textarea" :rows="3" /></el-form-item>
       </el-form>
       <template #footer>
-        <el-button :disabled="submitLoading" @click="dialogVisible = false">取消</el-button>
+        <el-button :disabled="submitLoading" @click="dialogVisible = false" icon="Close">取消</el-button>
         <el-button type="primary" :loading="submitLoading" :disabled="submitLoading" @click="onSubmit">确定</el-button>
       </template>
     </ProDrawer>
@@ -147,22 +166,40 @@
         <el-descriptions-item label="项目名称">{{ detailItem.projectName || '-' }}</el-descriptions-item>
         <el-descriptions-item label="严重程度">{{ detailItem.severity || '-' }}</el-descriptions-item>
         <el-descriptions-item label="紧迫程度">{{ detailItem.urgency || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="处理人">{{ detailItem.assigneeName || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="受理时间">{{ formatTime(detailItem.acceptedAt || '') }}</el-descriptions-item>
         <el-descriptions-item label="状态">{{ detailItem.status || '-' }}</el-descriptions-item>
         <el-descriptions-item label="报修日期">{{ formatTime(detailItem.reportedAt || '') }}</el-descriptions-item>
+        <el-descriptions-item label="SLA 截止">{{ formatTime(detailItem.slaDueAt || '') }}</el-descriptions-item>
+        <el-descriptions-item label="完成时间">{{ formatTime(detailItem.completedAt || '') }}</el-descriptions-item>
         <el-descriptions-item label="实际工时">{{ detailItem.actualWorkHours ?? '-' }}</el-descriptions-item>
         <el-descriptions-item label="处理结果">{{ detailItem.resolution || '-' }}</el-descriptions-item>
         <el-descriptions-item label="描述" :span="2">{{ detailItem.description || '-' }}</el-descriptions-item>
       </el-descriptions>
+      <div v-if="detailTimeline.length > 0" class="repair-detail-timeline">
+        <div class="repair-detail-timeline__title">处理节点</div>
+        <el-timeline>
+          <el-timeline-item
+            v-for="item in detailTimeline"
+            :key="item.key"
+            :timestamp="item.time"
+            placement="top"
+          >
+            {{ item.title }}
+          </el-timeline-item>
+        </el-timeline>
+      </div>
       <template #footer><el-button @click="detailVisible = false">关闭</el-button></template>
     </ProDrawer>
   </div>
 </template>
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import { useRoute, useRouter } from 'vue-router'
 import {
+  acceptRepairRecord,
   fetchRepairRecords,
   fetchRepairSummary,
   fetchRepairRecordById,
@@ -170,6 +207,8 @@ import {
   updateRepairRecord,
   deleteRepairRecord,
   exportRepairRecords,
+  reopenRepairRecord,
+  resolveRepairRecord,
 } from '../../api/modules/repair'
 import { fetchDataScope } from '../../api/modules/access'
 import { useAccessControl } from '../../composables/useAccessControl'
@@ -179,6 +218,7 @@ import { getErrorMessage } from '../../utils/error'
 import { useFilterStatePersist } from '../../composables/useFilterStatePersist'
 import { useLinkedRealtimeRefresh } from '../../composables/useLinkedRealtimeRefresh'
 import { resolveRepairStatusTag } from '../../utils/statusTag'
+import SummaryMetrics from '../../components/SummaryMetrics.vue'
 
 
 const access = useAccessControl()
@@ -189,11 +229,13 @@ const canCreate = computed(() => {
 
   return access.isManager() || access.isOperator()
 })
+const canOperateWorkflow = computed(() => access.canPermission('repair.manage'))
 const canEditOrDelete = computed(() => access.isManager() && access.canPermission('repair.manage'))
 
 const loading = ref(false)
 const exporting = ref(false)
 const submitLoading = ref(false)
+const actionLoadingKey = ref('')
 const dialogVisible = ref(false)
 const editingId = ref<number | null>(null)
 const deletingId = ref<number | null>(null)
@@ -206,6 +248,8 @@ const detailItem = ref<RepairRecordItem | null>(null)
 const summary = ref<RepairRecordSummary>({ total: 0, pendingCount: 0, inProgressCount: 0, completedCount: 0 })
 const route = useRoute()
 const router = useRouter()
+const nowTick = ref(Date.now())
+let slaTimer: number | null = null
 
 const readRouteQueryValue = (value: unknown): string => {
   if (typeof value === 'string') {
@@ -248,6 +292,55 @@ const query = reactive({
   page: 1,
   size: 15,
 })
+
+type RepairSummaryCard = {
+  key: string
+  title: string
+  value: number
+  context: string
+  note: string
+  color: string
+  active: boolean
+}
+
+const summaryCards = computed<RepairSummaryCard[]>(() => [
+  {
+    key: 'all',
+    title: '全部',
+    value: summary.value.total,
+    context: '状态总览',
+    note: '查看全部报修记录与处理进度',
+    color: '#3f4f63',
+    active: query.status === '',
+  },
+  {
+    key: '待处理',
+    title: '待处理',
+    value: summary.value.pendingCount,
+    context: '优先处理',
+    note: '需要立即分派或开始处理的报修',
+    color: '#c58a87',
+    active: query.status === '待处理',
+  },
+  {
+    key: '处理中',
+    title: '处理中',
+    value: summary.value.inProgressCount,
+    context: '进度跟踪',
+    note: '查看当前正在推进中的工单',
+    color: '#c7a06c',
+    active: query.status === '处理中',
+  },
+  {
+    key: '已完成',
+    title: '已完成',
+    value: summary.value.completedCount,
+    context: '闭环情况',
+    note: '核查已完成报修的处理闭环',
+    color: '#7d9f92',
+    active: query.status === '已完成',
+  },
+])
 
 const form = reactive<RepairRecordUpsert>({
   projectId: 0,
@@ -303,7 +396,6 @@ const { notifyDataChanged } = useLinkedRealtimeRefresh({
 const formRules: FormRules<RepairRecordUpsert> = {
   hospitalName: [{ required: true, message: '请选择医院名称', trigger: 'change' }],
   description: [{ required: true, message: '请输入问题描述', trigger: 'blur' }],
-  status: [{ required: true, message: '请选择状态', trigger: 'change' }],
 }
 
 const applyRouteFilters = () => {
@@ -334,11 +426,64 @@ const applyRouteFilters = () => {
 
 const statusTag = (status: string) => resolveRepairStatusTag(status)
 
+const isActionLoading = (action: string, id: number) => actionLoadingKey.value === `${action}-${id}`
+
+const isRowBusy = (id: number) => {
+  return submitLoading.value || deletingId.value === id || detailLoadingId.value === id || actionLoadingKey.value.endsWith(`-${id}`)
+}
+
 const urgencyTag = (urgency: string) => {
   if (urgency === '非常紧急') return 'danger'
   if (urgency === '紧急') return 'warning'
   return 'info'
 }
+
+const formatDuration = (milliseconds: number) => {
+  const totalMinutes = Math.max(1, Math.floor(milliseconds / 60000))
+  const days = Math.floor(totalMinutes / (60 * 24))
+  const hours = Math.floor((totalMinutes % (60 * 24)) / 60)
+  const minutes = totalMinutes % 60
+
+  if (days > 0) {
+    return `${days}天${hours}小时`
+  }
+
+  if (hours > 0) {
+    return `${hours}小时${minutes}分`
+  }
+
+  return `${minutes}分`
+}
+
+const resolveSlaMeta = (row: RepairRecordItem) => {
+  if (!row.slaDueAt) {
+    return { label: '未设置', type: 'info' as const }
+  }
+
+  if (row.status === '已完成' || row.status === '已关闭') {
+    return { label: '已闭环', type: 'success' as const }
+  }
+
+  const dueTime = new Date(row.slaDueAt).getTime()
+  if (Number.isNaN(dueTime)) {
+    return { label: '未设置', type: 'info' as const }
+  }
+
+  const diff = dueTime - nowTick.value
+  if (diff <= 0) {
+    return { label: `超时 ${formatDuration(Math.abs(diff))}`, type: 'danger' as const }
+  }
+
+  if (diff <= 2 * 60 * 60 * 1000) {
+    return { label: `剩余 ${formatDuration(diff)}`, type: 'warning' as const }
+  }
+
+  return { label: `剩余 ${formatDuration(diff)}`, type: 'success' as const }
+}
+
+const formatSlaText = (row: RepairRecordItem) => resolveSlaMeta(row).label
+
+const slaTagType = (row: RepairRecordItem) => resolveSlaMeta(row).type
 
 const formatTime = (iso: string) => {
   if (!iso) return '-'
@@ -433,6 +578,28 @@ const onStatClick = (status: string) => {
   loadData()
 }
 
+const onSummaryCardSelect = (card: { key?: string | number }) => {
+  if (typeof card.key !== 'string') {
+    return
+  }
+
+  onStatClick(card.key === 'all' ? '' : card.key)
+}
+
+const detailTimeline = computed(() => {
+  if (!detailItem.value) {
+    return [] as Array<{ key: string; title: string; time: string }>
+  }
+
+  const items = [
+    detailItem.value.createdAt ? { key: 'created', title: '工单创建', time: formatTime(detailItem.value.createdAt) } : null,
+    detailItem.value.acceptedAt ? { key: 'accepted', title: `工单签收${detailItem.value.assigneeName ? ` · ${detailItem.value.assigneeName}` : ''}`, time: formatTime(detailItem.value.acceptedAt) } : null,
+    detailItem.value.completedAt ? { key: 'completed', title: '工单完成', time: formatTime(detailItem.value.completedAt) } : null,
+  ]
+
+  return items.filter((item): item is { key: string; title: string; time: string } => Boolean(item))
+})
+
 
 
 const resetForm = () => {
@@ -521,6 +688,92 @@ const onOpenDetail = async (id: number) => {
     ElMessage.error(getErrorMessage(error, '加载报修详情失败，请稍后重试'))
   } finally {
     detailLoadingId.value = null
+  }
+}
+
+const refreshDetailIfOpen = async (id: number) => {
+  if (!detailVisible.value || detailItem.value?.id !== id) {
+    return
+  }
+
+  try {
+    const res = await fetchRepairRecordById(id)
+    detailItem.value = res.data
+  } catch {
+  }
+}
+
+const runWorkflowAction = async (action: 'accept' | 'resolve' | 'reopen', id: number, runner: () => Promise<void>) => {
+  actionLoadingKey.value = `${action}-${id}`
+  try {
+    await runner()
+    notifyDataChanged('repair')
+    await Promise.all([loadData(), loadSummary(), refreshDetailIfOpen(id)])
+  } finally {
+    actionLoadingKey.value = ''
+  }
+}
+
+const onAccept = async (row: RepairRecordItem) => {
+  const assigneeName = access.accessProfile.value?.personnelName || row.assigneeName || row.reporterName
+  try {
+    await runWorkflowAction('accept', row.id, async () => {
+      await acceptRepairRecord(row.id, { assigneeName })
+      ElMessage.success('已签收，工单进入处理中')
+    })
+  } catch (error) {
+    ElMessage.error(getErrorMessage(error, '签收失败，请稍后重试'))
+  }
+}
+
+const onResolve = async (row: RepairRecordItem) => {
+  let resolution = ''
+  try {
+    const result = await ElMessageBox.prompt('请填写处理结果，系统会记录为工单闭环内容。', '完成报修', {
+      confirmButtonText: '完成工单',
+      cancelButtonText: '取消',
+      inputPlaceholder: '例如：已重启服务并清理缓存，现场验证恢复正常',
+      inputType: 'textarea',
+      inputValue: row.resolution || '',
+      inputValidator: (value) => (value.trim() ? true : '请填写处理结果'),
+    })
+    resolution = result.value.trim()
+  } catch {
+    return
+  }
+
+  try {
+    await runWorkflowAction('resolve', row.id, async () => {
+      await resolveRepairRecord(row.id, { resolution })
+      ElMessage.success('工单已完成闭环')
+    })
+  } catch (error) {
+    ElMessage.error(getErrorMessage(error, '完成报修失败，请稍后重试'))
+  }
+}
+
+const onReopen = async (row: RepairRecordItem) => {
+  let reason = ''
+  try {
+    const result = await ElMessageBox.prompt('可填写重开原因，系统会写入审计日志并重新进入待处理。', '重开报修', {
+      confirmButtonText: '重开工单',
+      cancelButtonText: '取消',
+      inputPlaceholder: '例如：现场复测仍有复现，需要继续跟进',
+      inputType: 'textarea',
+      inputValue: '',
+    })
+    reason = result.value.trim()
+  } catch {
+    return
+  }
+
+  try {
+    await runWorkflowAction('reopen', row.id, async () => {
+      await reopenRepairRecord(row.id, { reason: reason || undefined })
+      ElMessage.success('工单已重开并回到待处理')
+    })
+  } catch (error) {
+    ElMessage.error(getErrorMessage(error, '重开报修失败，请稍后重试'))
   }
 }
 
@@ -629,6 +882,12 @@ const onDelete = async (row: RepairRecordItem) => {
 }
 
 onMounted(async () => {
+  if (typeof window !== 'undefined') {
+    slaTimer = window.setInterval(() => {
+      nowTick.value = Date.now()
+    }, 60000)
+  }
+
   const restored = filterPersist.restore()
   applyRouteFilters()
 
@@ -648,6 +907,12 @@ onMounted(async () => {
   await syncDialogFromRoute()
 })
 
+onUnmounted(() => {
+  if (slaTimer !== null && typeof window !== 'undefined') {
+    window.clearInterval(slaTimer)
+  }
+})
+
 watch(dialogVisible, (visible) => {
   if (!visible && !detailVisible.value) {
     void clearRouteActionQuery()
@@ -665,5 +930,18 @@ watch(() => route.fullPath, () => {
   void syncDialogFromRoute()
 })
 </script>
+
+<style scoped>
+.repair-detail-timeline {
+  margin-top: 20px;
+}
+
+.repair-detail-timeline__title {
+  margin-bottom: 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #4a5a6a;
+}
+</style>
 
 

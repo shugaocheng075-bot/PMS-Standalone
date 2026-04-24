@@ -125,9 +125,16 @@ public class MonthlyReportsController(
             return StatusCode(403, new { code = 403, message = "无权修改该医院的月报" });
         }
 
-        var item = await monthlyReportService.UpdateAsync(id, dto, cancellationToken);
-        if (item is null) return NotFound(ApiResponse<object>.Success(null));
-        return Ok(ApiResponse<MonthlyReportItemDto>.Success(item));
+        try
+        {
+            var item = await monthlyReportService.UpdateAsync(id, dto, cancellationToken);
+            if (item is null) return NotFound(ApiResponse<object>.Success(null));
+            return Ok(ApiResponse<MonthlyReportItemDto>.Success(item));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { code = 400, message = ex.Message });
+        }
     }
 
     /// <summary>

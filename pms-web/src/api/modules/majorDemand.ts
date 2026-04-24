@@ -21,6 +21,8 @@ export type MajorDemandWorkflow = {
   status: string
   owner: string
   dueDate: string
+  acceptedAt?: string | null
+  completedAt?: string | null
   updatedAt: string
   comments: MajorDemandComment[]
   logs: MajorDemandLog[]
@@ -60,6 +62,18 @@ export function batchUpdateMajorDemandDueDate(payload: { rowIds: string[]; dueDa
 
 export function addMajorDemandComment(rowId: string, content: string) {
   return request.post<any, ApiResponse<any>>(`/major-demands/${encodeURIComponent(rowId)}/comments`, { content })
+}
+
+export function acceptMajorDemand(rowId: string, payload?: { owner?: string }) {
+  return request.post<any, ApiResponse<any>>(`/major-demands/${encodeURIComponent(rowId)}/accept`, payload ?? {})
+}
+
+export function completeMajorDemand(rowId: string, payload: { note: string }) {
+  return request.post<any, ApiResponse<any>>(`/major-demands/${encodeURIComponent(rowId)}/complete`, payload)
+}
+
+export function reopenMajorDemand(rowId: string, payload?: { reason?: string }) {
+  return request.post<any, ApiResponse<any>>(`/major-demands/${encodeURIComponent(rowId)}/reopen`, payload ?? {})
 }
 
 export function exportMajorDemandCsv() {

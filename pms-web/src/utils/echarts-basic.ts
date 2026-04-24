@@ -7,6 +7,7 @@ import {
   LegendComponent,
   GridComponent,
   TitleComponent,
+  GraphicComponent,
 } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 
@@ -19,6 +20,7 @@ use([
   LegendComponent,
   GridComponent,
   TitleComponent,
+  GraphicComponent,
   CanvasRenderer,
 ])
 

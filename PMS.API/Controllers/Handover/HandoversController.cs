@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using PMS.API.Middleware;
 using PMS.API.Models;
 using PMS.Application.Contracts.Access;
+using PMS.Application.Contracts.AuditLog;
 using PMS.Application.Contracts.Handover;
 using PMS.Application.Models;
 using PMS.Application.Models.Handover;
@@ -13,7 +14,8 @@ namespace PMS.API.Controllers.Handover;
 [Route("api/handovers")]
 public class HandoversController(
     IHandoverService handoverService,
-    IAccessControlService accessControlService) : ControllerBase
+    IAccessControlService accessControlService,
+    IAuditLogService auditLogService) : ControllerBase
 {
     [HttpGet("summary")]
     public async Task<IActionResult> GetSummary(CancellationToken cancellationToken = default)
@@ -115,6 +117,34 @@ public class HandoversController(
         return Ok(ApiResponse<IReadOnlyList<HandoverKanbanColumnDto>>.Success(result));
     }
 
+    [HttpGet("{id:long}")]
+    public async Task<IActionResult> GetById(long id, CancellationToken cancellationToken = default)
+    {
+        var item = await GetScopedHandoverAsync(id, cancellationToken);
+        if (item is null)
+        {
+            return NotFound(new { code = 404, message = "交接记录不存在" });
+        }
+
+        return Ok(ApiResponse<HandoverItemDto>.Success(item));
+    }
+
+    [HttpPatch("{id:long}/send-email")]
+    public Task<IActionResult> SendEmail(long id, CancellationToken cancellationToken = default)
+        => ExecuteWorkflowAsync(id, "发送交接邮件", handoverService.SendEmailAsync, cancellationToken);
+
+    [HttpPatch("{id:long}/start")]
+    public Task<IActionResult> Start(long id, CancellationToken cancellationToken = default)
+        => ExecuteWorkflowAsync(id, "开始交接", handoverService.StartAsync, cancellationToken);
+
+    [HttpPatch("{id:long}/complete")]
+    public Task<IActionResult> Complete(long id, CancellationToken cancellationToken = default)
+        => ExecuteWorkflowAsync(id, "完成交接", handoverService.CompleteAsync, cancellationToken);
+
+    [HttpPatch("{id:long}/rollback")]
+    public Task<IActionResult> Rollback(long id, CancellationToken cancellationToken = default)
+        => ExecuteWorkflowAsync(id, "回退交接阶段", handoverService.RollbackAsync, cancellationToken);
+
     [HttpPut("{id:long}/stage")]
     public async Task<IActionResult> UpdateStage(
         [FromRoute] long id,
@@ -123,6 +153,12 @@ public class HandoversController(
     {
         try
         {
+            var existing = await GetScopedHandoverAsync(id, cancellationToken);
+            if (existing is null)
+            {
+                return NotFound(new { code = 404, message = "交接记录不存在" });
+            }
+
             var updated = await handoverService.UpdateStageAsync(id, request, cancellationToken);
             return Ok(ApiResponse<HandoverItemDto>.Success(updated));
         }
@@ -193,4 +229,58 @@ public class HandoversController(
         }
         return text;
     }
+
+    private async Task<IActionResult> ExecuteWorkflowAsync(
+        long id,
+        string action,
+        Func<long, CancellationToken, Task<HandoverItemDto>> operation,
+        CancellationToken cancellationToken)
+    {
+        var personnelId = HttpContext.GetCurrentPersonnelId();
+        var existing = await GetScopedHandoverAsync(id, cancellationToken);
+        if (existing is null)
+        {
+            return NotFound(new { code = 404, message = "交接记录不存在" });
+        }
+
+        var operatorName = await GetOperatorNameAsync(personnelId, cancellationToken);
+
+        try
+        {
+            var updated = await operation(id, cancellationToken);
+            await auditLogService.LogAsync(operatorName, personnelId, action, "handover", $"#{updated.Id}", $"{existing.Stage} -> {updated.Stage}", GetRequestIp(), cancellationToken);
+            return Ok(ApiResponse<HandoverItemDto>.Success(updated));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { code = 400, message = ex.Message });
+        }
+    }
+
+    private async Task<HandoverItemDto?> GetScopedHandoverAsync(long id, CancellationToken cancellationToken)
+    {
+        var item = await handoverService.GetByIdAsync(id, cancellationToken);
+        if (item is null)
+        {
+            return null;
+        }
+
+        var personnelId = HttpContext.GetCurrentPersonnelId();
+        var dataScope = await accessControlService.GetDataScopeAsync(personnelId, cancellationToken);
+        if (!HospitalScopeHelper.IsHospitalAccessible(dataScope, item.HospitalName))
+        {
+            return null;
+        }
+
+        return item;
+    }
+
+    private async Task<string> GetOperatorNameAsync(int personnelId, CancellationToken cancellationToken)
+    {
+        var profile = await accessControlService.GetUserProfileAsync(personnelId, cancellationToken);
+        return string.IsNullOrWhiteSpace(profile?.PersonnelName) ? "unknown" : profile!.PersonnelName;
+    }
+
+    private string GetRequestIp()
+        => HttpContext.Connection.RemoteIpAddress?.ToString() ?? string.Empty;
 }

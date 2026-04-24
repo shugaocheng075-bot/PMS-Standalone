@@ -44,6 +44,7 @@ export const resolveMonthlyReportStatusTag = (status: string): string => {
   if (normalized === 'draft' || normalized === '草稿') return 'info'
   if (normalized === 'submitted' || normalized === '已提交') return 'warning'
   if (normalized === 'approved' || normalized === '已审核' || normalized === '已完成') return 'success'
+  if (normalized === 'rejected' || normalized === '已驳回') return 'danger'
   return 'info'
 }
 

@@ -15,16 +15,11 @@
           <el-icon v-if="!syncLoading" style="margin-right:4px"><Refresh /></el-icon>
           同步外部人员
         </el-button>
-        <el-button v-if="canManagePersonnel" type="primary" @click="onOpenCreate">新增人员</el-button>
+        <el-button v-if="canManagePersonnel" type="primary" @click="onOpenCreate" icon="Plus">新增人员</el-button>
       </el-space>
     </div>
 
-    <el-row :gutter="16" class="stats-row">
-      <el-col :span="6"><el-card shadow="never" class="stat-card stats-card clickable" :class="{ active: !activeStatFilter }" @click="onStatClick('all')"><div class="t">总人数</div><div class="v">{{ summary.total }}</div></el-card></el-col>
-      <el-col :span="6"><el-card shadow="never" class="stat-card stats-card clickable" :class="{ active: activeStatFilter === 'service' }" @click="onStatClick('service')"><div class="t">服务人员</div><div class="v success">{{ summary.serviceCount }}</div></el-card></el-col>
-      <el-col :span="6"><el-card shadow="never" class="stat-card stats-card clickable" :class="{ active: activeStatFilter === 'impl' }" @click="onStatClick('impl')"><div class="t">实施人员</div><div class="v warning">{{ summary.implementationCount }}</div></el-card></el-col>
-      <el-col :span="6"><el-card shadow="never" class="stat-card stats-card clickable" :class="{ active: activeStatFilter === 'onsite' }" @click="onStatClick('onsite')"><div class="t">驻场人数</div><div class="v danger">{{ summary.onsiteCount }}</div></el-card></el-col>
-    </el-row>
+    <SummaryMetrics :items="summaryCards" :columns="4" @select="onSummaryCardSelect" />
 
     
 
@@ -71,20 +66,20 @@
           </el-select>
         </el-form-item>
         <el-form-item class="filter-actions">
-          <el-button type="primary" @click="onSearch">查询</el-button>
-          <el-button @click="onReset">重置</el-button>
+          <el-button type="primary" @click="onSearch" icon="Search">查询</el-button>
+          <el-button @click="onReset" icon="Refresh">重置</el-button>
         </el-form-item>
       </el-form>
     </template>
 
     
       
-        <el-table-column label="员工编号" width="110" show-overflow-tooltip>
+        <el-table-column label="员工编号" width="120" show-overflow-tooltip>
           <template #default="scope">
             {{ getWebsiteField(scope.row, ['employeeId', '员工编号']) }}
           </template>
         </el-table-column>
-        <el-table-column prop="name" label="人员姓名" width="110" show-overflow-tooltip sortable />
+        <el-table-column prop="name" label="人员姓名" width="120" show-overflow-tooltip sortable />
         <el-table-column label="性别" width="80" show-overflow-tooltip>
           <template #default="scope">
             <el-tag size="small" effect="plain" type="info">
@@ -92,23 +87,23 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="phone" label="手机号" width="130" show-overflow-tooltip />
-        <el-table-column label="婚姻状况" width="100" show-overflow-tooltip>
+        <el-table-column prop="phone" label="手机号" width="138" show-overflow-tooltip />
+        <el-table-column label="婚姻状况" width="110" show-overflow-tooltip>
           <template #default="scope">
             {{ getWebsiteField(scope.row, ['maritalStatus', '婚姻状况']) }}
           </template>
         </el-table-column>
-        <el-table-column label="常住地(Base地)" width="130" show-overflow-tooltip>
+        <el-table-column label="常住地(Base地)" width="150" show-overflow-tooltip>
           <template #default="scope">
             {{ getWebsiteField(scope.row, ['baseAddress', '常住地(Base地)']) }}
           </template>
         </el-table-column>
-        <el-table-column label="家庭所在省市" width="140" show-overflow-tooltip>
+        <el-table-column label="家庭所在省市" width="160" show-overflow-tooltip>
           <template #default="scope">
             {{ formatHomeCity(scope.row) }}
           </template>
         </el-table-column>
-        <el-table-column label="岗位" width="140" show-overflow-tooltip>
+        <el-table-column label="岗位" width="180" show-overflow-tooltip>
           <template #default="scope">
             {{ formatPosition(scope.row) }}
           </template>
@@ -118,7 +113,7 @@
             {{ getWebsiteField(scope.row, ['workLevel', '职级']) }}
           </template>
         </el-table-column>
-        <el-table-column label="用户角色" width="120" show-overflow-tooltip>
+        <el-table-column label="用户角色" width="132" show-overflow-tooltip>
           <template #default="scope">
             {{ formatUserRole(scope.row) }}
           </template>
@@ -130,30 +125,35 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="groupName" label="组别" width="160" show-overflow-tooltip sortable />
-        <el-table-column label="操作" width="240" fixed="right">
+        <el-table-column prop="groupName" label="组别" width="176" show-overflow-tooltip sortable />
+        <el-table-column label="操作" width="308" fixed="right">
           <template #default="scope">
-            <el-button
-              v-if="canManagePersonnel"
-              link
-              type="primary"
-              :disabled="submitLoading || deletingId === scope.row.id"
-              @click="onOpenEdit(scope.row)"
-            >编辑</el-button>
-            <el-button
-              link
-              :loading="detailLoadingId === scope.row.id"
-              :disabled="submitLoading || deletingId === scope.row.id"
-              @click="onOpenDetail(scope.row.id)"
-            >查看</el-button>
-            <el-button
-              v-if="canManagePermissions"
-              link
-              type="primary"
-              :loading="permissionLoadingId === scope.row.id"
-              :disabled="submitLoading || deletingId === scope.row.id"
-              @click="onOpenPermission(scope.row)"
-            >修改</el-button>
+            <div class="personnel-actions">
+              <el-button
+                v-if="canManagePersonnel"
+                link
+                type="primary"
+                class="personnel-action"
+                :disabled="submitLoading || deletingId === scope.row.id"
+                @click="onOpenEdit(scope.row)"
+               icon="Edit">编辑</el-button>
+              <el-button
+                link
+                class="personnel-action"
+                :loading="detailLoadingId === scope.row.id"
+                :disabled="submitLoading || deletingId === scope.row.id"
+                @click="onOpenDetail(scope.row.id)"
+               icon="View">查看</el-button>
+              <el-button
+                v-if="canManagePermissions"
+                link
+                type="primary"
+                class="personnel-action"
+                :loading="permissionLoadingId === scope.row.id"
+                :disabled="submitLoading || deletingId === scope.row.id"
+                @click="onOpenPermission(scope.row)"
+               icon="Edit">修改</el-button>
+            </div>
           </template>
         </el-table-column>
       
@@ -165,8 +165,8 @@
     
     </ProTable>
 
-    <ProDrawer v-model="editVisible" :title="editMode === 'create' ? '新增人员' : '编辑人员'" width="900px">
-      <el-form ref="editFormRef" :model="editForm" :rules="editRules" label-width="110px">
+    <ProDrawer v-model="editVisible" :title="editMode === 'create' ? '新增人员' : '编辑人员'" width="920px">
+      <el-form ref="editFormRef" :model="editForm" :rules="editRules" label-width="126px" class="personnel-edit-form">
         <el-row :gutter="16">
           <el-col :span="12"><el-form-item label="员工编号"><el-input v-model="editForm.employeeId" /></el-form-item></el-col>
           <el-col :span="12"><el-form-item label="姓名" prop="name"><el-input v-model="editForm.name" /></el-form-item></el-col>
@@ -194,8 +194,8 @@
         </el-row>
       </el-form>
       <template #footer>
-        <el-button :disabled="submitLoading" @click="editVisible = false">取消</el-button>
-        <el-button type="primary" :loading="submitLoading" :disabled="submitLoading" @click="onSaveEdit">保存</el-button>
+        <el-button :disabled="submitLoading" @click="editVisible = false" icon="Close">取消</el-button>
+        <el-button type="primary" :loading="submitLoading" :disabled="submitLoading" @click="onSaveEdit" icon="Check">保存</el-button>
       </template>
     </ProDrawer>
 
@@ -297,8 +297,8 @@
       </el-skeleton>
 
       <template #footer>
-        <el-button :disabled="permissionSubmitLoading" @click="permissionVisible = false">取消</el-button>
-        <el-button type="primary" :loading="permissionSubmitLoading" @click="onSavePermission">保存权限</el-button>
+        <el-button :disabled="permissionSubmitLoading" @click="permissionVisible = false" icon="Close">取消</el-button>
+        <el-button type="primary" :loading="permissionSubmitLoading" @click="onSavePermission" icon="Check">保存权限</el-button>
       </template>
     </ProDrawer>
   </div>
@@ -340,6 +340,7 @@ import { useLinkedRealtimeRefresh } from '../../composables/useLinkedRealtimeRef
 import { useAccessControl } from '../../composables/useAccessControl'
 import ProTable from '../../components/ProTable.vue'
 import ProDrawer from '../../components/ProDrawer.vue'
+import SummaryMetrics from '../../components/SummaryMetrics.vue'
 
 
 const loading = ref(false)
@@ -367,6 +368,55 @@ const query = reactive({
   size: 15,
 })
 const activeStatFilter = ref('')
+
+type PersonnelSummaryCard = {
+  key: string
+  title: string
+  value: number
+  context: string
+  note: string
+  color: string
+  active: boolean
+}
+
+const summaryCards = computed<PersonnelSummaryCard[]>(() => [
+  {
+    key: 'all',
+    title: '总人数',
+    value: summary.value.total,
+    context: '人员总览',
+    note: '查看全部人员与权限配置概览',
+    color: '#3f4f63',
+    active: !activeStatFilter.value,
+  },
+  {
+    key: 'service',
+    title: '服务人员',
+    value: summary.value.serviceCount,
+    context: '角色筛选',
+    note: '聚焦服务类人员与权限分配',
+    color: '#7d9f92',
+    active: activeStatFilter.value === 'service',
+  },
+  {
+    key: 'impl',
+    title: '实施人员',
+    value: summary.value.implementationCount,
+    context: '角色筛选',
+    note: '查看实施类人员与岗位分布',
+    color: '#c7a06c',
+    active: activeStatFilter.value === 'impl',
+  },
+  {
+    key: 'onsite',
+    title: '驻场人数',
+    value: summary.value.onsiteCount,
+    context: '角色筛选',
+    note: '查看驻场人员与现场配置情况',
+    color: '#c58a87',
+    active: activeStatFilter.value === 'onsite',
+  },
+])
 const route = useRoute()
 const router = useRouter()
 
@@ -1059,6 +1109,14 @@ const onSearch = () => {
   loadData()
 }
 
+const onSummaryCardSelect = (card: { key?: string | number }) => {
+  if (typeof card.key !== 'string') {
+    return
+  }
+
+  onStatClick(card.key)
+}
+
 const onReset = () => {
   query.name = ''
   query.department = ''
@@ -1532,16 +1590,17 @@ watch(
 }
 
 .permission-group {
-  border: 1px solid #e7ebf5;
-  border-radius: 8px;
-  padding: 10px 12px;
+  border: 1px solid #e8edf3;
+  border-radius: 12px;
+  padding: 12px 14px;
+  background: #fbfcfe;
 }
 
 .permission-group-title {
   margin-bottom: 8px;
   font-size: 13px;
   font-weight: 600;
-  color: #303f63;
+  color: #334155;
 }
 
 .pager {
@@ -1549,11 +1608,31 @@ watch(
   align-items: center;
   justify-content: flex-end;
   gap: 12px;
+  padding-top: 14px;
+  border-top: 1px solid #eef2f6;
 }
 
 .pager-total {
   color: var(--el-text-color-primary);
   font-size: 13px;
+}
+
+.personnel-actions {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 4px 8px;
+  white-space: nowrap;
+}
+
+.personnel-action {
+  margin-left: 0;
+  padding: 0;
+  flex: 0 0 auto;
+}
+
+.personnel-edit-form :deep(.el-form-item__label) {
+  white-space: nowrap;
 }
 
 .table-card :deep(.permission-table .el-table__body-wrapper) {

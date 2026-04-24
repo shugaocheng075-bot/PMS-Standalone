@@ -55,6 +55,12 @@ public class RepairRecordEntity
     /// <summary>处理人姓名</summary>
     public string AssigneeName { get; set; } = string.Empty;
 
+    /// <summary>签收时间</summary>
+    public DateTime? AcceptedAt { get; set; }
+
+    /// <summary>处理SLA截止时间</summary>
+    public DateTime? SlaDueAt { get; set; }
+
     /// <summary>完成时间</summary>
     public DateTime? CompletedAt { get; set; }
 

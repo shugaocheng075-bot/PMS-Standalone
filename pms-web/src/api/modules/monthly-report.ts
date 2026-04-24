@@ -1,6 +1,11 @@
 import request from '../request'
 import type { ApiResponse, PagedResult } from '../../types/project'
-import type { MonthlyReportItem, MonthlyReportQuery, MonthlyReportUpsert } from '../../types/monthly-report'
+import type {
+  MonthlyReportApprovalPayload,
+  MonthlyReportItem,
+  MonthlyReportQuery,
+  MonthlyReportUpsert,
+} from '../../types/monthly-report'
 
 export function fetchMonthlyReports(params: MonthlyReportQuery) {
   return request.get<any, ApiResponse<PagedResult<MonthlyReportItem>>>('/monthly-reports', { params })
@@ -16,6 +21,18 @@ export function createMonthlyReport(data: MonthlyReportUpsert) {
 
 export function updateMonthlyReport(id: number, data: MonthlyReportUpsert) {
   return request.put<any, ApiResponse<MonthlyReportItem>>(`/monthly-reports/${id}`, data)
+}
+
+export function submitMonthlyReport(id: number) {
+  return request.patch<any, ApiResponse<MonthlyReportItem>>(`/monthly-reports/${id}/submit`)
+}
+
+export function approveMonthlyReport(id: number) {
+  return request.patch<any, ApiResponse<MonthlyReportItem>>(`/monthly-reports/${id}/approve`)
+}
+
+export function rejectMonthlyReport(id: number, data: MonthlyReportApprovalPayload) {
+  return request.patch<any, ApiResponse<MonthlyReportItem>>(`/monthly-reports/${id}/reject`, data)
 }
 
 export function deleteMonthlyReport(id: number) {

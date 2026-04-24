@@ -29,8 +29,15 @@ public class InMemoryInspectionService : IInspectionService
         ? StoredResults.Max(r => r.Id) + 1
         : 1;
     private static long _nextPlanId = Math.Max(
-        InMemoryProjectDataStore.Projects.Count > 0 ? InMemoryProjectDataStore.Projects.Max(p => p.Id) + 1 : 1,
-        PlanCustomRows.Count > 0 ? PlanCustomRows.Max(x => x.Id) + 1 : 1);
+        Math.Max(
+            InMemoryProjectDataStore.Projects.Count > 0 ? InMemoryProjectDataStore.Projects.Max(p => p.Id) + 1 : 1,
+            PlanCustomRows.Count > 0 ? PlanCustomRows.Max(x => x.Id) + 1 : 1),
+        DeletedPlanIds.Count > 0 ? DeletedPlanIds.Max(x => x.Id) + 1 : 1);
+
+    private static DateTime CalculatePlanSlaDueAt(DateTime planDate)
+    {
+        return planDate.Date.AddHours(18);
+    }
 
     // ─── 巡检计划（种子数据） ───
 
@@ -102,40 +109,105 @@ public class InMemoryInspectionService : IInspectionService
         });
     }
 
+    public Task<InspectionPlanItemDto?> GetByIdAsync(long id, CancellationToken cancellationToken = default)
+    {
+        lock (SyncRoot)
+        {
+            var item = BuildSeed().FirstOrDefault(x => x.Id == id);
+            return Task.FromResult<InspectionPlanItemDto?>(item);
+        }
+    }
+
     public Task<InspectionPlanItemDto?> UpdateAsync(long id, InspectionPlanUpsertDto dto, CancellationToken cancellationToken = default)
     {
         lock (SyncRoot)
         {
-            var custom = PlanCustomRows.FirstOrDefault(x => x.Id == id);
-            if (custom is not null)
+            var updated = MutatePlanLocked(id, current => ApplyPlanUpsert(current, dto));
+            return Task.FromResult<InspectionPlanItemDto?>(updated);
+        }
+    }
+
+    public Task<InspectionPlanItemDto?> StartAsync(long id, string inspector, CancellationToken cancellationToken = default)
+    {
+        lock (SyncRoot)
+        {
+            var updated = MutatePlanLocked(id, current =>
             {
-                ApplyPlanUpsert(custom, dto);
-                PersistCustomRows();
-                return Task.FromResult<InspectionPlanItemDto?>(custom);
-            }
+                if (current.Status == "已完成" || current.Status == "已取消")
+                {
+                    throw new InvalidOperationException("已完成或已取消的巡检计划不能开始执行");
+                }
 
-            var current = BuildSeed().FirstOrDefault(x => x.Id == id);
-            if (current is null)
+                var now = DateTime.UtcNow;
+                current.Status = "执行中";
+                if (!string.IsNullOrWhiteSpace(inspector))
+                {
+                    current.Inspector = inspector.Trim();
+                }
+                current.StartedAt ??= now;
+                current.CompletedAt = null;
+                current.ActualDate = null;
+                current.SlaDueAt = CalculatePlanSlaDueAt(current.PlanDate);
+            });
+
+            return Task.FromResult<InspectionPlanItemDto?>(updated);
+        }
+    }
+
+    public Task<InspectionPlanItemDto?> CompleteAsync(long id, string? remarks, CancellationToken cancellationToken = default)
+    {
+        lock (SyncRoot)
+        {
+            var updated = MutatePlanLocked(id, current =>
             {
-                return Task.FromResult<InspectionPlanItemDto?>(null);
-            }
+                if (current.Status == "已完成" || current.Status == "已取消")
+                {
+                    throw new InvalidOperationException("当前巡检计划已完成或已取消");
+                }
 
-            ApplyPlanUpsert(current, dto);
+                var now = DateTime.UtcNow;
+                current.Status = "已完成";
+                current.StartedAt ??= now;
+                current.CompletedAt = now;
+                current.ActualDate = now;
+                current.SlaDueAt ??= CalculatePlanSlaDueAt(current.PlanDate);
+                if (!string.IsNullOrWhiteSpace(remarks))
+                {
+                    current.Remarks = string.IsNullOrWhiteSpace(current.Remarks)
+                        ? remarks.Trim()
+                        : $"{current.Remarks}\n{remarks.Trim()}";
+                }
+            });
 
-            var existingIndex = PlanOverrides.FindIndex(x => x.Id == id);
-            if (existingIndex >= 0)
+            return Task.FromResult<InspectionPlanItemDto?>(updated);
+        }
+    }
+
+    public Task<InspectionPlanItemDto?> ReopenAsync(long id, string? reason, CancellationToken cancellationToken = default)
+    {
+        lock (SyncRoot)
+        {
+            var updated = MutatePlanLocked(id, current =>
             {
-                PlanOverrides[existingIndex] = current;
-            }
-            else
-            {
-                PlanOverrides.Add(current);
-            }
+                if (current.Status != "已完成" && current.Status != "已取消")
+                {
+                    throw new InvalidOperationException("仅已完成或已取消的巡检计划可重开");
+                }
 
-            PersistPlanOverrides();
+                current.Status = "已计划";
+                current.StartedAt = null;
+                current.CompletedAt = null;
+                current.ActualDate = null;
+                current.SlaDueAt = CalculatePlanSlaDueAt(current.PlanDate);
+                if (!string.IsNullOrWhiteSpace(reason))
+                {
+                    current.Remarks = string.IsNullOrWhiteSpace(current.Remarks)
+                        ? $"重开原因：{reason.Trim()}"
+                        : $"{current.Remarks}\n重开原因：{reason.Trim()}";
+                }
+            });
 
-            SyncBackToProject(current);
-            return Task.FromResult<InspectionPlanItemDto?>(current);
+            return Task.FromResult<InspectionPlanItemDto?>(updated);
         }
     }
 
@@ -143,6 +215,11 @@ public class InMemoryInspectionService : IInspectionService
     {
         lock (SyncRoot)
         {
+            while (DeletedPlanIds.Any(x => x.Id == _nextPlanId))
+            {
+                _nextPlanId++;
+            }
+
             var item = new InspectionPlanItemDto
             {
                 Id = _nextPlanId++,
@@ -154,11 +231,15 @@ public class InMemoryInspectionService : IInspectionService
                 Inspector = (dto.Inspector ?? "未分配").Trim(),
                 PlanDate = dto.PlanDate ?? DateTime.Today,
                 ActualDate = dto.ActualDate,
+                StartedAt = null,
+                CompletedAt = null,
                 Status = (dto.Status ?? "已计划").Trim(),
                 InspectionType = (dto.InspectionType ?? "远程").Trim(),
                 Priority = (dto.Priority ?? "中").Trim(),
                 Remarks = (dto.Remarks ?? string.Empty).Trim(),
             };
+
+            item.SlaDueAt = CalculatePlanSlaDueAt(item.PlanDate);
 
             PlanCustomRows.Add(item);
             PersistCustomRows();
@@ -322,6 +403,39 @@ public class InMemoryInspectionService : IInspectionService
         SqliteTableStore.ReplaceAll(PlanDeletedIdsTable, DeletedPlanIds);
     }
 
+    private static InspectionPlanItemDto? MutatePlanLocked(long id, Action<InspectionPlanItemDto> mutate)
+    {
+        var custom = PlanCustomRows.FirstOrDefault(x => x.Id == id);
+        if (custom is not null)
+        {
+            mutate(custom);
+            PersistCustomRows();
+            return custom;
+        }
+
+        var current = BuildSeed().FirstOrDefault(x => x.Id == id);
+        if (current is null)
+        {
+            return null;
+        }
+
+        mutate(current);
+
+        var existingIndex = PlanOverrides.FindIndex(x => x.Id == id);
+        if (existingIndex >= 0)
+        {
+            PlanOverrides[existingIndex] = current;
+        }
+        else
+        {
+            PlanOverrides.Add(current);
+        }
+
+        PersistPlanOverrides();
+        SyncBackToProject(current);
+        return current;
+    }
+
     private static void ApplyPlanUpsert(InspectionPlanItemDto current, InspectionPlanUpsertDto dto)
     {
         if (dto.HospitalName is not null) current.HospitalName = dto.HospitalName.Trim();
@@ -330,7 +444,11 @@ public class InMemoryInspectionService : IInspectionService
         if (dto.HospitalLevel is not null) current.HospitalLevel = dto.HospitalLevel.Trim();
         if (dto.GroupName is not null) current.GroupName = dto.GroupName.Trim();
         if (dto.Inspector is not null) current.Inspector = dto.Inspector.Trim();
-        if (dto.PlanDate.HasValue) current.PlanDate = dto.PlanDate.Value;
+        if (dto.PlanDate.HasValue)
+        {
+            current.PlanDate = dto.PlanDate.Value;
+            current.SlaDueAt = CalculatePlanSlaDueAt(current.PlanDate);
+        }
         current.ActualDate = dto.ActualDate;
         if (dto.Status is not null) current.Status = dto.Status.Trim();
         if (dto.InspectionType is not null) current.InspectionType = dto.InspectionType.Trim();
@@ -379,6 +497,9 @@ public class InMemoryInspectionService : IInspectionService
                     Inspector = inspector,
                     PlanDate = planDate,
                     ActualDate = status == "已完成" ? planDate : null,
+                    StartedAt = status == "执行中" || status == "已完成" ? planDate.Date.AddHours(9) : null,
+                    CompletedAt = status == "已完成" ? planDate.Date.AddHours(17) : null,
+                    SlaDueAt = CalculatePlanSlaDueAt(planDate),
                     Status = status,
                     InspectionType = index % 2 == 0 ? "远程" : "现场",
                     Priority = project.OverdueDays > 90 ? "高" : project.OverdueDays > 0 ? "中" : "低",
@@ -387,27 +508,28 @@ public class InMemoryInspectionService : IInspectionService
             })
             .ToList();
 
-        if (PlanOverrides.Count == 0)
+        if (PlanOverrides.Count > 0)
         {
-            return seed;
-        }
-
-        foreach (var item in seed)
-        {
-            var overrideItem = PlanOverrides.FirstOrDefault(x => x.Id == item.Id);
-            if (overrideItem is null)
+            foreach (var item in seed)
             {
-                continue;
-            }
+                var overrideItem = PlanOverrides.FirstOrDefault(x => x.Id == item.Id);
+                if (overrideItem is null)
+                {
+                    continue;
+                }
 
-            item.GroupName = overrideItem.GroupName;
-            item.Inspector = overrideItem.Inspector;
-            item.PlanDate = overrideItem.PlanDate;
-            item.ActualDate = overrideItem.ActualDate;
-            item.Status = overrideItem.Status;
-            item.InspectionType = overrideItem.InspectionType;
-            item.Priority = overrideItem.Priority;
-            item.Remarks = overrideItem.Remarks;
+                item.GroupName = overrideItem.GroupName;
+                item.Inspector = overrideItem.Inspector;
+                item.PlanDate = overrideItem.PlanDate;
+                item.ActualDate = overrideItem.ActualDate;
+                item.StartedAt = overrideItem.StartedAt;
+                item.CompletedAt = overrideItem.CompletedAt;
+                item.SlaDueAt = overrideItem.SlaDueAt;
+                item.Status = overrideItem.Status;
+                item.InspectionType = overrideItem.InspectionType;
+                item.Priority = overrideItem.Priority;
+                item.Remarks = overrideItem.Remarks;
+            }
         }
 
         if (PlanCustomRows.Count > 0)
@@ -423,6 +545,9 @@ public class InMemoryInspectionService : IInspectionService
                 Inspector = x.Inspector,
                 PlanDate = x.PlanDate,
                 ActualDate = x.ActualDate,
+                StartedAt = x.StartedAt,
+                CompletedAt = x.CompletedAt,
+                SlaDueAt = x.SlaDueAt,
                 Status = x.Status,
                 InspectionType = x.InspectionType,
                 Priority = x.Priority,

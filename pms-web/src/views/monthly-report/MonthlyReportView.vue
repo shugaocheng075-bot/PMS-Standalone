@@ -5,7 +5,7 @@
         <h2 class="page-title">月度报告</h2>
         <div class="page-subtitle">按医院与月份管理服务月报</div>
       </div>
-      <el-button v-if="canManage" type="primary" @click="onOpenCreate">新增月报</el-button>
+      <el-button v-if="canManage" type="primary" @click="onOpenCreate" icon="Plus">新增月报</el-button>
     </div>
 
     <AppFilterCard>
@@ -32,12 +32,13 @@
             <el-option label="草稿" value="draft" />
             <el-option label="已提交" value="submitted" />
             <el-option label="已审核" value="approved" />
+            <el-option label="已驳回" value="rejected" />
           </el-select>
         </el-form-item>
         <el-form-item label="提交人"><el-input v-model="query.submittedBy" clearable @keyup.enter="onSearch" /></el-form-item>
         <el-form-item class="filter-actions">
-          <el-button type="primary" @click="onSearch">查询</el-button>
-          <el-button @click="onReset">重置</el-button>
+          <el-button type="primary" @click="onSearch" icon="Search">查询</el-button>
+          <el-button @click="onReset" icon="Refresh">重置</el-button>
         </el-form-item>
       </el-form>
     </AppFilterCard>
@@ -57,22 +58,48 @@
         <el-table-column prop="updatedAt" label="更新时间" width="170">
           <template #default="scope">{{ formatTime(scope.row.updatedAt) }}</template>
         </el-table-column>
-        <el-table-column label="操作" width="150" fixed="right">
+        <el-table-column label="操作" width="280" fixed="right">
           <template #default="scope">
-            <el-button
-              type="primary"
-              link
-              :disabled="submitLoading || deletingId === scope.row.id"
-              @click="onOpenEdit(scope.row)"
-            >{{ canManage ? '编辑' : '查看' }}</el-button>
-            <el-button
-              v-if="canManage"
-              type="danger"
-              link
-              :loading="deletingId === scope.row.id"
-              :disabled="submitLoading || deletingId === scope.row.id"
-              @click="onDelete(scope.row)"
-            >删除</el-button>
+            <div class="table-action-group">
+              <el-button
+                type="primary"
+                link
+                :disabled="submitLoading || deletingId === scope.row.id || !!workflowLoadingKey"
+                @click="onOpenEdit(scope.row)"
+               icon="Edit">{{ canEditReport(scope.row) ? '编辑' : '查看' }}</el-button>
+              <el-button
+                v-if="canSubmitReport(scope.row)"
+                type="warning"
+                link
+                :loading="isWorkflowLoading(scope.row.id, 'submit')"
+                :disabled="submitLoading || deletingId === scope.row.id || !!workflowLoadingKey"
+                @click="onSubmitForApproval(scope.row)"
+               icon="Upload">提交</el-button>
+              <el-button
+                v-if="canApproveReport(scope.row)"
+                type="success"
+                link
+                :loading="isWorkflowLoading(scope.row.id, 'approve')"
+                :disabled="submitLoading || deletingId === scope.row.id || !!workflowLoadingKey"
+                @click="onApproveReport(scope.row)"
+               icon="Check">通过</el-button>
+              <el-button
+                v-if="canRejectReport(scope.row)"
+                type="danger"
+                link
+                :loading="isWorkflowLoading(scope.row.id, 'reject')"
+                :disabled="submitLoading || deletingId === scope.row.id || !!workflowLoadingKey"
+                @click="onRejectReport(scope.row)"
+               icon="Close">驳回</el-button>
+              <el-button
+                v-if="canDeleteReport(scope.row)"
+                type="danger"
+                link
+                :loading="deletingId === scope.row.id"
+                :disabled="submitLoading || deletingId === scope.row.id || !!workflowLoadingKey"
+                @click="onDelete(scope.row)"
+               icon="Delete">删除</el-button>
+            </div>
           </template>
         </el-table-column>
       </el-table>
@@ -90,8 +117,36 @@
       </div>
     </AppTableCard>
 
-    <AppFormDialog v-model="dialogVisible" :title="editingId ? '编辑月报' : '新增月报'" width="640px">
-      <el-form ref="formRef" :model="form" :rules="formRules" label-width="90px" :disabled="!canManage && !!editingId">
+    <AppFormDialog v-model="dialogVisible" :title="dialogTitle" width="640px">
+      <div v-if="currentItem" class="report-workflow-panel">
+        <div class="report-workflow-head">
+          <div>
+            <div class="report-workflow-title">流程信息</div>
+            <div class="report-workflow-subtitle">月报状态切换改为 submit / approve / reject 动作流，普通编辑不再直接改状态。</div>
+          </div>
+          <el-tag :type="statusTag(currentItem.status)">{{ statusLabel(currentItem.status) }}</el-tag>
+        </div>
+        <div class="report-workflow-grid">
+          <div class="report-workflow-item">
+            <span class="report-workflow-label">提交人</span>
+            <span class="report-workflow-value">{{ currentItem.submittedBy || '-' }}</span>
+          </div>
+          <div class="report-workflow-item">
+            <span class="report-workflow-label">审核人</span>
+            <span class="report-workflow-value">{{ currentItem.approvedBy || '-' }}</span>
+          </div>
+          <div class="report-workflow-item">
+            <span class="report-workflow-label">审核时间</span>
+            <span class="report-workflow-value">{{ formatTime(currentItem.approvedAt || '') }}</span>
+          </div>
+          <div class="report-workflow-item">
+            <span class="report-workflow-label">驳回原因</span>
+            <span class="report-workflow-value">{{ currentItem.rejectionReason || '-' }}</span>
+          </div>
+        </div>
+      </div>
+
+      <el-form ref="formRef" :model="form" :rules="formRules" label-width="90px" :disabled="isFormReadOnly">
         <el-form-item label="医院名称" required>
           <el-select v-model="form.hospitalName" filterable placeholder="请选择医院" style="width: 100%">
             <el-option v-for="name in accessibleHospitals" :key="name" :label="name" :value="name" />
@@ -106,17 +161,31 @@
         <el-form-item label="内容">
           <el-input v-model="form.content" type="textarea" :rows="7" placeholder="请输入月报内容" />
         </el-form-item>
-        <el-form-item label="状态">
-          <el-select v-model="form.status" style="width: 160px">
-            <el-option label="草稿" value="draft" />
-            <el-option label="已提交" value="submitted" />
-            <el-option label="已审核" value="approved" />
-          </el-select>
-        </el-form-item>
       </el-form>
       <template #footer>
-        <el-button :disabled="submitLoading" @click="dialogVisible = false">{{ canManage ? '取消' : '关闭' }}</el-button>
-        <el-button v-if="canManage" type="primary" :loading="submitLoading" :disabled="submitLoading" @click="onSubmit">确定</el-button>
+        <el-button :disabled="submitLoading || !!workflowLoadingKey" @click="dialogVisible = false" icon="Close">{{ canManage ? '取消' : '关闭' }}</el-button>
+        <el-button
+          v-if="canSubmitCurrentReport"
+          type="warning"
+          :loading="isWorkflowLoading(editingId || 0, 'submit')"
+          :disabled="submitLoading || !!workflowLoadingKey"
+          @click="onSubmitForApproval()"
+         icon="Upload">保存并提交</el-button>
+        <el-button
+          v-if="canApproveCurrentReport"
+          type="success"
+          :loading="isWorkflowLoading(editingId || 0, 'approve')"
+          :disabled="submitLoading || !!workflowLoadingKey"
+          @click="onApproveReport()"
+         icon="Check">审核通过</el-button>
+        <el-button
+          v-if="canRejectCurrentReport"
+          type="danger"
+          :loading="isWorkflowLoading(editingId || 0, 'reject')"
+          :disabled="submitLoading || !!workflowLoadingKey"
+          @click="onRejectReport()"
+         icon="Close">驳回</el-button>
+        <el-button v-if="canSaveForm" type="primary" :loading="submitLoading" :disabled="submitLoading || !!workflowLoadingKey" @click="onSubmit">{{ editingId ? '保存修改' : '创建月报' }}</el-button>
       </template>
     </AppFormDialog>
   </div>
@@ -131,6 +200,9 @@ import {
   fetchMonthlyReports,
   createMonthlyReport,
   updateMonthlyReport,
+  submitMonthlyReport,
+  approveMonthlyReport,
+  rejectMonthlyReport,
   deleteMonthlyReport,
 } from '../../api/modules/monthly-report'
 import { fetchDataScope } from '../../api/modules/access'
@@ -155,6 +227,7 @@ const submitLoading = ref(false)
 const dialogVisible = ref(false)
 const editingId = ref<number | null>(null)
 const deletingId = ref<number | null>(null)
+const workflowLoadingKey = ref('')
 const total = ref(0)
 const tableData = ref<MonthlyReportItem[]>([])
 const accessibleHospitals = ref<string[]>([])
@@ -177,8 +250,101 @@ const form = reactive<MonthlyReportUpsert>({
   title: '',
   content: '',
   attachments: [],
-  status: 'draft',
 })
+
+const canReview = computed(() => {
+  if (access.accessProfile.value?.isAdmin) {
+    return true
+  }
+
+  if (access.accessProfile.value?.dataScope?.scopeType === 'all') {
+    return true
+  }
+
+  return access.isManager()
+})
+
+const currentItem = computed<MonthlyReportItem | null>(() => {
+  if (!editingId.value) {
+    return null
+  }
+
+  return tableData.value.find((item) => item.id === editingId.value) ?? null
+})
+
+const dialogTitle = computed(() => {
+  if (!editingId.value) {
+    return '新增月报'
+  }
+
+  return canEditCurrentReport.value ? '编辑月报' : '月报详情'
+})
+
+const isDraftOrRejected = (status: string) => status === 'draft' || status === 'rejected'
+
+const canEditReport = (row: MonthlyReportItem) => canManage.value && isDraftOrRejected(row.status)
+
+const canDeleteReport = (row: MonthlyReportItem) => canEditReport(row)
+
+const canSubmitReport = (row: MonthlyReportItem) => canManage.value && isDraftOrRejected(row.status)
+
+const canApproveReport = (row: MonthlyReportItem) => canReview.value && row.status === 'submitted'
+
+const canRejectReport = (row: MonthlyReportItem) => canReview.value && row.status === 'submitted'
+
+const canEditCurrentReport = computed(() => {
+  if (!currentItem.value) {
+    return canManage.value
+  }
+
+  return canEditReport(currentItem.value)
+})
+
+const canSubmitCurrentReport = computed(() => {
+  if (!currentItem.value) {
+    return false
+  }
+
+  return canSubmitReport(currentItem.value)
+})
+
+const canApproveCurrentReport = computed(() => {
+  if (!currentItem.value) {
+    return false
+  }
+
+  return canApproveReport(currentItem.value)
+})
+
+const canRejectCurrentReport = computed(() => {
+  if (!currentItem.value) {
+    return false
+  }
+
+  return canRejectReport(currentItem.value)
+})
+
+const canSaveForm = computed(() => canManage.value && (!editingId.value || canEditCurrentReport.value))
+
+const isFormReadOnly = computed(() => {
+  if (!editingId.value) {
+    return !canManage.value
+  }
+
+  return !canEditCurrentReport.value
+})
+
+type MonthlyReportWorkflowAction = 'submit' | 'approve' | 'reject'
+
+const buildWorkflowKey = (id: number, action: MonthlyReportWorkflowAction) => `${id}:${action}`
+
+const isWorkflowLoading = (id: number, action: MonthlyReportWorkflowAction) => {
+  if (!id) {
+    return false
+  }
+
+  return workflowLoadingKey.value === buildWorkflowKey(id, action)
+}
 
 const readRouteQueryValue = (value: unknown): string => {
   if (typeof value === 'string') {
@@ -257,6 +423,7 @@ const statusLabel = (status: string) => {
   if (status === 'draft') return '草稿'
   if (status === 'submitted') return '已提交'
   if (status === 'approved') return '已审核'
+  if (status === 'rejected') return '已驳回'
   return status
 }
 
@@ -333,7 +500,17 @@ const resetForm = () => {
     title: '',
     content: '',
     attachments: [],
-    status: 'draft',
+  })
+}
+
+const applyItemToForm = (row: MonthlyReportItem) => {
+  editingId.value = row.id
+  Object.assign(form, {
+    hospitalName: row.hospitalName,
+    reportMonth: row.reportMonth,
+    title: row.title,
+    content: row.content,
+    attachments: [...row.attachments],
   })
 }
 
@@ -344,15 +521,7 @@ const openCreateDialog = () => {
 }
 
 const openEditDialog = (row: MonthlyReportItem) => {
-  editingId.value = row.id
-  Object.assign(form, {
-    hospitalName: row.hospitalName,
-    reportMonth: row.reportMonth,
-    title: row.title,
-    content: row.content,
-    attachments: [...row.attachments],
-    status: row.status,
-  })
+  applyItemToForm(row)
   dialogVisible.value = true
 }
 
@@ -394,29 +563,105 @@ const syncDialogFromRoute = () => {
   }
 }
 
+const syncEditingFormFromTable = () => {
+  if (!editingId.value) {
+    return
+  }
+
+  const matched = tableData.value.find((item) => item.id === editingId.value)
+  if (!matched) {
+    return
+  }
+
+  applyItemToForm(matched)
+}
+
+const validateForm = async () => {
+  const valid = await formRef.value?.validate().then(() => true).catch(() => false)
+  return Boolean(valid)
+}
+
+const persistForm = async () => {
+  const valid = await validateForm()
+  if (!valid) {
+    return null
+  }
+
+  if (editingId.value) {
+    const res = await updateMonthlyReport(editingId.value, { ...form })
+    return res.data
+  }
+
+  const res = await createMonthlyReport({ ...form })
+  return res.data
+}
+
+const refreshAfterMutation = async () => {
+  notifyDataChanged('monthly-report')
+  await loadData()
+  syncEditingFormFromTable()
+}
+
+const runWorkflowAction = async (id: number, action: MonthlyReportWorkflowAction, rejectionReason = '') => {
+  workflowLoadingKey.value = buildWorkflowKey(id, action)
+  try {
+    if (action === 'submit') {
+      await submitMonthlyReport(id)
+      ElMessage.success('已提交审批')
+    } else if (action === 'approve') {
+      await approveMonthlyReport(id)
+      ElMessage.success('已审核通过')
+    } else {
+      await rejectMonthlyReport(id, { rejectionReason })
+      ElMessage.success('已驳回月报')
+    }
+
+    await refreshAfterMutation()
+  } catch (error) {
+    const fallback = action === 'submit'
+      ? '提交审批失败，请稍后重试'
+      : action === 'approve'
+        ? '审核通过失败，请稍后重试'
+        : '驳回月报失败，请稍后重试'
+    ElMessage.error(getErrorMessage(error, fallback))
+  } finally {
+    workflowLoadingKey.value = ''
+  }
+}
+
+const requestRejectReason = async () => {
+  try {
+    const { value } = await ElMessageBox.prompt('请输入驳回原因（可选）', '驳回月报', {
+      confirmButtonText: '确认驳回',
+      cancelButtonText: '取消',
+      inputType: 'textarea',
+      inputPlaceholder: '补充修改建议，便于提交人修订后重新提交',
+      inputValue: currentItem.value?.rejectionReason ?? '',
+    })
+
+    return value.trim()
+  } catch {
+    return null
+  }
+}
+
 const onSubmit = async () => {
   if (!canManage.value) {
     dialogVisible.value = false
     return
   }
 
-  const valid = await formRef.value?.validate().catch(() => false)
-  if (!valid) {
-    return
-  }
-
+  const isEditing = Boolean(editingId.value)
   submitLoading.value = true
   try {
-    if (editingId.value) {
-      await updateMonthlyReport(editingId.value, { ...form })
-      ElMessage.success('更新成功')
-    } else {
-      await createMonthlyReport({ ...form })
-      ElMessage.success('创建成功')
+    const item = await persistForm()
+    if (!item) {
+      return
     }
+
+    ElMessage.success(isEditing ? '更新成功' : '创建成功')
     dialogVisible.value = false
-    notifyDataChanged('monthly-report')
-    await loadData()
+    await refreshAfterMutation()
   } catch (error) {
     ElMessage.error(getErrorMessage(error, '保存失败，请稍后重试'))
   } finally {
@@ -424,7 +669,64 @@ const onSubmit = async () => {
   }
 }
 
+const onSubmitForApproval = async (row?: MonthlyReportItem) => {
+  if (row) {
+    if (!canSubmitReport(row)) {
+      return
+    }
+
+    await runWorkflowAction(row.id, 'submit')
+    return
+  }
+
+  if (!editingId.value || !canSubmitCurrentReport.value) {
+    return
+  }
+
+  submitLoading.value = true
+  try {
+    const item = await persistForm()
+    if (!item) {
+      return
+    }
+
+    await runWorkflowAction(item.id, 'submit')
+  } catch (error) {
+    ElMessage.error(getErrorMessage(error, '提交审批失败，请稍后重试'))
+  } finally {
+    submitLoading.value = false
+  }
+}
+
+const onApproveReport = async (row?: MonthlyReportItem) => {
+  const target = row ?? currentItem.value
+  if (!target || !canApproveReport(target)) {
+    return
+  }
+
+  await runWorkflowAction(target.id, 'approve')
+}
+
+const onRejectReport = async (row?: MonthlyReportItem) => {
+  const target = row ?? currentItem.value
+  if (!target || !canRejectReport(target)) {
+    return
+  }
+
+  const rejectionReason = await requestRejectReason()
+  if (rejectionReason === null) {
+    return
+  }
+
+  await runWorkflowAction(target.id, 'reject', rejectionReason)
+}
+
 const onDelete = async (row: MonthlyReportItem) => {
+  if (!canDeleteReport(row)) {
+    ElMessage.warning('仅草稿或已驳回的月报可以删除')
+    return
+  }
+
   try {
     await ElMessageBox.confirm(`确认删除《${row.title}》吗？`, '删除确认', {
       type: 'warning',
@@ -461,6 +763,8 @@ watch(() => route.fullPath, () => {
 onMounted(async () => {
   filterPersist.restore()
 
+  await access.ensureAccessProfileLoaded()
+
   await runInitialLoad({
     tasks: [loadScope, loadData],
   })
@@ -470,4 +774,56 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+.report-workflow-panel {
+  margin-bottom: 18px;
+  padding: 16px 18px;
+  border-radius: 16px;
+  background: var(--el-fill-color-light);
+  border: 1px solid rgba(15, 23, 42, 0.06);
+}
+
+.report-workflow-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.report-workflow-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+}
+
+.report-workflow-subtitle {
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--el-text-color-secondary);
+}
+
+.report-workflow-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+}
+
+.report-workflow-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.report-workflow-label {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+
+.report-workflow-value {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+  word-break: break-word;
+}
 </style>

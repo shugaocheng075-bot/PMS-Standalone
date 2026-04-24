@@ -94,7 +94,7 @@ public class InMemoryMonthlyReportService : IMonthlyReportService
                 NextMonthAnnualReportPlanJson = dto.NextMonthAnnualReportPlanJson ?? "",
                 NextMonthOtherPlanJson = dto.NextMonthOtherPlanJson ?? "",
                 Attachments = dto.Attachments ?? [],
-                Status = string.IsNullOrWhiteSpace(dto.Status) ? "draft" : dto.Status.Trim(),
+                Status = "draft",
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow
             };
@@ -112,6 +112,8 @@ public class InMemoryMonthlyReportService : IMonthlyReportService
         {
             var entity = Records.FirstOrDefault(x => x.Id == id);
             if (entity is null) return Task.FromResult<MonthlyReportItemDto?>(null);
+            if (entity.Status != "draft" && entity.Status != "rejected")
+                throw new InvalidOperationException($"仅草稿或已驳回的月报可以编辑，当前状态：{entity.Status}");
 
             entity.HospitalName = dto.HospitalName.Trim();
             entity.ReportMonth = dto.ReportMonth.Trim();
@@ -134,7 +136,6 @@ public class InMemoryMonthlyReportService : IMonthlyReportService
             if (dto.NextMonthAnnualReportPlanJson != null) entity.NextMonthAnnualReportPlanJson = dto.NextMonthAnnualReportPlanJson;
             if (dto.NextMonthOtherPlanJson != null) entity.NextMonthOtherPlanJson = dto.NextMonthOtherPlanJson;
             entity.Attachments = dto.Attachments ?? entity.Attachments;
-            entity.Status = string.IsNullOrWhiteSpace(dto.Status) ? entity.Status : dto.Status.Trim();
             entity.UpdatedAt = DateTime.UtcNow;
 
             SqliteTableStore.Update(TableName, entity, entity.Id);
@@ -152,6 +153,8 @@ public class InMemoryMonthlyReportService : IMonthlyReportService
                 throw new InvalidOperationException($"仅草稿或已驳回的月报可以提交，当前状态：{entity.Status}");
 
             entity.Status = "submitted";
+            entity.ApprovedBy = string.Empty;
+            entity.ApprovedAt = null;
             entity.RejectionReason = string.Empty;
             entity.UpdatedAt = DateTime.UtcNow;
             SqliteTableStore.Update(TableName, entity, entity.Id);
@@ -171,6 +174,7 @@ public class InMemoryMonthlyReportService : IMonthlyReportService
             entity.Status = "approved";
             entity.ApprovedBy = approvedBy;
             entity.ApprovedAt = DateTime.UtcNow;
+            entity.RejectionReason = string.Empty;
             entity.UpdatedAt = DateTime.UtcNow;
             SqliteTableStore.Update(TableName, entity, entity.Id);
             return Task.FromResult<MonthlyReportItemDto?>(MapToDto(entity));
@@ -188,6 +192,7 @@ public class InMemoryMonthlyReportService : IMonthlyReportService
 
             entity.Status = "rejected";
             entity.ApprovedBy = rejectedBy;
+            entity.ApprovedAt = DateTime.UtcNow;
             entity.RejectionReason = reason?.Trim() ?? string.Empty;
             entity.UpdatedAt = DateTime.UtcNow;
             SqliteTableStore.Update(TableName, entity, entity.Id);

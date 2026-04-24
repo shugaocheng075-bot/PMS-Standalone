@@ -13,4 +13,6 @@ public class HandoverItemDto
     public string Stage { get; set; } = string.Empty;
     public string Type { get; set; } = string.Empty;
     public DateTime? EmailSentDate { get; set; }
+    public DateTime? StartedAt { get; set; }
+    public DateTime? CompletedAt { get; set; }
 }

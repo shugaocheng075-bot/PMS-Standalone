@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using PMS.API.Middleware;
 using PMS.API.Models;
+using PMS.Application.Contracts.AuditLog;
 using PMS.Application.Contracts;
 using PMS.Application.Contracts.Access;
 using PMS.Application.Contracts.Notification;
@@ -18,7 +19,8 @@ public class RepairRecordsController(
     IRepairRecordService repairRecordService,
     IProjectQueryService projectQueryService,
     IAccessControlService accessControlService,
-    INotificationService notificationService) : ControllerBase
+    INotificationService notificationService,
+    IAuditLogService auditLogService) : ControllerBase
 {
     [HttpGet("summary")]
     public async Task<IActionResult> GetSummary(CancellationToken cancellationToken)
@@ -190,9 +192,111 @@ public class RepairRecordsController(
         }
 
         var item = await repairRecordService.AssignAsync(id, dto.AssigneeName, cancellationToken);
+        if (item is not null)
+        {
+            var operatorName = await GetOperatorNameAsync(personnelId, cancellationToken);
+            await auditLogService.LogAsync(operatorName, personnelId, "分派报修", "repair", $"#{item.Id}", $"处理人：{item.AssigneeName}", GetRequestIp(), cancellationToken);
+        }
         return item is null
             ? NotFound(ApiResponse<object>.Success(null))
             : Ok(ApiResponse<RepairRecordItemDto>.Success(item));
+    }
+
+    [HttpPatch("{id:long}/accept")]
+    public async Task<IActionResult> Accept(long id, [FromBody] RepairRecordAcceptDto? dto, CancellationToken cancellationToken)
+    {
+        var personnelId = HttpContext.GetCurrentPersonnelId();
+        var dataScope = await accessControlService.GetDataScopeAsync(personnelId);
+        var existing = await repairRecordService.GetByIdAsync(id, cancellationToken);
+        if (existing is null) return NotFound(ApiResponse<object>.Success(null));
+
+        if (!await CanOperateInOwnProjectsAsync(dataScope, existing.HospitalName, cancellationToken))
+        {
+            return StatusCode(403, new { code = 403, message = "无权操作该报修记录" });
+        }
+
+        var operatorName = await GetOperatorNameAsync(personnelId, cancellationToken);
+        var assigneeName = string.IsNullOrWhiteSpace(dto?.AssigneeName) ? operatorName : dto!.AssigneeName!.Trim();
+
+        try
+        {
+            var item = await repairRecordService.AcceptAsync(id, assigneeName, cancellationToken);
+            if (item is null)
+            {
+                return NotFound(ApiResponse<object>.Success(null));
+            }
+
+            await auditLogService.LogAsync(operatorName, personnelId, "签收报修", "repair", $"#{item.Id}", $"处理人：{item.AssigneeName}", GetRequestIp(), cancellationToken);
+            return Ok(ApiResponse<RepairRecordItemDto>.Success(item));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { code = 400, message = ex.Message });
+        }
+    }
+
+    [HttpPatch("{id:long}/resolve")]
+    public async Task<IActionResult> Resolve(long id, [FromBody] RepairRecordResolveDto dto, CancellationToken cancellationToken)
+    {
+        var personnelId = HttpContext.GetCurrentPersonnelId();
+        var dataScope = await accessControlService.GetDataScopeAsync(personnelId);
+        var existing = await repairRecordService.GetByIdAsync(id, cancellationToken);
+        if (existing is null) return NotFound(ApiResponse<object>.Success(null));
+
+        if (!await CanOperateInOwnProjectsAsync(dataScope, existing.HospitalName, cancellationToken))
+        {
+            return StatusCode(403, new { code = 403, message = "无权操作该报修记录" });
+        }
+
+        var operatorName = await GetOperatorNameAsync(personnelId, cancellationToken);
+
+        try
+        {
+            var item = await repairRecordService.ResolveAsync(id, dto.Resolution, cancellationToken);
+            if (item is null)
+            {
+                return NotFound(ApiResponse<object>.Success(null));
+            }
+
+            await auditLogService.LogAsync(operatorName, personnelId, "完成报修", "repair", $"#{item.Id}", dto.Resolution.Trim(), GetRequestIp(), cancellationToken);
+            return Ok(ApiResponse<RepairRecordItemDto>.Success(item));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { code = 400, message = ex.Message });
+        }
+    }
+
+    [HttpPatch("{id:long}/reopen")]
+    public async Task<IActionResult> Reopen(long id, [FromBody] RepairRecordReopenDto? dto, CancellationToken cancellationToken)
+    {
+        var personnelId = HttpContext.GetCurrentPersonnelId();
+        var dataScope = await accessControlService.GetDataScopeAsync(personnelId);
+        var existing = await repairRecordService.GetByIdAsync(id, cancellationToken);
+        if (existing is null) return NotFound(ApiResponse<object>.Success(null));
+
+        if (!await CanOperateInOwnProjectsAsync(dataScope, existing.HospitalName, cancellationToken))
+        {
+            return StatusCode(403, new { code = 403, message = "无权操作该报修记录" });
+        }
+
+        var operatorName = await GetOperatorNameAsync(personnelId, cancellationToken);
+
+        try
+        {
+            var item = await repairRecordService.ReopenAsync(id, dto?.Reason, cancellationToken);
+            if (item is null)
+            {
+                return NotFound(ApiResponse<object>.Success(null));
+            }
+
+            await auditLogService.LogAsync(operatorName, personnelId, "重开报修", "repair", $"#{item.Id}", dto?.Reason?.Trim() ?? string.Empty, GetRequestIp(), cancellationToken);
+            return Ok(ApiResponse<RepairRecordItemDto>.Success(item));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { code = 400, message = ex.Message });
+        }
     }
 
     [HttpDelete("{id:long}")]
@@ -317,6 +421,17 @@ public class RepairRecordsController(
             .Select(x => x.HospitalName)
             .Where(x => !string.IsNullOrWhiteSpace(x))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
+    }
+
+    private async Task<string> GetOperatorNameAsync(int personnelId, CancellationToken cancellationToken)
+    {
+        var profile = await accessControlService.GetUserProfileAsync(personnelId, cancellationToken);
+        return profile?.PersonnelName ?? "未知";
+    }
+
+    private string GetRequestIp()
+    {
+        return HttpContext.Connection.RemoteIpAddress?.ToString() ?? string.Empty;
     }
 
     private static string EscapeCsv(string value)

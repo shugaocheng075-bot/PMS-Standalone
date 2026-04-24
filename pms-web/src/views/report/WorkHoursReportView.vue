@@ -1,7 +1,61 @@
 <template>
   <div ref="pageRef" class="page-shell report-page">
+    <div class="report-hero">
+      <div class="report-hero-main">
+        <div class="report-hero-kicker-row">
+          <span class="report-hero-kicker">WorkHours Reporting Desk</span>
+          <span class="report-hero-badge">{{ selectedMonth }} 月</span>
+        </div>
+        <h2 class="report-hero-title">工时报表工作台</h2>
+        <div class="report-hero-subtitle">
+          围绕当前月份集中处理工时明细、导入、重算和导出动作，先在首屏确认记录规模、覆盖范围和投入强度，再进入表格逐行调整异常数据。
+        </div>
+
+        <div class="report-hero-signals">
+          <div v-for="item in heroSignals" :key="item.label" class="report-signal-card">
+            <span class="report-signal-label">{{ item.label }}</span>
+            <strong class="report-signal-value">{{ item.value }}</strong>
+            <span class="report-signal-note">{{ item.note }}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="report-hero-side">
+        <div class="report-control-card">
+          <div class="report-control-copy">
+            <span class="report-control-title">月度控制</span>
+            <span class="report-control-note">当前月份共有 {{ rows.length }} 条明细，可刷新、重算或新增行继续修正。</span>
+          </div>
+          <div class="report-control-actions">
+            <el-date-picker v-model="selectedMonth" type="month" placeholder="选择月份" value-format="YYYY-MM" style="width: 160px" @change="onMonthChange" />
+            <el-button :loading="loading" @click="loadReport" icon="Refresh">刷新</el-button>
+            <el-button @click="onAddRow" icon="Plus">新增行</el-button>
+          </div>
+        </div>
+
+        <div class="report-quick-grid">
+          <button type="button" class="report-quick-action" @click="onRegenerate">
+            <span class="report-quick-title">重新计算工时</span>
+            <span class="report-quick-note">按当前项目数据重建本月工时报表</span>
+          </button>
+          <button type="button" class="report-quick-action" @click="triggerImport">
+            <span class="report-quick-title">导入 Excel</span>
+            <span class="report-quick-note">覆盖导入当月工时明细并回填列表</span>
+          </button>
+          <button type="button" class="report-quick-action" @click="onExportExcel" :disabled="rows.length === 0">
+            <span class="report-quick-title">导出 Excel</span>
+            <span class="report-quick-note">输出当前月份工时报表用于归档与分发</span>
+          </button>
+          <button type="button" class="report-quick-action" @click="onPrint" :disabled="rows.length === 0">
+            <span class="report-quick-title">打印报表</span>
+            <span class="report-quick-note">按当前页面内容快速生成打印视图</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
     <ProTable
-      title="明细数据"
+      title="工时明细数据"
       :data="rows"
       :loading="loading"
       stripe
@@ -11,12 +65,12 @@
     >
       <template #toolbar>
         <el-date-picker v-model="selectedMonth" type="month" placeholder="选择月份" value-format="YYYY-MM" style="width: 160px" @change="onMonthChange" />
-        <el-button :loading="loading" @click="loadReport">刷新</el-button>
+        <el-button :loading="loading" @click="loadReport" icon="Refresh">刷新</el-button>
         <el-button type="warning" :loading="regenerating" @click="onRegenerate">重新计算工时</el-button>
-        <el-button type="success" @click="triggerImport" :loading="importing">导入 Excel</el-button>
-        <el-button type="primary" @click="onExportExcel" :disabled="rows.length === 0">导出 Excel</el-button>
+        <el-button type="success" @click="triggerImport" :loading="importing" icon="Upload">导入 Excel</el-button>
+        <el-button type="primary" @click="onExportExcel" :disabled="rows.length === 0" icon="Download">导出 Excel</el-button>
         <el-button @click="onPrint" :disabled="rows.length === 0">打印</el-button>
-        <el-button @click="onAddRow">新增行</el-button>
+        <el-button @click="onAddRow" icon="Plus">新增行</el-button>
         <input ref="fileInputRef" type="file" accept=".xlsx,.xls" style="display:none" @change="onFileSelected" />
       </template>
         <el-table-column prop="opportunityNumber" label="机会号" width="140" show-overflow-tooltip>
@@ -109,15 +163,19 @@
             <span v-else>{{ row.remarks }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="150" fixed="right">
+        <el-table-column label="操作" width="180" fixed="right">
           <template #default="{ row }">
             <template v-if="editingId === row.id">
-              <el-button type="primary" link size="small" :loading="saving" @click.stop="onSaveRow">保存</el-button>
-              <el-button link size="small" @click.stop="onCancelEdit">取消</el-button>
+              <div class="table-action-group">
+                <el-button type="primary" link size="small" :loading="saving" @click.stop="onSaveRow" icon="Check">保存</el-button>
+                <el-button link size="small" @click.stop="onCancelEdit" icon="Close">取消</el-button>
+              </div>
             </template>
             <template v-else>
-              <el-button type="primary" link size="small" @click.stop="onEditRow(row)">编辑</el-button>
-              <el-button type="danger" link size="small" @click.stop="onDeleteRow(row)">删除</el-button>
+              <div class="table-action-group">
+                <el-button type="primary" link size="small" @click.stop="onEditRow(row)" icon="Edit">编辑</el-button>
+                <el-button type="danger" link size="small" @click.stop="onDeleteRow(row)" icon="Delete">删除</el-button>
+              </div>
             </template>
           </template>
         </el-table-column>
@@ -162,6 +220,44 @@ const now = new Date()
 const selectedMonth = ref(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`)
 
 const totalManDays = computed(() => rows.value.reduce((sum, r) => sum + (r.workHoursManDays || 0), 0))
+
+const uniqueHospitalCount = computed(() => new Set(rows.value.map((row) => row.hospitalName).filter(Boolean)).size)
+const uniqueProductCount = computed(() => new Set(rows.value.map((row) => row.productName).filter(Boolean)).size)
+const uniquePersonnelCount = computed(() => {
+  const names = new Set<string>()
+
+  rows.value.forEach((row) => {
+    ;[row.personnel1, row.personnel2, row.personnel3, row.personnel4, row.personnel5]
+      .map((item) => item?.trim())
+      .filter((item): item is string => Boolean(item))
+      .forEach((item) => names.add(item))
+  })
+
+  return names.size
+})
+
+const heroSignals = computed(() => [
+  {
+    label: '本月记录',
+    value: String(rows.value.length),
+    note: '当前月份工时报表中的全部明细行数',
+  },
+  {
+    label: '总工时',
+    value: `${totalManDays.value} 人天`,
+    note: '按照当前表内数据聚合的累计投入强度',
+  },
+  {
+    label: '覆盖医院',
+    value: String(uniqueHospitalCount.value),
+    note: '本月产生工时记录的医院数量',
+  },
+  {
+    label: '参与人员',
+    value: String(uniquePersonnelCount.value),
+    note: `涉及 ${uniqueProductCount.value} 个产品方向的实施记录`,
+  },
+])
 
 const editForm = reactive<WorkHoursReportRowUpdatePayload>({
   opportunityNumber: '',
@@ -398,7 +494,194 @@ onMounted(() => { loadReport() })
 .report-page {
   display: flex;
   flex-direction: column;
+  gap: 18px;
+}
+
+.report-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.18fr) minmax(320px, 0.82fr);
+  gap: 16px;
+  padding: 24px;
+  border-radius: 28px;
+  color: #ffffff;
+  background:
+    radial-gradient(circle at 12% 18%, rgba(150, 212, 255, 0.18), transparent 22%),
+    radial-gradient(circle at 100% 0, rgba(128, 223, 202, 0.16), transparent 24%),
+    linear-gradient(145deg, #21455f 0%, #26607c 50%, #2f7f70 100%);
+  box-shadow: 0 26px 44px rgba(28, 67, 83, 0.18);
+}
+
+.report-hero-main {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+
+.report-hero-kicker-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.report-hero-kicker,
+.report-hero-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 7px 12px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.report-hero-kicker {
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.08);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.report-hero-badge {
+  background: rgba(255, 255, 255, 0.14);
+  color: #effbff;
+}
+
+.report-hero-title {
+  margin: 0;
+  font-size: 34px;
+  line-height: 1.12;
+  font-weight: 700;
+}
+
+.report-hero-subtitle {
+  max-width: 700px;
+  font-size: 14px;
+  line-height: 1.85;
+  color: rgba(232, 246, 248, 0.84);
+}
+
+.report-hero-signals {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
+  margin-top: 4px;
+}
+
+.report-signal-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.11), rgba(255, 255, 255, 0.05));
+}
+
+.report-signal-label {
+  font-size: 12px;
+  color: rgba(227, 245, 247, 0.76);
+}
+
+.report-signal-value {
+  font-size: 28px;
+  line-height: 1;
+  font-weight: 700;
+}
+
+.report-signal-note {
+  font-size: 12px;
+  line-height: 1.7;
+  color: rgba(229, 244, 246, 0.76);
+}
+
+.report-hero-side {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.report-control-card,
+.report-quick-action {
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 20px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.08));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+.report-control-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px;
+}
+
+.report-control-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.report-control-title {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.report-control-note {
+  font-size: 12px;
+  line-height: 1.7;
+  color: rgba(232, 244, 246, 0.74);
+}
+
+.report-control-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.report-control-actions :deep(.el-button),
+.report-control-actions :deep(.el-date-editor) {
+  min-height: 40px;
+}
+
+.report-quick-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.report-quick-action {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+  color: #ffffff;
+  text-align: left;
+  cursor: pointer;
+  transition: transform 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+}
+
+.report-quick-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.report-quick-action:not(:disabled):hover {
+  transform: translateY(-1px);
+  border-color: rgba(255, 255, 255, 0.24);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.09));
+}
+
+.report-quick-title {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.report-quick-note {
+  font-size: 12px;
+  line-height: 1.65;
+  color: rgba(232, 245, 247, 0.76);
 }
 
 .head-actions {
@@ -412,6 +695,32 @@ onMounted(() => { loadReport() })
   margin-top: 8px;
   color: #6b7280;
   font-size: 13px;
+}
+
+@media (max-width: 1280px) {
+  .report-hero {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .report-hero {
+    padding: 18px;
+  }
+
+  .report-hero-title {
+    font-size: 28px;
+  }
+
+  .report-hero-signals,
+  .report-quick-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .report-control-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
 }
 </style>
 

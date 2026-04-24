@@ -2,6 +2,9 @@ import request from '../request'
 import type { ApiResponse, PagedResult } from '../../types/project'
 import type {
   InspectionPlanItem,
+  InspectionPlanCompletePayload,
+  InspectionPlanReopenPayload,
+  InspectionPlanStartPayload,
   InspectionPlanUpsert,
   InspectionQuery,
   InspectionResult,
@@ -33,6 +36,18 @@ export function updateInspection(id: number, payload: InspectionPlanUpsert) {
 
 export function createInspection(payload: InspectionPlanUpsert) {
   return request.post<any, ApiResponse<InspectionPlanItem>>('/inspections', payload)
+}
+
+export function startInspection(id: number, payload?: InspectionPlanStartPayload) {
+  return request.patch<any, ApiResponse<InspectionPlanItem>>(`/inspections/${id}/start`, payload ?? {})
+}
+
+export function completeInspection(id: number, payload?: InspectionPlanCompletePayload) {
+  return request.patch<any, ApiResponse<InspectionPlanItem>>(`/inspections/${id}/complete`, payload ?? {})
+}
+
+export function reopenInspection(id: number, payload?: InspectionPlanReopenPayload) {
+  return request.patch<any, ApiResponse<InspectionPlanItem>>(`/inspections/${id}/reopen`, payload ?? {})
 }
 
 export function deleteInspection(id: number) {

@@ -7,6 +7,9 @@ export interface MonthlyReportItem {
   content: string
   attachments: string[]
   status: string
+  approvedBy: string
+  approvedAt: string | null
+  rejectionReason: string
   createdAt: string
   updatedAt: string
   groupName: string
@@ -33,7 +36,6 @@ export interface MonthlyReportUpsert {
   title: string
   content: string
   attachments: string[]
-  status?: string
   groupName?: string
   teamTotal?: number
   teamOnsiteJson?: string
@@ -50,6 +52,10 @@ export interface MonthlyReportUpsert {
   nextMonthInspectionPlanJson?: string
   nextMonthAnnualReportPlanJson?: string
   nextMonthOtherPlanJson?: string
+}
+
+export interface MonthlyReportApprovalPayload {
+  rejectionReason?: string
 }
 
 export interface MonthlyReportQuery {

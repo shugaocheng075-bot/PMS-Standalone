@@ -1,13 +1,66 @@
 <template>
   <div class="page-shell">
-    <div class="page-head">
-      <div>
-        <h2 class="page-title">项目台账</h2>
-        <div class="page-subtitle">按医院、产品、组别、级别与金额统一管理项目</div>
+    <div class="project-hero">
+      <div class="project-hero-main">
+        <div class="project-hero-kicker-row">
+          <span class="project-hero-kicker">Project Ledger Desk</span>
+          <span class="project-hero-badge">{{ activeProjectFilterLabel }}</span>
+        </div>
+        <h2 class="project-hero-title">项目台账</h2>
+        <div class="project-hero-subtitle">
+          在一个入口里统一查看医院、产品、组别、级别与合同状态，把高频筛选、超期识别与批量维护动作前置到首屏，再进入大表格处理明细。
+        </div>
+
+        <div class="project-hero-signals">
+          <div v-for="item in projectHeroSignals" :key="item.label" class="project-signal-card">
+            <span class="project-signal-label">{{ item.label }}</span>
+            <strong class="project-signal-value">{{ item.value }}</strong>
+            <span class="project-signal-note">{{ item.note }}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="project-hero-side">
+        <div class="project-control-card">
+          <div class="project-control-copy">
+            <span class="project-control-title">项目操作</span>
+            <span class="project-control-note">当前共 {{ total }} 条记录，支持导出、重置筛选和批量维护。</span>
+          </div>
+          <div class="project-control-actions">
+            <el-button @click="onSearch" icon="Search">刷新列表</el-button>
+            <el-button @click="onReset" icon="Refresh">重置筛选</el-button>
+            <el-button :loading="exporting" @click="onExport" icon="Download">导出</el-button>
+            <el-button
+              v-if="canManageProjects"
+              type="primary"
+              plain
+              :disabled="selectedProjectIds.length === 0"
+              @click="openBatchEdit"
+              icon="Edit"
+            >批量编辑</el-button>
+          </div>
+        </div>
+
+        <div class="project-quick-grid">
+          <button type="button" class="project-quick-action" @click="applyContractStatusQuickFilter('超期未签署')">
+            <span class="project-quick-title">超期项目</span>
+            <span class="project-quick-note">直接查看已超期或高风险合同项目</span>
+          </button>
+          <button type="button" class="project-quick-action" @click="applyContractStatusQuickFilter('合同已签署')">
+            <span class="project-quick-title">已签合同</span>
+            <span class="project-quick-note">复查稳定交付中的合同项目</span>
+          </button>
+          <button type="button" class="project-quick-action" @click="applyLevelQuickFilter('三级')">
+            <span class="project-quick-title">三级医院</span>
+            <span class="project-quick-note">聚焦高等级医院的交付与维护状态</span>
+          </button>
+          <button type="button" class="project-quick-action" @click="clearProjectQuickFilters">
+            <span class="project-quick-title">清空筛选</span>
+            <span class="project-quick-note">回到全量项目视图继续筛查</span>
+          </button>
+        </div>
       </div>
     </div>
-
-    
 
     <ProTable
       title="项目列表"
@@ -24,14 +77,14 @@
       @row-dblclick="onRowDoubleClick"
     >
       <template #toolbar>
-        <el-button :loading="exporting" @click="onExport">导出CSV</el-button>
+        <el-button :loading="exporting" @click="onExport" icon="Download">导出CSV</el-button>
         <el-button
             v-if="canManageProjects"
             type="primary"
             plain
             :disabled="selectedProjectIds.length === 0"
             @click="openBatchEdit"
-          >批量编辑（{{ selectedProjectIds.length }}）</el-button>
+           icon="Edit">批量编辑（{{ selectedProjectIds.length }}）</el-button>
       </template>
 
       
@@ -84,35 +137,37 @@
           </el-select>
         </el-form-item>
         <el-form-item class="filter-actions">
-          <el-button type="primary" @click="onSearch">查询</el-button>
-          <el-button @click="onReset">重置</el-button>
+          <el-button type="primary" @click="onSearch" icon="Search">查询</el-button>
+          <el-button @click="onReset" icon="Refresh">重置</el-button>
         </el-form-item>
       </el-form>
     </template>
         <el-table-column v-if="canManageProjects" type="selection" width="46" />
-        <el-table-column prop="hospitalName" label="医院名称" min-width="220" show-overflow-tooltip sortable />
-        <el-table-column prop="productName" label="产品" min-width="180" show-overflow-tooltip sortable />
+        <el-table-column prop="hospitalName" label="医院名称" min-width="240" show-overflow-tooltip sortable />
+        <el-table-column prop="productName" label="产品" min-width="200" show-overflow-tooltip sortable />
         <el-table-column prop="province" label="省份" width="100" show-overflow-tooltip sortable />
-        <el-table-column prop="groupName" label="组别" width="120" show-overflow-tooltip sortable />
-        <el-table-column prop="salesName" label="销售" width="120" show-overflow-tooltip />
-        <el-table-column prop="maintenancePersonName" label="维护人员" width="130" show-overflow-tooltip />
+        <el-table-column prop="groupName" label="组别" width="132" show-overflow-tooltip sortable />
+        <el-table-column prop="salesName" label="销售" width="132" show-overflow-tooltip />
+        <el-table-column prop="maintenancePersonName" label="维护人员" width="146" show-overflow-tooltip />
         <el-table-column prop="afterSalesStartDate" label="售后开始" width="120" show-overflow-tooltip />
         <el-table-column prop="afterSalesEndDate" label="售后结束" width="120" show-overflow-tooltip />
         <el-table-column prop="hospitalLevel" label="级别" width="90" sortable />
-        <el-table-column prop="contractStatus" label="合同状态" min-width="160" show-overflow-tooltip sortable>
+        <el-table-column prop="contractStatus" label="合同状态" min-width="172" show-overflow-tooltip sortable>
           <template #default="scope">
             <el-tag :type="statusType(getDisplayContractStatus(scope.row))">{{ getDisplayContractStatus(scope.row) }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="maintenanceAmount" label="维护金额(万)" width="130" align="right" sortable />
-        <el-table-column prop="overdueDays" label="超期/剩余天数" width="130" align="right" sortable>
+        <el-table-column prop="maintenanceAmount" label="维护金额(万)" width="136" align="right" sortable />
+        <el-table-column prop="overdueDays" label="超期/剩余天数" width="136" align="right" sortable>
           <template #default="scope">
             <span :class="serviceDaysClass(scope.row)">{{ serviceDaysText(scope.row) }}</span>
           </template>
         </el-table-column>
         <el-table-column v-if="canManageProjects" label="操作" width="100" fixed="right">
           <template #default="scope">
-            <el-button link type="primary" @click="onOpenEdit(scope.row)">编辑</el-button>
+            <div class="table-action-group">
+              <el-button link type="primary" @click="onOpenEdit(scope.row)" icon="Edit">编辑</el-button>
+            </div>
           </template>
         </el-table-column>
       
@@ -143,8 +198,8 @@
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="batchEditVisible = false">取消</el-button>
-        <el-button type="primary" :loading="batchUpdating" @click="submitBatchEdit">提交</el-button>
+        <el-button @click="batchEditVisible = false" icon="Close">取消</el-button>
+        <el-button type="primary" :loading="batchUpdating" @click="submitBatchEdit" icon="Check">提交</el-button>
       </template>
     </ProDrawer>
 
@@ -171,8 +226,8 @@
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button :disabled="editSubmitting" @click="editVisible = false">取消</el-button>
-        <el-button type="primary" :loading="editSubmitting" @click="submitEdit">保存</el-button>
+        <el-button :disabled="editSubmitting" @click="editVisible = false" icon="Close">取消</el-button>
+        <el-button type="primary" :loading="editSubmitting" @click="submitEdit" icon="Check">保存</el-button>
       </template>
     </ProDrawer>
   </div>
@@ -606,6 +661,60 @@ const serviceDaysClass = (item: ProjectItem): string => {
   return 'text-success'
 }
 
+const activeProjectFilterLabel = computed(() => {
+  if (query.contractStatus) {
+    return `合同：${query.contractStatus}`
+  }
+
+  if (query.hospitalLevel) {
+    return `级别：${query.hospitalLevel}`
+  }
+
+  if (query.province) {
+    return `省份：${query.province}`
+  }
+
+  if (query.productName) {
+    return `产品：${query.productName}`
+  }
+
+  if (query.hospitalName) {
+    return `医院：${query.hospitalName}`
+  }
+
+  return '全量项目视图'
+})
+
+const projectHeroSignals = computed(() => {
+  const overdueCount = tableData.value.filter((item) => getDisplayOverdueDays(item) > 0).length
+  const signedCount = tableData.value.filter((item) => getDisplayContractStatus(item) === '合同已签署').length
+  const hospitalCount = new Set(tableData.value.map((item) => item.hospitalName).filter(Boolean)).size
+  const productCount = new Set(tableData.value.map((item) => item.productName).filter(Boolean)).size
+
+  return [
+    {
+      label: '当前页项目',
+      value: String(tableData.value.length),
+      note: '当前筛选结果中已加载到列表的项目数量',
+    },
+    {
+      label: '超期风险',
+      value: String(overdueCount),
+      note: '已超期或需要优先关注的项目数量',
+    },
+    {
+      label: '已签合同',
+      value: String(signedCount),
+      note: '当前结果中合同已签署的稳定项目数量',
+    },
+    {
+      label: '覆盖范围',
+      value: `${hospitalCount}/${productCount}`,
+      note: '当前页医院数 / 产品数的覆盖密度',
+    },
+  ]
+})
+
 const loadData = async () => {
   loading.value = true
   try {
@@ -781,6 +890,54 @@ const onSearch = () => {
   loadData()
 }
 
+const clearProjectQuickFilters = () => {
+  query.hospitalName = ''
+  query.productName = ''
+  query.province = ''
+  query.groupName = ''
+  query.salesName = ''
+  query.maintenancePersonName = ''
+  query.afterSalesEndDateFrom = ''
+  query.afterSalesEndDateTo = ''
+  afterSalesEndDateRange.value = []
+  query.hospitalLevel = ''
+  query.contractStatus = ''
+  query.page = 1
+  loadData()
+}
+
+const applyContractStatusQuickFilter = (status: string) => {
+  query.hospitalName = ''
+  query.productName = ''
+  query.province = ''
+  query.groupName = ''
+  query.salesName = ''
+  query.maintenancePersonName = ''
+  query.afterSalesEndDateFrom = ''
+  query.afterSalesEndDateTo = ''
+  afterSalesEndDateRange.value = []
+  query.hospitalLevel = ''
+  query.contractStatus = status
+  query.page = 1
+  loadData()
+}
+
+const applyLevelQuickFilter = (level: string) => {
+  query.hospitalName = ''
+  query.productName = ''
+  query.province = ''
+  query.groupName = ''
+  query.salesName = ''
+  query.maintenancePersonName = ''
+  query.afterSalesEndDateFrom = ''
+  query.afterSalesEndDateTo = ''
+  afterSalesEndDateRange.value = []
+  query.contractStatus = ''
+  query.hospitalLevel = level
+  query.page = 1
+  loadData()
+}
+
 const onReset = () => {
   query.hospitalName = ''
   query.productName = ''
@@ -875,4 +1032,214 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+.project-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.18fr) minmax(320px, 0.82fr);
+  gap: 16px;
+  padding: 24px;
+  border-radius: 28px;
+  color: #ffffff;
+  background:
+    radial-gradient(circle at 14% 18%, rgba(173, 216, 255, 0.18), transparent 22%),
+    radial-gradient(circle at 100% 0, rgba(140, 218, 190, 0.15), transparent 24%),
+    linear-gradient(145deg, #1d3f62 0%, #2f597b 48%, #3b6d63 100%);
+  box-shadow: 0 26px 44px rgba(29, 63, 98, 0.16);
+}
+
+.project-hero-main {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+
+.project-hero-kicker-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.project-hero-kicker,
+.project-hero-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 7px 12px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.project-hero-kicker {
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.08);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.project-hero-badge {
+  background: rgba(255, 255, 255, 0.14);
+  color: #eff9ff;
+}
+
+.project-hero-title {
+  margin: 0;
+  font-size: 34px;
+  line-height: 1.12;
+  font-weight: 700;
+}
+
+.project-hero-subtitle {
+  max-width: 700px;
+  font-size: 14px;
+  line-height: 1.85;
+  color: rgba(233, 244, 248, 0.84);
+}
+
+.project-hero-signals {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.project-signal-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.11), rgba(255, 255, 255, 0.05));
+}
+
+.project-signal-label {
+  font-size: 12px;
+  color: rgba(227, 244, 247, 0.76);
+}
+
+.project-signal-value {
+  font-size: 28px;
+  line-height: 1;
+  font-weight: 700;
+}
+
+.project-signal-note {
+  font-size: 12px;
+  line-height: 1.7;
+  color: rgba(229, 244, 246, 0.76);
+}
+
+.project-hero-side {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.project-control-card,
+.project-quick-action {
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 20px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.08));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+.project-control-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px;
+}
+
+.project-control-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.project-control-title {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.project-control-note {
+  font-size: 12px;
+  line-height: 1.7;
+  color: rgba(232, 244, 246, 0.74);
+}
+
+.project-control-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.project-control-actions :deep(.el-button) {
+  min-height: 40px;
+}
+
+.project-quick-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.project-quick-action {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+  color: #ffffff;
+  text-align: left;
+  cursor: pointer;
+  transition: transform 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+}
+
+.project-quick-action:hover {
+  transform: translateY(-1px);
+  border-color: rgba(255, 255, 255, 0.24);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.09));
+}
+
+.project-quick-title {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.project-quick-note {
+  font-size: 12px;
+  line-height: 1.65;
+  color: rgba(232, 245, 247, 0.76);
+}
+
+.table-action-group {
+  flex-wrap: nowrap;
+}
+
+@media (max-width: 1280px) {
+  .project-hero {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .project-hero {
+    padding: 18px;
+  }
+
+  .project-hero-title {
+    font-size: 28px;
+  }
+
+  .project-hero-signals,
+  .project-quick-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .project-control-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
 </style>

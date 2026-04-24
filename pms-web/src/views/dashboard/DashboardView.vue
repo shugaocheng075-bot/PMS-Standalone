@@ -3,37 +3,72 @@
   <RegionalManagerWorkbench v-else-if="dashboardRole === 'regional_manager'" />
   <PersonalWorkbench v-else-if="dashboardRole === 'operator'" />
   <div v-else class="page-shell dashboard-page" v-loading="loading">
-    <div class="page-head">
-      <div>
-        <h2 class="page-title">首页</h2>
-        <div class="page-subtitle">项目台账、重大需求、告警比例分析与下钻</div>
+    <div class="dashboard-hero">
+      <div class="dashboard-hero-main">
+        <div class="dashboard-hero-kicker-row">
+          <span class="dashboard-hero-kicker">Manager Command Deck</span>
+          <span class="dashboard-hero-role">{{ currentScopeLabel }}</span>
+        </div>
+        <h2 class="dashboard-hero-title">欢迎回来，{{ heroDisplayName }}</h2>
+        <div class="dashboard-hero-subtitle">
+          以管理视角总览项目、重大需求、预警和年度报告健康度，并从这里直接切入高频执行模块，减少在菜单与图表之间反复切换。
+        </div>
+
+        <div class="dashboard-hero-signals">
+          <div v-for="item in heroSignals" :key="item.label" class="hero-signal">
+            <span class="hero-signal-label">{{ item.label }}</span>
+            <strong class="hero-signal-value">{{ item.value }}</strong>
+            <span class="hero-signal-note">{{ item.note }}</span>
+          </div>
+        </div>
       </div>
-      <div style="display: flex; align-items: center; gap: 8px;">
-        <el-select v-model="timeRange" size="small" style="width: 130px" @change="loadDashboard">
-          <el-option :value="1" label="最近1个月" />
-          <el-option :value="3" label="最近3个月" />
-          <el-option :value="6" label="最近6个月" />
-          <el-option :value="12" label="最近12个月" />
-        </el-select>
-        <el-button size="small" :loading="loading" @click="loadDashboard">刷新数据</el-button>
+
+      <div class="dashboard-hero-side">
+        <div class="hero-control-card">
+          <div class="hero-control-copy">
+            <span class="hero-control-title">统计窗口</span>
+            <span class="hero-control-note">按时间窗口刷新当前首页的趋势与分布图表</span>
+          </div>
+          <div class="hero-control-actions">
+            <el-select v-model="timeRange" size="small" style="width: 140px" @change="loadDashboard">
+              <el-option :value="1" label="最近1个月" />
+              <el-option :value="3" label="最近3个月" />
+              <el-option :value="6" label="最近6个月" />
+              <el-option :value="12" label="最近12个月" />
+            </el-select>
+            <el-button size="small" :loading="loading" @click="loadDashboard" icon="Refresh">刷新数据</el-button>
+          </div>
+        </div>
+
+        <div class="hero-quick-grid">
+          <button v-for="action in quickActions" :key="action.title" type="button" class="hero-quick-action" @click="action.onClick()">
+            <span class="hero-quick-title">{{ action.title }}</span>
+            <span class="hero-quick-note">{{ action.note }}</span>
+          </button>
+        </div>
       </div>
     </div>
 
-    <el-row :gutter="16" class="stats-row">
-      <el-col :span="6" v-for="card in cards" :key="card.title">
-        <el-card shadow="never" class="stat-card stats-card clickable" @click="card.onClick()">
-          <div class="t">{{ card.title }}</div>
-          <div class="v">{{ card.value }}</div>
-        </el-card>
-      </el-col>
-    </el-row>
+    <div class="dashboard-metrics">
+      <button v-for="card in cards" :key="card.title" type="button" class="metric-card" @click="card.onClick()">
+        <div class="metric-card-head">
+          <span class="metric-title">{{ card.title }}</span>
+          <span class="metric-context">{{ card.context }}</span>
+        </div>
+        <div class="metric-value">{{ card.value }}</div>
+        <div class="metric-note">{{ card.note }}</div>
+      </button>
+    </div>
 
     <div class="chart-grid">
       <AppTableCard class="chart-card">
         <template #header>
           <div class="panel-head">
-            <span class="panel-title">项目台账状态占比</span>
-            <el-tag type="info">点击扇区下钻</el-tag>
+            <div class="panel-copy">
+              <span class="panel-title">项目台账状态占比</span>
+              <span class="panel-subtitle">按合同与维护状态聚合，支持直接下钻</span>
+            </div>
+            <span class="panel-caption">点击图形</span>
           </div>
         </template>
         <div ref="projectChartRef" class="chart-box"></div>
@@ -42,8 +77,11 @@
       <AppTableCard class="chart-card">
         <template #header>
           <div class="panel-head">
-            <span class="panel-title">重大需求状态占比</span>
-            <el-tag type="warning">点击扇区下钻</el-tag>
+            <div class="panel-copy">
+              <span class="panel-title">重大需求状态占比</span>
+              <span class="panel-subtitle">聚焦需求流程进度与跟进压力</span>
+            </div>
+            <span class="panel-caption">点击图形</span>
           </div>
         </template>
         <div ref="demandChartRef" class="chart-box"></div>
@@ -52,8 +90,11 @@
       <AppTableCard class="chart-card">
         <template #header>
           <div class="panel-head">
-            <span class="panel-title">告警等级占比</span>
-            <el-tag type="danger">点击扇区下钻</el-tag>
+            <div class="panel-copy">
+              <span class="panel-title">告警等级占比</span>
+              <span class="panel-subtitle">观察风险集中度与严重程度分布</span>
+            </div>
+            <span class="panel-caption">点击图形</span>
           </div>
         </template>
         <div ref="alertChartRef" class="chart-box"></div>
@@ -62,8 +103,11 @@
       <AppTableCard class="chart-card">
         <template #header>
           <div class="panel-head">
-            <span class="panel-title">年度报告状态</span>
-            <el-tag type="success">点击扇区跳转</el-tag>
+            <div class="panel-copy">
+              <span class="panel-title">年度报告状态</span>
+              <span class="panel-subtitle">编写、提交与完成节点一屏总览</span>
+            </div>
+            <span class="panel-caption">点击跳转</span>
           </div>
         </template>
         <div ref="annualChartRef" class="chart-box"></div>
@@ -74,8 +118,11 @@
       <AppTableCard class="chart-card">
         <template #header>
           <div class="panel-head">
-            <span class="panel-title">告警月度趋势</span>
-            <el-tag type="info">近{{ timeRange }}个月</el-tag>
+            <div class="panel-copy">
+              <span class="panel-title">告警月度趋势</span>
+              <span class="panel-subtitle">近 {{ timeRange }} 个月风险变化走势</span>
+            </div>
+            <span class="panel-caption">趋势分析</span>
           </div>
         </template>
         <div ref="trendChartRef" class="chart-box"></div>
@@ -84,8 +131,11 @@
       <AppTableCard class="chart-card">
         <template #header>
           <div class="panel-head">
-            <span class="panel-title">责任人工作量 TOP12</span>
-            <el-tag type="warning">堆叠柱状</el-tag>
+            <div class="panel-copy">
+              <span class="panel-title">责任人工作量 TOP12</span>
+              <span class="panel-subtitle">识别忙闲分布与负载集中情况</span>
+            </div>
+            <span class="panel-caption">堆叠柱状</span>
           </div>
         </template>
         <div ref="workloadChartRef" class="chart-box"></div>
@@ -94,9 +144,12 @@
 
     <AppTableCard>
       <template #header>
-        <div class="panel-head">
-          <span class="panel-title">下钻明细</span>
-          <el-button link type="primary" @click="resetDrill">重置筛选</el-button>
+        <div class="panel-head panel-head-compact">
+          <div class="panel-copy">
+            <span class="panel-title">下钻明细</span>
+            <span class="panel-subtitle">图表筛选与列表明细保持联动</span>
+          </div>
+          <el-button link type="primary" @click="resetDrill" icon="Refresh">重置筛选</el-button>
         </div>
       </template>
 
@@ -111,7 +164,7 @@
             <el-table-column prop="overdueDays" label="超期天数" width="110" align="right" />
             <el-table-column label="操作" width="120" fixed="right">
               <template #default="scope">
-                <el-button link type="primary" @click="onProjectDrillGoto(scope.row)">去处理</el-button>
+                <el-button link type="primary" @click="onProjectDrillGoto(scope.row)" icon="Service">去处理</el-button>
               </template>
             </el-table-column>
           </el-table>
@@ -127,7 +180,7 @@
             <el-table-column prop="dueDate" label="计划完成" width="140" />
             <el-table-column label="操作" width="120" fixed="right">
               <template #default="scope">
-                <el-button link type="primary" @click="onDemandDrillGoto(scope.row)">去处理</el-button>
+                <el-button link type="primary" @click="onDemandDrillGoto(scope.row)" icon="Service">去处理</el-button>
               </template>
             </el-table-column>
           </el-table>
@@ -144,7 +197,7 @@
             <el-table-column prop="overdueDays" label="超期天数" width="110" align="right" />
             <el-table-column label="操作" width="120" fixed="right">
               <template #default="scope">
-                <el-button link type="primary" @click="onAlertDrillGoto(scope.row)">去处理</el-button>
+                <el-button link type="primary" @click="onAlertDrillGoto(scope.row)" icon="Service">去处理</el-button>
               </template>
             </el-table-column>
           </el-table>
@@ -229,6 +282,16 @@ const workloadChartRef = ref<HTMLDivElement | null>(null)
 const trendChart = ref<ChartInstance | null>(null)
 const workloadChart = ref<ChartInstance | null>(null)
 
+const projectDonutColors = ['#6c88a7', '#7ca8a1', '#c7a06c', '#c28787', '#8c88b9', '#a7b6c7']
+const demandDonutColors = ['#7c98bc', '#8db3a8', '#c79b72', '#9589c5', '#c39ab0']
+const alertDonutColors = ['#c68587', '#cbab73', '#7f9ac4', '#a7b0bd']
+const annualDonutColors = ['#c58a87', '#ccb07e', '#85a3c4', '#8eb5a3']
+const severityColors = {
+  severe: '#c58686',
+  warning: '#c8a368',
+  reminder: '#7f99c2',
+}
+
 const cards = computed(() => {
   const totalAlerts = alertItems.value.length
   const severeCount = alertItems.value.filter((item) => item.level === '严重').length
@@ -236,11 +299,133 @@ const cards = computed(() => {
   const overdueProjects = projectItems.value.filter((item) => Number(item.overdueDays || 0) > 0).length
 
   return [
-    { title: '项目总数', value: String(projectItems.value.length), onClick: () => void router.push('/project/list') },
-    { title: '重大需求', value: String((majorSnapshot.value?.workflows ?? []).length), onClick: () => void router.push('/major-demand/list') },
-    { title: '告警总数', value: String(totalAlerts), onClick: () => void router.push('/alert/center') },
-    { title: '严重告警占比', value: severeRatio, onClick: () => void router.push({ path: '/alert/center', query: { level: '严重' } }) },
-    { title: '超期项目', value: String(overdueProjects), onClick: () => void router.push({ path: '/project/list', query: { contractStatus: '超期未签署' } }) },
+    {
+      title: '项目总数',
+      value: String(projectItems.value.length),
+      context: '项目总览',
+      note: '当前数据范围内可见的项目台账总量',
+      onClick: () => void router.push('/project/list'),
+    },
+    {
+      title: '重大需求',
+      value: String((majorSnapshot.value?.workflows ?? []).length),
+      context: '需求跟踪',
+      note: '需要持续推进的需求流程与协同事项',
+      onClick: () => void router.push('/major-demand/list'),
+    },
+    {
+      title: '告警总数',
+      value: String(totalAlerts),
+      context: '风险监控',
+      note: '当前告警中心汇总的全部风险事件',
+      onClick: () => void router.push('/alert/center'),
+    },
+    {
+      title: '严重告警占比',
+      value: severeRatio,
+      context: '风险浓度',
+      note: '高优先级风险在全部告警中的占比',
+      onClick: () => void router.push({ path: '/alert/center', query: { level: '严重' } }),
+    },
+    {
+      title: '超期项目',
+      value: String(overdueProjects),
+      context: '交付压力',
+      note: '已进入超期或即将超期的项目数量',
+      onClick: () => void router.push({ path: '/project/list', query: { contractStatus: '超期未签署' } }),
+    },
+  ]
+})
+
+const heroDisplayName = computed(() => {
+  const profile = access.accessProfile.value
+  if (!profile) {
+    return '管理员'
+  }
+
+  if (profile.isAdmin) {
+    return 'admin'
+  }
+
+  return profile.personnelName || '管理员'
+})
+
+const currentScopeLabel = computed(() => {
+  const profile = access.accessProfile.value
+  if (!profile) {
+    return '企业工作台'
+  }
+
+  if (profile.isAdmin) {
+    return '系统全局视角'
+  }
+
+  switch (profile.systemRole) {
+    case 'manager':
+      return '管理视角'
+    case 'regional_manager':
+      return '区域经理视角'
+    case 'supervisor':
+      return '运维主管视角'
+    default:
+      return '执行视角'
+  }
+})
+
+const heroSignals = computed(() => {
+  const totalAlerts = alertItems.value.length
+  const severeCount = alertItems.value.filter((item) => item.level === '严重').length
+  const overdueProjects = projectItems.value.filter((item) => Number(item.overdueDays || 0) > 0).length
+  const annualPending = annualSummary.value
+    ? annualSummary.value.notStartedCount + annualSummary.value.writingCount + annualSummary.value.submittedCount
+    : 0
+
+  return [
+    {
+      label: '可见项目',
+      value: String(projectItems.value.length),
+      note: '当前数据范围内可直接下钻的项目台账数量',
+    },
+    {
+      label: '高优预警',
+      value: `${severeCount}/${totalAlerts}`,
+      note: '严重告警占当前全部告警的核心风险密度',
+    },
+    {
+      label: '待收口报告',
+      value: String(annualPending),
+      note: '仍处于未开始、编写中或已提交状态的年度报告',
+    },
+    {
+      label: '交付压力',
+      value: String(overdueProjects),
+      note: '已进入超期或逼近风险边界的项目数量',
+    },
+  ]
+})
+
+const quickActions = computed(() => {
+  return [
+    {
+      title: '统一预警中心',
+      note: '直接查看严重与警告级风险事件',
+      onClick: () => void router.push({ path: '/alert/center', query: { level: '严重' } }),
+    },
+    {
+      title: '合同预警',
+      note: '优先收口超期和临界交付项目',
+      onClick: () => void router.push('/contract/alerts'),
+    },
+    {
+      title: '年度报告',
+      note: '切到编写、提交和完成节点管理',
+      onClick: () => void router.push('/annual-report/list'),
+    },
+    {
+      title: '待办列表',
+      note: '进入跨模块执行面板继续推进事项',
+      onClick: () => void router.push('/complex-model/ms010001-013-001'),
+    },
   ]
 })
 
@@ -356,6 +541,9 @@ const renderDonut = (
     color: colors,
     tooltip: {
       trigger: 'item',
+      backgroundColor: 'rgba(15, 23, 42, 0.9)',
+      borderWidth: 0,
+      textStyle: { color: '#f8fafc' },
       formatter: (params: any) => {
         const percent = total > 0 ? ((params.value / total) * 100).toFixed(1) : '0.0'
         return `${params.name}<br/>数量：${params.value}<br/>占比：${percent}%`
@@ -364,6 +552,10 @@ const renderDonut = (
     legend: {
       bottom: 0,
       type: 'scroll',
+      textStyle: {
+        color: '#64748b',
+        fontSize: 12,
+      },
     },
     series: [
       {
@@ -376,9 +568,18 @@ const renderDonut = (
           borderColor: '#fff',
           borderWidth: 2,
         },
+        emphasis: {
+          scale: false,
+        },
         label: {
           formatter: '{b}\n{d}%',
           fontSize: 12,
+          color: '#526071',
+        },
+        labelLine: {
+          lineStyle: {
+            color: '#b8c4d4',
+          },
         },
         data,
       },
@@ -390,15 +591,28 @@ const renderTrendChart = () => {
   if (!trendChart.value || !trendData.value.length) return
   const months = trendData.value.map(d => d.month)
   trendChart.value.setOption({
+    color: [severityColors.severe, severityColors.warning, severityColors.reminder],
     tooltip: { trigger: 'axis', axisPointer: { type: 'cross' } },
-    legend: { bottom: 0 },
+    legend: { bottom: 0, textStyle: { color: '#64748b' } },
     grid: { left: 50, right: 20, top: 30, bottom: 50 },
-    xAxis: { type: 'category', data: months, boundaryGap: false },
-    yAxis: { type: 'value', minInterval: 1 },
+    xAxis: {
+      type: 'category',
+      data: months,
+      boundaryGap: false,
+      axisLabel: { color: '#64748b' },
+      axisLine: { lineStyle: { color: '#d9e2ec' } },
+      axisTick: { show: false },
+    },
+    yAxis: {
+      type: 'value',
+      minInterval: 1,
+      axisLabel: { color: '#64748b' },
+      splitLine: { lineStyle: { color: '#edf2f6' } },
+    },
     series: [
-      { name: '严重', type: 'line', stack: 'total', areaStyle: { opacity: 0.25 }, smooth: true, data: trendData.value.map(d => d.severe), itemStyle: { color: '#ef4444' } },
-      { name: '警告', type: 'line', stack: 'total', areaStyle: { opacity: 0.25 }, smooth: true, data: trendData.value.map(d => d.warning), itemStyle: { color: '#f59e0b' } },
-      { name: '提醒', type: 'line', stack: 'total', areaStyle: { opacity: 0.25 }, smooth: true, data: trendData.value.map(d => d.reminder), itemStyle: { color: '#3b82f6' } },
+      { name: '严重', type: 'line', stack: 'total', areaStyle: { opacity: 0.18 }, smooth: true, symbolSize: 6, lineStyle: { width: 2 }, data: trendData.value.map(d => d.severe), itemStyle: { color: severityColors.severe } },
+      { name: '警告', type: 'line', stack: 'total', areaStyle: { opacity: 0.18 }, smooth: true, symbolSize: 6, lineStyle: { width: 2 }, data: trendData.value.map(d => d.warning), itemStyle: { color: severityColors.warning } },
+      { name: '提醒', type: 'line', stack: 'total', areaStyle: { opacity: 0.18 }, smooth: true, symbolSize: 6, lineStyle: { width: 2 }, data: trendData.value.map(d => d.reminder), itemStyle: { color: severityColors.reminder } },
     ],
   })
 }
@@ -407,24 +621,37 @@ const renderWorkloadChart = () => {
   if (!workloadChart.value || !ownerWorkloadData.value.length) return
   const owners = ownerWorkloadData.value.map(d => d.owner)
   workloadChart.value.setOption({
+    color: [severityColors.severe, severityColors.warning, severityColors.reminder],
     tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
-    legend: { bottom: 0 },
+    legend: { bottom: 0, textStyle: { color: '#64748b' } },
     grid: { left: 80, right: 20, top: 20, bottom: 50 },
-    yAxis: { type: 'category', data: owners, inverse: true, axisLabel: { width: 60, overflow: 'truncate' } },
-    xAxis: { type: 'value', minInterval: 1 },
+    yAxis: {
+      type: 'category',
+      data: owners,
+      inverse: true,
+      axisLabel: { width: 60, overflow: 'truncate', color: '#64748b' },
+      axisTick: { show: false },
+      axisLine: { show: false },
+    },
+    xAxis: {
+      type: 'value',
+      minInterval: 1,
+      axisLabel: { color: '#64748b' },
+      splitLine: { lineStyle: { color: '#edf2f6' } },
+    },
     series: [
-      { name: '严重', type: 'bar', stack: 'total', data: ownerWorkloadData.value.map(d => d.severe), itemStyle: { color: '#ef4444' } },
-      { name: '警告', type: 'bar', stack: 'total', data: ownerWorkloadData.value.map(d => d.warning), itemStyle: { color: '#f59e0b' } },
-      { name: '提醒', type: 'bar', stack: 'total', data: ownerWorkloadData.value.map(d => d.reminder), itemStyle: { color: '#3b82f6' } },
+      { name: '严重', type: 'bar', stack: 'total', barMaxWidth: 18, data: ownerWorkloadData.value.map(d => d.severe), itemStyle: { color: severityColors.severe, borderRadius: [0, 6, 6, 0] } },
+      { name: '警告', type: 'bar', stack: 'total', barMaxWidth: 18, data: ownerWorkloadData.value.map(d => d.warning), itemStyle: { color: severityColors.warning, borderRadius: [0, 6, 6, 0] } },
+      { name: '提醒', type: 'bar', stack: 'total', barMaxWidth: 18, data: ownerWorkloadData.value.map(d => d.reminder), itemStyle: { color: severityColors.reminder, borderRadius: [0, 6, 6, 0] } },
     ],
   })
 }
 
 const updateCharts = () => {
-  renderDonut(projectChart.value, '项目台账', projectStatusData.value, ['#3b82f6', '#14b8a6', '#f59e0b', '#ef4444', '#8b5cf6'])
-  renderDonut(demandChart.value, '重大需求', demandStatusData.value, ['#0ea5e9', '#22c55e', '#f97316', '#6366f1', '#ec4899'])
-  renderDonut(alertChart.value, '告警等级', alertLevelData.value, ['#ef4444', '#f59e0b', '#3b82f6', '#6b7280'])
-  renderDonut(annualChart.value, '年度报告', annualReportStatusData.value, ['#ef4444', '#f59e0b', '#0ea5e9', '#22c55e'])
+  renderDonut(projectChart.value, '项目台账', projectStatusData.value, projectDonutColors)
+  renderDonut(demandChart.value, '重大需求', demandStatusData.value, demandDonutColors)
+  renderDonut(alertChart.value, '告警等级', alertLevelData.value, alertDonutColors)
+  renderDonut(annualChart.value, '年度报告', annualReportStatusData.value, annualDonutColors)
   renderTrendChart()
   renderWorkloadChart()
 }
@@ -622,51 +849,357 @@ onBeforeUnmount(() => {
 .dashboard-page {
   display: flex;
   flex-direction: column;
+  gap: 20px;
+}
+
+.dashboard-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.8fr);
+  gap: 16px;
+  padding: 24px;
+  border-radius: 28px;
+  color: #ffffff;
+  background:
+    radial-gradient(circle at 14% 18%, rgba(145, 214, 255, 0.22), transparent 20%),
+    radial-gradient(circle at 100% 0, rgba(90, 236, 208, 0.18), transparent 24%),
+    linear-gradient(145deg, #0f365d 0%, #0a5b99 48%, #0b7f81 100%);
+  box-shadow: 0 28px 48px rgba(12, 53, 93, 0.2);
+}
+
+.dashboard-hero-main {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+
+.dashboard-hero-kicker-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.dashboard-hero-kicker {
+  display: inline-flex;
+  align-items: center;
+  padding: 7px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.dashboard-hero-role {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 11px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  font-size: 12px;
+  font-weight: 700;
+  color: #f2f7ff;
+}
+
+.dashboard-hero-title {
+  margin: 0;
+  font-size: 34px;
+  line-height: 1.12;
+  font-weight: 700;
+}
+
+.dashboard-hero-subtitle {
+  max-width: 680px;
+  font-size: 14px;
+  line-height: 1.85;
+  color: rgba(232, 243, 255, 0.84);
+}
+
+.dashboard-hero-signals {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
+  margin-top: 4px;
+}
+
+.hero-signal {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.11), rgba(255, 255, 255, 0.05));
+}
+
+.hero-signal-label {
+  font-size: 12px;
+  color: rgba(227, 239, 255, 0.74);
+}
+
+.hero-signal-value {
+  font-size: 28px;
+  line-height: 1;
+  font-weight: 700;
+}
+
+.hero-signal-note {
+  font-size: 12px;
+  line-height: 1.7;
+  color: rgba(232, 242, 255, 0.76);
+}
+
+.dashboard-hero-side {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.hero-control-card,
+.hero-quick-action {
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 20px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.08));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+.hero-control-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px;
+}
+
+.hero-control-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.hero-control-title {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.hero-control-note {
+  font-size: 12px;
+  line-height: 1.7;
+  color: rgba(231, 241, 255, 0.74);
+}
+
+.hero-control-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.hero-control-actions :deep(.el-select__wrapper),
+.hero-control-actions :deep(.el-button) {
+  min-height: 40px;
+}
+
+.hero-quick-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.hero-quick-action {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+  color: #ffffff;
+  text-align: left;
+  cursor: pointer;
+  transition: transform 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+}
+
+.hero-quick-action:hover {
+  transform: translateY(-1px);
+  border-color: rgba(255, 255, 255, 0.24);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.09));
+}
+
+.hero-quick-title {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.hero-quick-note {
+  font-size: 12px;
+  line-height: 1.65;
+  color: rgba(233, 243, 255, 0.76);
+}
+
+.page-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.dashboard-metrics {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.metric-card {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px;
+  border: 1px solid #e7ebf0;
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(247, 250, 254, 0.94));
+  box-shadow: 0 12px 26px rgba(15, 23, 42, 0.04);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.metric-card::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto auto 0;
+  width: 100%;
+  height: 4px;
+  background: linear-gradient(90deg, #0a5b99 0%, #4ca591 100%);
+  opacity: 0.9;
+}
+
+.metric-card:hover {
+  border-color: #d7e4f7;
+  box-shadow: 0 16px 32px rgba(15, 23, 42, 0.06);
+  transform: translateY(-1px);
+}
+
+.metric-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.metric-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #526071;
+}
+
+.metric-context {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: #f8fafc;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.metric-value {
+  font-size: 32px;
+  line-height: 1;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  color: #0f172a;
+}
+
+.metric-note {
+  font-size: 12px;
+  line-height: 1.6;
+  color: #7b8794;
 }
 
 .chart-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 12px;
+  gap: 16px;
 }
 
 .analysis-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 12px;
+  gap: 16px;
 }
 
 .chart-card {
-  min-height: 360px;
+  min-height: 372px;
 }
 
 .chart-box {
-  height: 280px;
+  height: 296px;
 }
 
 .panel-head {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  gap: 8px;
+  gap: 14px;
+}
+
+.panel-head-compact {
+  align-items: center;
+}
+
+.panel-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
 .panel-title {
   font-weight: 700;
-  color: #1f3f70;
+  color: #1f2937;
+}
+
+.panel-subtitle {
+  font-size: 12px;
+  color: #7b8794;
+  line-height: 1.5;
+}
+
+.panel-caption {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #f8fafc;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .drill-tip {
-  margin-bottom: 8px;
-  color: #4d6b90;
-}
-
-.clickable {
-  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  margin-bottom: 10px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: #f8fafc;
+  color: #64748b;
+  font-size: 12px;
 }
 
 @media (max-width: 1280px) {
+  .dashboard-hero {
+    grid-template-columns: 1fr;
+  }
+
+  .hero-quick-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dashboard-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .chart-grid,
   .analysis-grid {
     grid-template-columns: 1fr;
@@ -674,6 +1207,32 @@ onBeforeUnmount(() => {
 
   .chart-box {
     height: 300px;
+  }
+}
+
+@media (max-width: 768px) {
+  .dashboard-hero {
+    padding: 18px;
+  }
+
+  .dashboard-hero-title {
+    font-size: 28px;
+  }
+
+  .dashboard-hero-signals,
+  .hero-quick-grid,
+  .dashboard-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .page-head-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .hero-control-actions {
+    flex-direction: column;
+    align-items: stretch;
   }
 }
 </style>

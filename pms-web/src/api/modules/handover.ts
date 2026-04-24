@@ -18,8 +18,28 @@ export function fetchHandovers(params: HandoverQuery) {
   })
 }
 
+export function fetchHandoverById(id: number) {
+  return request.get<any, ApiResponse<HandoverItem>>(`/handovers/${id}`)
+}
+
 export function fetchHandoverKanban() {
   return request.get<any, ApiResponse<HandoverKanbanColumn[]>>('/handovers/kanban')
+}
+
+export function sendHandoverEmail(id: number) {
+  return request.patch<any, ApiResponse<HandoverItem>>(`/handovers/${id}/send-email`)
+}
+
+export function startHandover(id: number) {
+  return request.patch<any, ApiResponse<HandoverItem>>(`/handovers/${id}/start`)
+}
+
+export function completeHandover(id: number) {
+  return request.patch<any, ApiResponse<HandoverItem>>(`/handovers/${id}/complete`)
+}
+
+export function rollbackHandover(id: number) {
+  return request.patch<any, ApiResponse<HandoverItem>>(`/handovers/${id}/rollback`)
 }
 
 export function updateHandoverStage(id: number, payload: HandoverStageUpdateRequest) {

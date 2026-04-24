@@ -1,8 +1,22 @@
 param(
-    [int[]]$Ports = @(5111, 5173)
+    [string[]]$Ports = @('5111', '5173')
 )
 
 $ErrorActionPreference = "Stop"
+
+$normalizedPorts = @(
+    $Ports |
+        ForEach-Object { $_ -split '[,;\s]+' } |
+        Where-Object { $_ } |
+        ForEach-Object { [int]$_ }
+)
+
+$Ports = if ($normalizedPorts.Count -gt 0) {
+    $normalizedPorts
+}
+else {
+    @(5111, 5173)
+}
 
 $targetPids = New-Object 'System.Collections.Generic.HashSet[int]'
 
@@ -30,14 +44,14 @@ if ($targetPids.Count -eq 0) {
 
 $stopped = @()
 
-foreach ($pid in $targetPids) {
+foreach ($processId in $targetPids) {
     try {
-        $proc = Get-Process -Id $pid -ErrorAction Stop
-        Stop-Process -Id $pid -Force -ErrorAction Stop
-        $stopped += "${pid} ($($proc.ProcessName))"
+        $proc = Get-Process -Id $processId -ErrorAction Stop
+        Stop-Process -Id $processId -Force -ErrorAction Stop
+        $stopped += "${processId} ($($proc.ProcessName))"
     }
     catch {
-        Write-Warning "Failed to stop process ${pid}: $($_.Exception.Message)"
+        Write-Warning "Failed to stop process ${processId}: $($_.Exception.Message)"
     }
 }
 

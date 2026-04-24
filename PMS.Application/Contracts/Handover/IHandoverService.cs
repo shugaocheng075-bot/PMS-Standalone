@@ -7,6 +7,11 @@ public interface IHandoverService
 {
     Task<HandoverSummaryDto> GetSummaryAsync(CancellationToken cancellationToken = default);
     Task<PagedResult<HandoverItemDto>> QueryAsync(HandoverQuery query, CancellationToken cancellationToken = default);
+    Task<HandoverItemDto?> GetByIdAsync(long id, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<HandoverKanbanColumnDto>> GetKanbanAsync(CancellationToken cancellationToken = default);
+    Task<HandoverItemDto> SendEmailAsync(long id, CancellationToken cancellationToken = default);
+    Task<HandoverItemDto> StartAsync(long id, CancellationToken cancellationToken = default);
+    Task<HandoverItemDto> CompleteAsync(long id, CancellationToken cancellationToken = default);
+    Task<HandoverItemDto> RollbackAsync(long id, CancellationToken cancellationToken = default);
     Task<HandoverItemDto> UpdateStageAsync(long id, HandoverStageUpdateRequest request, CancellationToken cancellationToken = default);
 }

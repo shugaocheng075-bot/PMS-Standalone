@@ -15,10 +15,48 @@ namespace PMS.API.Controllers.Admin;
 [Route("api/admin/import")]
 public class DataImportController : ControllerBase
 {
-    private static readonly string DefaultProjectLedgerExcelPath = Path.Combine(AppContext.BaseDirectory, "Data", "项目明细.xlsx");
+    private static readonly string AllowedDataRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "Data"));
+    private static readonly string DefaultProjectLedgerExcelPath = Path.Combine(AllowedDataRoot, "项目明细.xlsx");
     private const string DefaultProjectLedgerSheetName = "维护项目明细";
-    private static readonly string DefaultMajorDemandExcelPath = Path.Combine(AppContext.BaseDirectory, "Data", "项目明细.xlsx");
+    private static readonly string DefaultMajorDemandExcelPath = Path.Combine(AllowedDataRoot, "项目明细.xlsx");
     private const string DefaultMajorDemandSheetName = "重大需求明细";
+
+    private static bool TryResolveAllowedFilePath(string? rawPath, out string resolved, out string? errorMessage)
+    {
+        resolved = string.Empty;
+        errorMessage = null;
+
+        if (string.IsNullOrWhiteSpace(rawPath))
+        {
+            errorMessage = "请提供文件路径";
+            return false;
+        }
+
+        string fullPath;
+        try
+        {
+            fullPath = Path.GetFullPath(rawPath.Trim());
+        }
+        catch (Exception)
+        {
+            errorMessage = "无效的文件路径";
+            return false;
+        }
+
+        var rootWithSeparator = AllowedDataRoot.EndsWith(Path.DirectorySeparatorChar)
+            ? AllowedDataRoot
+            : AllowedDataRoot + Path.DirectorySeparatorChar;
+
+        if (!fullPath.StartsWith(rootWithSeparator, StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(fullPath, AllowedDataRoot, StringComparison.OrdinalIgnoreCase))
+        {
+            errorMessage = "仅允许读取应用 Data 目录下的文件，请改用上传接口";
+            return false;
+        }
+
+        resolved = fullPath;
+        return true;
+    }
 
     [HttpPost("text")]
     public IActionResult ImportFromText([FromBody] TextImportRequest request)
@@ -67,7 +105,15 @@ public class DataImportController : ControllerBase
             });
         }
 
-        var filePath = Path.GetFullPath(request.FilePath.Trim());
+        if (!TryResolveAllowedFilePath(request.FilePath, out var filePath, out var pathError))
+        {
+            return BadRequest(new ApiResponse<object>
+            {
+                Code = 400,
+                Message = pathError ?? "文件路径不可用"
+            });
+        }
+
         if (!System.IO.File.Exists(filePath))
         {
             return BadRequest(new ApiResponse<object>
@@ -98,9 +144,19 @@ public class DataImportController : ControllerBase
     [HttpPost("major-demand")]
     public IActionResult ImportMajorDemand([FromBody] ExcelImportRequest? request)
     {
-        var filePath = string.IsNullOrWhiteSpace(request?.FilePath)
-            ? DefaultMajorDemandExcelPath
-            : Path.GetFullPath(request.FilePath.Trim());
+        string filePath;
+        if (string.IsNullOrWhiteSpace(request?.FilePath))
+        {
+            filePath = DefaultMajorDemandExcelPath;
+        }
+        else if (!TryResolveAllowedFilePath(request!.FilePath, out filePath!, out var pathError))
+        {
+            return BadRequest(new ApiResponse<object>
+            {
+                Code = 400,
+                Message = pathError ?? "文件路径不可用"
+            });
+        }
 
         var sheetName = string.IsNullOrWhiteSpace(request?.SheetName)
             ? DefaultMajorDemandSheetName
@@ -146,9 +202,19 @@ public class DataImportController : ControllerBase
     [HttpPost("project-ledger")]
     public IActionResult ImportProjectLedger([FromBody] ExcelImportRequest? request)
     {
-        var filePath = string.IsNullOrWhiteSpace(request?.FilePath)
-            ? DefaultProjectLedgerExcelPath
-            : Path.GetFullPath(request.FilePath.Trim());
+        string filePath;
+        if (string.IsNullOrWhiteSpace(request?.FilePath))
+        {
+            filePath = DefaultProjectLedgerExcelPath;
+        }
+        else if (!TryResolveAllowedFilePath(request!.FilePath, out filePath!, out var pathError))
+        {
+            return BadRequest(new ApiResponse<object>
+            {
+                Code = 400,
+                Message = pathError ?? "文件路径不可用"
+            });
+        }
 
         var sheetName = string.IsNullOrWhiteSpace(request?.SheetName)
             ? DefaultProjectLedgerSheetName

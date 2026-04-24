@@ -1,5 +1,6 @@
 ﻿<template>
   <el-drawer
+    class="pro-drawer"
     :model-value="modelValue"
     :title="title"
     :size="resolvedWidth"
@@ -63,13 +64,40 @@ const onUpdate = (value: boolean) => {
 
 <style scoped>
 .pro-drawer-content {
-  padding-right: 8px; /* For scrollbar */
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-height: 100%;
+  padding-right: 4px;
 }
+
 .pro-drawer-footer {
   display: flex;
   justify-content: flex-end;
   gap: 12px;
   padding-top: 16px;
-  border-top: 1px solid var(--el-border-color-light);
+  border-top: 1px solid #eef2f6;
+}
+
+:deep(.pro-drawer .el-drawer__header) {
+  padding: 20px 24px 16px;
+  border-bottom: 1px solid #eef2f6;
+  background: #ffffff;
+}
+
+:deep(.pro-drawer .el-drawer__title) {
+  font-size: 18px;
+  font-weight: 700;
+  color: #1f2937;
+}
+
+:deep(.pro-drawer .el-drawer__body) {
+  padding: 24px;
+}
+
+@media (max-width: 992px) {
+  :deep(.pro-drawer .el-drawer__body) {
+    padding: 18px;
+  }
 }
 </style>

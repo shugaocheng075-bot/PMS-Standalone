@@ -80,6 +80,14 @@ public class WorkHoursController(
     {
         var item = await workHoursService.GetByIdAsync(id, cancellationToken);
         if (item is null) return NotFound(ApiResponse<object>.Success(null));
+
+        var personnelId = HttpContext.GetCurrentPersonnelId();
+        var dataScope = await accessControlService.GetDataScopeAsync(personnelId);
+        if (!HospitalScopeHelper.IsHospitalAccessible(dataScope, item.HospitalName))
+        {
+            return StatusCode(403, new { code = 403, message = "无权查看该医院下的工时记录" });
+        }
+
         return Ok(ApiResponse<WorkHoursItemDto>.Success(item));
     }
 
@@ -112,9 +120,16 @@ public class WorkHoursController(
             return StatusCode(403, new { code = 403, message = "无权在该医院下修改工时记录" });
         }
 
-        var item = await workHoursService.UpdateAsync(id, dto, cancellationToken);
-        if (item is null) return NotFound(ApiResponse<object>.Success(null));
-        return Ok(ApiResponse<WorkHoursItemDto>.Success(item));
+        try
+        {
+            var item = await workHoursService.UpdateAsync(id, dto, cancellationToken);
+            if (item is null) return NotFound(ApiResponse<object>.Success(null));
+            return Ok(ApiResponse<WorkHoursItemDto>.Success(item));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { code = 400, message = ex.Message });
+        }
     }
 
     [HttpDelete("{id:long}")]
@@ -129,39 +144,77 @@ public class WorkHoursController(
             return StatusCode(403, new { code = 403, message = "无权删除该医院下的工时记录" });
         }
 
-        var deleted = await workHoursService.DeleteAsync(id, cancellationToken);
-        if (!deleted) return NotFound(ApiResponse<object>.Success(null));
-        return Ok(ApiResponse<object>.Success(new { message = "删除成功" }));
+        try
+        {
+            var deleted = await workHoursService.DeleteAsync(id, cancellationToken);
+            if (!deleted) return NotFound(ApiResponse<object>.Success(null));
+            return Ok(ApiResponse<object>.Success(new { message = "删除成功" }));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { code = 400, message = ex.Message });
+        }
     }
 
     [HttpPatch("{id:long}/submit")]
     public async Task<IActionResult> Submit(long id, CancellationToken cancellationToken)
     {
+        var personnelId = HttpContext.GetCurrentPersonnelId();
+        var dataScope = await accessControlService.GetDataScopeAsync(personnelId);
+        var existing = await workHoursService.GetByIdAsync(id, cancellationToken);
+        if (existing is null) return NotFound(ApiResponse<object>.Success(null));
+        if (!HospitalScopeHelper.IsHospitalAccessible(dataScope, existing.HospitalName))
+        {
+            return StatusCode(403, new { code = 403, message = "无权操作该医院下的工时记录" });
+        }
+
         var ok = await workHoursService.SubmitAsync(id, cancellationToken);
         if (!ok) return BadRequest(new { code = 400, message = "无法提交，记录不存在或状态不允许" });
-        return Ok(ApiResponse<object>.Success(new { message = "已提交" }));
+
+        var item = await workHoursService.GetByIdAsync(id, cancellationToken);
+        return Ok(ApiResponse<WorkHoursItemDto>.Success(item!));
     }
 
     [HttpPatch("{id:long}/confirm")]
     public async Task<IActionResult> Confirm(long id, CancellationToken cancellationToken)
     {
         var personnelId = HttpContext.GetCurrentPersonnelId();
+        var dataScope = await accessControlService.GetDataScopeAsync(personnelId);
+        var existing = await workHoursService.GetByIdAsync(id, cancellationToken);
+        if (existing is null) return NotFound(ApiResponse<object>.Success(null));
+        if (!HospitalScopeHelper.IsHospitalAccessible(dataScope, existing.HospitalName))
+        {
+            return StatusCode(403, new { code = 403, message = "无权操作该医院下的工时记录" });
+        }
+
         var profile = await accessControlService.GetUserProfileAsync(personnelId);
         var confirmerName = profile?.PersonnelName ?? "unknown";
         var ok = await workHoursService.ConfirmAsync(id, confirmerName, cancellationToken);
         if (!ok) return BadRequest(new { code = 400, message = "无法确认，记录不存在或未提交" });
-        return Ok(ApiResponse<object>.Success(new { message = "已确认" }));
+
+        var item = await workHoursService.GetByIdAsync(id, cancellationToken);
+        return Ok(ApiResponse<WorkHoursItemDto>.Success(item!));
     }
 
     [HttpPatch("{id:long}/reject")]
     public async Task<IActionResult> Reject(long id, CancellationToken cancellationToken)
     {
         var personnelId = HttpContext.GetCurrentPersonnelId();
+        var dataScope = await accessControlService.GetDataScopeAsync(personnelId);
+        var existing = await workHoursService.GetByIdAsync(id, cancellationToken);
+        if (existing is null) return NotFound(ApiResponse<object>.Success(null));
+        if (!HospitalScopeHelper.IsHospitalAccessible(dataScope, existing.HospitalName))
+        {
+            return StatusCode(403, new { code = 403, message = "无权操作该医院下的工时记录" });
+        }
+
         var profile = await accessControlService.GetUserProfileAsync(personnelId);
         var rejectorName = profile?.PersonnelName ?? "unknown";
         var ok = await workHoursService.RejectAsync(id, rejectorName, cancellationToken);
         if (!ok) return BadRequest(new { code = 400, message = "无法退回，记录不存在或未提交" });
-        return Ok(ApiResponse<object>.Success(new { message = "已退回" }));
+
+        var item = await workHoursService.GetByIdAsync(id, cancellationToken);
+        return Ok(ApiResponse<WorkHoursItemDto>.Success(item!));
     }
 
     [HttpGet("export")]

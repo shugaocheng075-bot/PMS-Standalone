@@ -41,13 +41,13 @@
         </el-form-item>
         <el-form-item>
           <div class="form-actions">
-            <el-button :disabled="!canPreview" :loading="sourceLoading" @click="loadSourcePreview()">
+            <el-button :disabled="!canPreview" :loading="sourceLoading" @click="loadSourcePreview()" icon="View">
               刷新来源预览
             </el-button>
-            <el-button type="primary" :loading="generating" @click="doGenerate" :disabled="!canGenerate">
+            <el-button type="primary" :loading="generating" @click="doGenerate" :disabled="!canGenerate" icon="VideoPlay">
               生成月度报告
             </el-button>
-            <el-button :disabled="!canGenerate" @click="doExport">
+            <el-button :disabled="!canGenerate" @click="doExport" icon="Download">
               导出月报CSV
             </el-button>
           </div>
@@ -162,13 +162,13 @@
                 <el-tag :type="scope.row.matchingStatus === '已匹配' ? 'success' : 'warning'">{{ scope.row.matchingStatus }}</el-tag>
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="180" fixed="right">
+            <el-table-column label="操作" width="300" fixed="right">
               <template #default="scope">
-                <el-space>
+                <div class="table-action-group">
                   <el-button link type="primary" @click="goToPersonnelPage(scope.row.name, scope.row.personnelId)">维护人员</el-button>
-                  <el-button link @click="goToWorkHoursPage(undefined, scope.row.name)">查看工时</el-button>
+                  <el-button link @click="goToWorkHoursPage(undefined, scope.row.name)" icon="View">查看工时</el-button>
                   <el-button link @click="goToAnnualReportPage(scope.row.name)">年报</el-button>
-                </el-space>
+                </div>
               </template>
             </el-table-column>
           </el-table>
@@ -193,14 +193,14 @@
                 <span :title="fullList(scope.row.productNames)">{{ shortList(scope.row.productNames) }}</span>
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="160" fixed="right">
+            <el-table-column label="操作" width="320" fixed="right">
               <template #default="scope">
-                <el-space>
+                <div class="table-action-group">
                   <el-button link type="primary" @click="goToPersonnelPage(scope.row.name)">人员页</el-button>
                   <el-button link @click="goToProjectPage({ maintenancePersonName: scope.row.name, hospitalName: singleValue(scope.row.hospitalNames) })">项目页</el-button>
                   <el-button link @click="goToHandoverPage(singleValue(scope.row.hospitalNames))">交接</el-button>
                   <el-button link @click="goToInspectionPage(singleValue(scope.row.hospitalNames), singleValue(scope.row.productNames))">巡检</el-button>
-                </el-space>
+                </div>
               </template>
             </el-table-column>
           </el-table>

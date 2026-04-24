@@ -41,15 +41,21 @@ public class AuthMiddleware(RequestDelegate next)
         await next(context);
     }
 
+    private static readonly HashSet<string> PublicPaths = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "/api/auth/login",
+        "/api/health",
+    };
+
     private static bool IsPublicPath(string path)
     {
-        if (path.StartsWith("/api/auth/login", StringComparison.OrdinalIgnoreCase) ||
-            path.StartsWith("/api/health", StringComparison.OrdinalIgnoreCase))
+        var trimmed = path.TrimEnd('/');
+        if (string.IsNullOrEmpty(trimmed))
         {
-            return true;
+            return false;
         }
 
-        return false;
+        return PublicPaths.Contains(trimmed);
     }
 
     private static string? ResolveBearerToken(string? authorization)

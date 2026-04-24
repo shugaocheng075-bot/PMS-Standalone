@@ -259,9 +259,14 @@ public class InMemoryAccessControlService(IPersonnelService personnelService) : 
         }
 
         if (path.StartsWith("/api/health") || path.StartsWith("/api/access/me") || path.StartsWith("/api/access/actors")
-            || path.StartsWith("/api/system"))
+            || path.StartsWith("/api/system/info"))
         {
             return null;
+        }
+
+        if (path.StartsWith("/api/system/backup"))
+        {
+            return "maintenance.manage";
         }
 
         if (path.StartsWith("/api/access/permissions") || path.StartsWith("/api/access/users"))
@@ -291,17 +296,17 @@ public class InMemoryAccessControlService(IPersonnelService personnelService) : 
 
         if (path.StartsWith("/api/handovers"))
         {
-            return httpMethod == "PUT" ? "handover.manage" : "handover.view";
+            return httpMethod == "GET" ? "handover.view" : "handover.manage";
         }
 
         if (path.StartsWith("/api/inspections"))
         {
-            return "inspection.view";
+            return httpMethod == "GET" ? "inspection.view" : "inspection.manage";
         }
 
         if (path.StartsWith("/api/annual-reports"))
         {
-            return "annual-report.view";
+            return httpMethod == "GET" ? "annual-report.view" : "annual-report.manage";
         }
 
         if (path.StartsWith("/api/hospitals"))
@@ -332,6 +337,11 @@ public class InMemoryAccessControlService(IPersonnelService personnelService) : 
         if (path.StartsWith("/api/repair-records"))
         {
             return httpMethod == "GET" ? "repair.view" : "repair.manage";
+        }
+
+        if (path.StartsWith("/api/monthly-reports"))
+        {
+            return httpMethod == "GET" ? "monthly-report.view" : "monthly-report.manage";
         }
 
         if (path.StartsWith("/api/workhours"))

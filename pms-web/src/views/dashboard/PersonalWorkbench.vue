@@ -5,23 +5,22 @@
         <h2 class="page-title">个人工作台</h2>
         <div class="page-subtitle">待办事项、个人数据统计概览</div>
       </div>
-      <el-button size="small" :loading="loading" @click="loadWorkbench">刷新数据</el-button>
+      <el-button size="small" :loading="loading" @click="loadWorkbench" icon="Refresh">刷新数据</el-button>
     </div>
 
-    <!-- 统计卡片 -->
-    <el-row :gutter="16" class="stats-row">
-      <el-col :span="6" v-for="card in statCards" :key="card.title">
-        <el-card shadow="never" class="stat-card stats-card clickable" @click="card.onClick()">
-          <div class="t">{{ card.title }}</div>
-          <div class="v">{{ card.value }}</div>
-        </el-card>
-      </el-col>
-    </el-row>
+    <div class="metrics-grid metrics-grid--4">
+      <button v-for="card in statCards" :key="card.title" type="button" class="metric-card metric-card--action" @click="card.onClick()">
+        <div class="metric-card-head">
+          <span class="metric-title">{{ card.title }}</span>
+          <span class="metric-context">{{ card.context }}</span>
+        </div>
+        <div class="metric-value">{{ card.value }}</div>
+        <div class="metric-note">{{ card.note }}</div>
+      </button>
+    </div>
 
-    <!-- 待办列表 -->
-    <el-row :gutter="16">
-      <el-col :span="8">
-        <el-card shadow="never" class="todo-card">
+    <div class="workbench-grid">
+      <AppTableCard class="todo-card">
           <template #header>
             <div class="panel-head">
               <span class="panel-title">临期合同</span>
@@ -43,11 +42,9 @@
               {{ item.daysRemaining }}天后到期
             </el-tag>
           </div>
-        </el-card>
-      </el-col>
+        </AppTableCard>
 
-      <el-col :span="8">
-        <el-card shadow="never" class="todo-card">
+      <AppTableCard class="todo-card">
           <template #header>
             <div class="panel-head">
               <span class="panel-title">待巡检</span>
@@ -67,11 +64,9 @@
             </div>
             <el-tag size="small">{{ item.status }}</el-tag>
           </div>
-        </el-card>
-      </el-col>
+        </AppTableCard>
 
-      <el-col :span="8">
-        <el-card shadow="never" class="todo-card">
+      <AppTableCard class="todo-card">
           <template #header>
             <div class="panel-head">
               <span class="panel-title">未处理报修</span>
@@ -93,12 +88,10 @@
               {{ item.urgency }}
             </el-tag>
           </div>
-        </el-card>
-      </el-col>
-    </el-row>
+        </AppTableCard>
+    </div>
 
-    <!-- 快捷操作 -->
-    <el-card shadow="never" class="quick-actions-card">
+    <AppTableCard class="quick-actions-card">
       <template #header>
         <div class="panel-head">
           <span class="panel-title">快捷操作</span>
@@ -107,12 +100,12 @@
       <div class="quick-actions">
         <el-button @click="router.push('/workhours/list?action=create')">登记工时</el-button>
         <el-button @click="router.push('/repair/list?action=create')">新建报修</el-button>
-        <el-button @click="router.push('/inspection/list')">查看巡检</el-button>
+        <el-button @click="router.push('/inspection/list')" icon="View">查看巡检</el-button>
         <el-button @click="router.push('/project/list')">项目台账</el-button>
         <el-button @click="router.push('/major-demand/list')">重大需求</el-button>
         <el-button @click="router.push('/alert/center')">告警中心</el-button>
       </div>
-    </el-card>
+    </AppTableCard>
   </div>
 </template>
 
@@ -120,6 +113,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
+import AppTableCard from '../../components/AppTableCard.vue'
 import { fetchWorkbench } from '../../api/modules/dashboard'
 import type { WorkbenchData } from '../../types/workbench'
 import { getErrorMessage } from '../../utils/error'
@@ -129,10 +123,10 @@ const loading = ref(false)
 const data = ref<WorkbenchData | null>(null)
 
 const statCards = computed(() => [
-  { title: '我的项目', value: String(data.value?.myProjects ?? 0), onClick: () => void router.push('/project/list') },
-  { title: '待处理报修', value: String(data.value?.pendingRepairCount ?? 0), onClick: () => void router.push('/repair/list') },
-  { title: '待巡检', value: String(data.value?.pendingInspectionCount ?? 0), onClick: () => void router.push('/inspection/list') },
-  { title: '本月工时(人天)', value: String(data.value?.thisMonthWorkHours ?? 0), onClick: () => void router.push('/workhours/list') },
+  { title: '我的项目', value: String(data.value?.myProjects ?? 0), context: '项目总览', note: '当前账号数据范围内的项目数量', onClick: () => void router.push('/project/list') },
+  { title: '待处理报修', value: String(data.value?.pendingRepairCount ?? 0), context: '维修响应', note: '仍待接单或处理完成的报修记录', onClick: () => void router.push('/repair/list') },
+  { title: '待巡检', value: String(data.value?.pendingInspectionCount ?? 0), context: '计划执行', note: '待安排或待确认的巡检任务', onClick: () => void router.push('/inspection/list') },
+  { title: '本月工时(人天)', value: String(data.value?.thisMonthWorkHours ?? 0), context: '投入效率', note: '按当月已登记工时折算的人天投入', onClick: () => void router.push('/workhours/list') },
 ])
 
 async function loadWorkbench() {
@@ -154,86 +148,22 @@ onMounted(() => loadWorkbench())
 .workbench-page {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-}
-
-.panel-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.panel-title {
-  font-weight: 700;
-  color: #1f3f70;
-}
-
-.todo-card {
-  min-height: 320px;
-}
-
-.todo-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 8px 0;
-  border-bottom: 1px solid var(--el-border-color-lighter);
-}
-
-.todo-item:last-child {
-  border-bottom: none;
-}
-
-.todo-main {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-  flex: 1;
-  margin-right: 8px;
-}
-
-.todo-label {
-  font-size: 14px;
-  color: var(--el-text-color-primary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.todo-sub {
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.empty-tip {
-  color: var(--el-text-color-placeholder);
-  text-align: center;
-  padding: 40px 0;
+  gap: 20px;
 }
 
 .quick-actions-card {
   margin-top: 0;
 }
 
-.quick-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-}
-
-.clickable {
-  cursor: pointer;
-}
-
 @media (max-width: 1280px) {
-  .el-col-8 {
-    max-width: 100%;
-    flex: 0 0 100%;
+  .quick-actions {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .quick-actions {
+    grid-template-columns: 1fr;
   }
 }
 </style>

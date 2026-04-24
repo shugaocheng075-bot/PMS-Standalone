@@ -1,24 +1,49 @@
 <template>
   <div class="page-shell">
-    <div class="page-head">
-      <div>
-        <h2 class="page-title">巡检管理</h2>
-        <div class="page-subtitle">管理巡检排期、执行状态与实际巡检结果</div>
+    <div class="inspection-hero">
+      <div class="inspection-hero-main">
+        <div class="inspection-hero-kicker-row">
+          <span class="inspection-hero-kicker">Inspection Operations Hub</span>
+          <span class="inspection-hero-badge">{{ inspectionFilterLabel }}</span>
+        </div>
+        <h2 class="inspection-hero-title">巡检管理</h2>
+        <div class="inspection-hero-subtitle">管理巡检排期、执行状态与实际巡检结果，先在首屏确认计划负载和执行压力，再切入计划与结果双视图继续处理。</div>
+
+        <div class="inspection-hero-signals">
+          <div v-for="item in inspectionHeroSignals" :key="item.label" class="inspection-signal-card">
+            <span class="inspection-signal-label">{{ item.label }}</span>
+            <strong class="inspection-signal-value">{{ item.value }}</strong>
+            <span class="inspection-signal-note">{{ item.note }}</span>
+          </div>
+        </div>
       </div>
-      <el-button v-if="canManageInspection && activeTab === 'plan'" type="primary" @click="onOpenPlanCreate">新增巡检计划</el-button>
+
+      <div class="inspection-hero-side">
+        <div class="inspection-control-card">
+          <div class="inspection-control-copy">
+            <span class="inspection-control-title">巡检动作</span>
+            <span class="inspection-control-note">当前计划 {{ total }} 条，结果 {{ resultTotal }} 条，可直接切换视图或创建计划。</span>
+          </div>
+          <div class="inspection-control-actions">
+            <el-button size="small" @click="onTabChange('plan')">计划视图</el-button>
+            <el-button size="small" @click="onTabChange('results')">结果视图</el-button>
+            <el-button v-if="canManageInspection && activeTab === 'plan'" size="small" type="primary" @click="onOpenPlanCreate" icon="Plus">新增巡检计划</el-button>
+          </div>
+        </div>
+
+        <div class="inspection-quick-grid">
+          <button v-for="action in inspectionQuickActions" :key="action.title" type="button" class="inspection-quick-action" @click="action.onClick()">
+            <span class="inspection-quick-title">{{ action.title }}</span>
+            <span class="inspection-quick-note">{{ action.note }}</span>
+          </button>
+        </div>
+      </div>
     </div>
 
     <el-tabs v-model="activeTab" class="main-tabs" @tab-change="onTabChange">
       <!-- ===================== 巡检计划 Tab ===================== -->
       <el-tab-pane label="巡检计划" name="plan">
-        <el-row :gutter="16" class="stats-row">
-          <el-col :span="4"><el-card shadow="never" class="stat-card stats-card clickable" :class="{ active: query.status === '已计划' }" @click="onStatClick('已计划')"><div class="t">已计划</div><div class="v">{{ summary.plannedCount }}</div></el-card></el-col>
-          <el-col :span="4"><el-card shadow="never" class="stat-card stats-card clickable" :class="{ active: query.status === '执行中' }" @click="onStatClick('执行中')"><div class="t">执行中</div><div class="v warning">{{ summary.inProgressCount }}</div></el-card></el-col>
-          <el-col :span="4"><el-card shadow="never" class="stat-card stats-card clickable" :class="{ active: query.status === '已完成' }" @click="onStatClick('已完成')"><div class="t">已完成</div><div class="v success">{{ summary.completedCount }}</div></el-card></el-col>
-          <el-col :span="4"><el-card shadow="never" class="stat-card stats-card clickable" :class="{ active: query.status === '已取消' }" @click="onStatClick('已取消')"><div class="t">已取消</div><div class="v danger">{{ summary.cancelledCount }}</div></el-card></el-col>
-          <el-col :span="4"><el-card shadow="never" class="stat-card stats-card"><div class="t">本月计划</div><div class="v">{{ summary.thisMonthCount }}</div></el-card></el-col>
-          <el-col :span="4"><el-card shadow="never" class="stat-card stats-card clickable" :class="{ active: query.status === '' }" @click="onStatClick('')"><div class="t">总数</div><div class="v">{{ summary.total }}</div></el-card></el-col>
-        </el-row>
+        <SummaryMetrics :items="planSummaryCards" :columns="6" @select="onPlanSummaryCardSelect" />
 
   
 
@@ -37,7 +62,7 @@
       @row-dblclick="onPlanRowDoubleClick"
     >
       <template #toolbar>
-        <el-button :loading="exporting" @click="onExport">导出CSV</el-button>
+        <el-button :loading="exporting" @click="onExport" icon="Download">导出CSV</el-button>
       </template>
 
       <template #search>
@@ -91,8 +116,8 @@
               </el-select>
             </el-form-item>
             <el-form-item class="filter-actions">
-          <el-button type="primary" @click="onSearch">查询</el-button>
-          <el-button @click="onReset">重置</el-button>
+          <el-button type="primary" @click="onSearch" icon="Search">查询</el-button>
+          <el-button @click="onReset" icon="Refresh">重置</el-button>
         </el-form-item>
           </el-form>
     </template>
@@ -102,18 +127,28 @@
             <el-table-column prop="hospitalName" label="医院" min-width="220" show-overflow-tooltip sortable />
             <el-table-column prop="productName" label="产品" min-width="180" show-overflow-tooltip sortable />
             <el-table-column prop="province" label="省份" width="100" show-overflow-tooltip sortable />
-            <el-table-column prop="hospitalLevel" label="医院级别" width="100" show-overflow-tooltip />
-            <el-table-column prop="groupName" label="组别" width="120" show-overflow-tooltip />
-            <el-table-column prop="inspector" label="巡检人" width="100" show-overflow-tooltip />
+            <el-table-column prop="hospitalLevel" label="医院级别" width="110" show-overflow-tooltip />
+            <el-table-column prop="groupName" label="组别" width="140" show-overflow-tooltip />
+            <el-table-column prop="inspector" label="巡检人" width="120" show-overflow-tooltip />
             <el-table-column prop="inspectionType" label="方式" width="90" />
             <el-table-column prop="priority" label="优先级" width="90">
               <template #default="scope">
                 <el-tag :type="scope.row.priority === '高' ? 'danger' : scope.row.priority === '中' ? 'warning' : 'info'">{{ scope.row.priority || '-' }}</el-tag>
               </template>
             </el-table-column>
-            <el-table-column prop="remarks" label="备注" min-width="180" show-overflow-tooltip />
+            <el-table-column prop="remarks" label="备注" min-width="220" show-overflow-tooltip />
             <el-table-column prop="planDate" label="计划日期" width="120" sortable>
               <template #default="scope">{{ formatDate(scope.row.planDate) }}</template>
+            </el-table-column>
+            <el-table-column prop="slaDueAt" label="时效" width="190">
+              <template #default="scope">
+                <div class="deadline-cell">
+                  <span>{{ scope.row.slaDueAt ? formatDateTime(scope.row.slaDueAt) : '-' }}</span>
+                  <el-tag v-if="scope.row.slaDueAt" size="small" :type="planSlaTagType(scope.row)">
+                    {{ formatPlanSlaText(scope.row) }}
+                  </el-tag>
+                </div>
+              </template>
             </el-table-column>
             <el-table-column prop="actualDate" label="实际日期" width="120">
               <template #default="scope">{{ scope.row.actualDate ? formatDate(scope.row.actualDate) : '-' }}</template>
@@ -123,12 +158,17 @@
                 <el-tag :type="statusTag(scope.row.status)">{{ scope.row.status }}</el-tag>
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="220" fixed="right">
+            <el-table-column label="操作" width="460" fixed="right">
               <template #default="scope">
-                <el-button v-if="canManageInspection" link type="primary" @click="onOpenPlanEdit(scope.row)">编辑</el-button>
-                <el-button v-if="canManageInspection" link type="danger" @click="onDeletePlan(scope.row)">删除</el-button>
-                <el-button link type="primary" @click="onOpenPlanDetail(scope.row)">详情</el-button>
-                <el-button v-if="isSameStatus(scope.row.status, '已完成')" link @click="goToResultTab(scope.row)">查看结果</el-button>
+                <div class="table-action-group">
+                  <el-button v-if="canManageInspection && canStartPlan(scope.row.status)" link type="primary" :loading="isPlanActionLoading(scope.row.id, 'start')" :disabled="isPlanRowBusy(scope.row.id)" @click="onStartPlan(scope.row)">开始执行</el-button>
+                  <el-button v-if="canManageInspection && canCompletePlan(scope.row.status)" link type="success" :loading="isPlanActionLoading(scope.row.id, 'complete')" :disabled="isPlanRowBusy(scope.row.id)" @click="onCompletePlan(scope.row)">完成巡检</el-button>
+                  <el-button v-if="canManageInspection && canReopenPlan(scope.row.status)" link type="warning" :loading="isPlanActionLoading(scope.row.id, 'reopen')" :disabled="isPlanRowBusy(scope.row.id)" @click="onReopenPlan(scope.row)">重开计划</el-button>
+                  <el-button v-if="canManageInspection" link type="primary" @click="onOpenPlanEdit(scope.row)" icon="Edit">编辑</el-button>
+                  <el-button v-if="canManageInspection" link type="danger" @click="onDeletePlan(scope.row)" icon="Delete">删除</el-button>
+                  <el-button link type="primary" @click="onOpenPlanDetail(scope.row)" icon="Document">详情</el-button>
+                  <el-button v-if="isSameStatus(scope.row.status, '已完成')" link @click="goToResultTab(scope.row)" icon="View">查看结果</el-button>
+                </div>
               </template>
             </el-table-column>
     
@@ -141,28 +181,7 @@
       <!-- ===================== 巡检结果 Tab ===================== -->
       <el-tab-pane label="巡检结果" name="results">
         <!-- 结果统计概览 -->
-        <el-row :gutter="16" class="stats-row">
-          <el-col :span="6">
-            <el-card shadow="never" class="stat-card stats-card clickable" :class="{ active: resultQuery.healthLevel === '' }" @click="onResultHealthClick('')">
-              <div class="t">全部结果</div><div class="v">{{ resultTotal }}</div>
-            </el-card>
-          </el-col>
-          <el-col :span="6">
-            <el-card shadow="never" class="stat-card stats-card clickable" :class="{ active: resultQuery.healthLevel === '良好' }" @click="onResultHealthClick('良好')">
-              <div class="t">良好</div><div class="v success">{{ resultHealthCounts.good }}</div>
-            </el-card>
-          </el-col>
-          <el-col :span="6">
-            <el-card shadow="never" class="stat-card stats-card clickable" :class="{ active: resultQuery.healthLevel === '警告' }" @click="onResultHealthClick('警告')">
-              <div class="t">警告</div><div class="v warning">{{ resultHealthCounts.warning }}</div>
-            </el-card>
-          </el-col>
-          <el-col :span="6">
-            <el-card shadow="never" class="stat-card stats-card clickable" :class="{ active: resultQuery.healthLevel === '严重' }" @click="onResultHealthClick('严重')">
-              <div class="t">严重</div><div class="v danger">{{ resultHealthCounts.critical }}</div>
-            </el-card>
-          </el-col>
-        </el-row>
+        <SummaryMetrics :items="resultSummaryCards" :columns="4" @select="onResultSummaryCardSelect" />
 
         <!-- 结果筛选 -->
         <AppFilterCard>
@@ -190,9 +209,9 @@
               </el-select>
             </el-form-item>
             <el-form-item class="filter-actions">
-              <el-button type="primary" @click="onResultSearch">查询</el-button>
-              <el-button @click="onResultReset">重置</el-button>
-              <el-button type="success" :loading="resultUploadLoading" @click="triggerResultUpload">上传JSON</el-button>
+              <el-button type="primary" @click="onResultSearch" icon="Search">查询</el-button>
+              <el-button @click="onResultReset" icon="Refresh">重置</el-button>
+              <el-button type="success" :loading="resultUploadLoading" @click="triggerResultUpload" icon="Upload">上传JSON</el-button>
               <input ref="resultUploadInput" type="file" accept=".json,application/json" style="display: none" @change="onResultFileChange" />
             </el-form-item>
           </el-form>
@@ -201,12 +220,12 @@
         <!-- 结果表格 -->
         <AppTableCard>
           <el-table :data="resultTableData" v-loading="resultLoading" stripe max-height="520" scrollbar-always-on empty-text="暂无巡检结果数据（SystemAuditTool 推送后将在此显示）" @row-dblclick="onResultRowDoubleClick">
-            <el-table-column prop="hospitalName" label="医院" min-width="200" show-overflow-tooltip sortable />
-            <el-table-column prop="productName" label="产品" min-width="160" show-overflow-tooltip sortable />
+            <el-table-column prop="hospitalName" label="医院" min-width="220" show-overflow-tooltip sortable />
+            <el-table-column prop="productName" label="产品" min-width="180" show-overflow-tooltip sortable />
             <el-table-column prop="inspectedAt" label="巡检时间" width="170" sortable>
               <template #default="scope">{{ formatDateTime(scope.row.inspectedAt) }}</template>
             </el-table-column>
-            <el-table-column prop="inspector" label="巡检人" width="100" show-overflow-tooltip />
+            <el-table-column prop="inspector" label="巡检人" width="120" show-overflow-tooltip />
             <el-table-column prop="healthLevel" label="健康等级" width="110" sortable>
               <template #default="scope">
                 <el-tag :type="healthTag(scope.row.healthLevel)" effect="dark">{{ scope.row.healthLevel }}</el-tag>
@@ -217,14 +236,14 @@
                 <span :class="scoreClass(scope.row.overallScore)">{{ scope.row.overallScore }}</span>
               </template>
             </el-table-column>
-            <el-table-column label="风险统计" width="150">
+            <el-table-column label="风险统计" width="170">
               <template #default="scope">
                 <span v-if="scope.row.criticalCount > 0" class="risk-badge critical">严重 {{ scope.row.criticalCount }}</span>
                 <span v-if="scope.row.warningCount > 0" class="risk-badge warning">警告 {{ scope.row.warningCount }}</span>
                 <span v-if="scope.row.criticalCount === 0 && scope.row.warningCount === 0" class="risk-badge good">无风险</span>
               </template>
             </el-table-column>
-            <el-table-column prop="databaseVersion" label="数据库版本" width="130" show-overflow-tooltip />
+            <el-table-column prop="databaseVersion" label="数据库版本" width="150" show-overflow-tooltip />
             <el-table-column label="存储" width="90">
               <template #default="scope">
                 <span v-if="scope.row.storageUsedPercent != null" :class="storageClass(scope.row.storageUsedPercent)">
@@ -233,10 +252,12 @@
                 <span v-else>-</span>
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="150" fixed="right">
+            <el-table-column label="操作" width="200" fixed="right">
               <template #default="scope">
-                <el-button link type="primary" size="small" @click="showResultDetail(scope.row)">详情</el-button>
-                <el-button link size="small" @click="goToProjectPage(scope.row)">项目页</el-button>
+                <div class="table-action-group">
+                  <el-button link type="primary" size="small" @click="showResultDetail(scope.row)" icon="Document">详情</el-button>
+                  <el-button link size="small" @click="goToProjectPage(scope.row)">项目页</el-button>
+                </div>
               </template>
             </el-table-column>
           </el-table>
@@ -313,7 +334,10 @@
           <el-descriptions-item label="方式">{{ planDetailRow.inspectionType }}</el-descriptions-item>
           <el-descriptions-item label="优先级">{{ planDetailRow.priority || '-' }}</el-descriptions-item>
           <el-descriptions-item label="计划日期">{{ formatDate(planDetailRow.planDate) }}</el-descriptions-item>
+          <el-descriptions-item label="SLA截止">{{ planDetailRow.slaDueAt ? formatDateTime(planDetailRow.slaDueAt) : '-' }}</el-descriptions-item>
           <el-descriptions-item label="实际日期">{{ planDetailRow.actualDate ? formatDate(planDetailRow.actualDate) : '-' }}</el-descriptions-item>
+          <el-descriptions-item label="开始执行">{{ planDetailRow.startedAt ? formatDateTime(planDetailRow.startedAt) : '-' }}</el-descriptions-item>
+          <el-descriptions-item label="完成时间">{{ planDetailRow.completedAt ? formatDateTime(planDetailRow.completedAt) : '-' }}</el-descriptions-item>
           <el-descriptions-item label="状态">
             <el-tag :type="statusTag(planDetailRow.status)">{{ planDetailRow.status }}</el-tag>
           </el-descriptions-item>
@@ -321,8 +345,11 @@
         </el-descriptions>
 
         <div class="detail-actions">
-          <el-button v-if="canManageInspection" plain type="primary" @click="onOpenPlanEdit(planDetailRow)">编辑计划</el-button>
-          <el-button v-if="canManageInspection" plain type="danger" @click="onDeletePlan(planDetailRow)">删除计划</el-button>
+          <el-button v-if="canManageInspection && canStartPlan(planDetailRow.status)" plain type="primary" :loading="isPlanActionLoading(planDetailRow.id, 'start')" :disabled="isPlanRowBusy(planDetailRow.id)" @click="onStartPlan(planDetailRow)">开始执行</el-button>
+          <el-button v-if="canManageInspection && canCompletePlan(planDetailRow.status)" plain type="success" :loading="isPlanActionLoading(planDetailRow.id, 'complete')" :disabled="isPlanRowBusy(planDetailRow.id)" @click="onCompletePlan(planDetailRow)">完成巡检</el-button>
+          <el-button v-if="canManageInspection && canReopenPlan(planDetailRow.status)" plain type="warning" :loading="isPlanActionLoading(planDetailRow.id, 'reopen')" :disabled="isPlanRowBusy(planDetailRow.id)" @click="onReopenPlan(planDetailRow)">重开计划</el-button>
+          <el-button v-if="canManageInspection" plain type="primary" @click="onOpenPlanEdit(planDetailRow)" icon="Edit">编辑计划</el-button>
+          <el-button v-if="canManageInspection" plain type="danger" @click="onDeletePlan(planDetailRow)" icon="Delete">删除计划</el-button>
           <el-button plain @click="goToProjectPage(planDetailRow)">去项目台账</el-button>
           <el-button plain @click="goToResultTab(planDetailRow)">去巡检结果</el-button>
         </div>
@@ -384,26 +411,29 @@
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="planEditVisible = false">取消</el-button>
-        <el-button type="primary" :loading="planSubmitting" @click="submitPlanEdit">保存</el-button>
+        <el-button @click="planEditVisible = false" icon="Close">取消</el-button>
+        <el-button type="primary" :loading="planSubmitting" @click="submitPlanEdit" icon="Check">保存</el-button>
       </template>
     </ProDrawer>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useRoute, useRouter } from 'vue-router'
 import {
-  fetchInspections,
+  completeInspection,
   createInspection,
   deleteInspection,
+  exportInspections,
   fetchInspectionResults,
+  fetchInspections,
   fetchInspectionSummary,
+  reopenInspection,
+  startInspection,
   submitInspectionResults,
   updateInspection,
-  exportInspections,
   type InspectionResultSubmitItem,
 } from '../../api/modules/inspection'
 import type { InspectionPlanItem, InspectionPlanUpsert, InspectionResult, InspectionSummary } from '../../types/inspection'
@@ -416,19 +446,23 @@ import { useAccessControl } from '../../composables/useAccessControl'
 import { normalizeStatusText, resolveInspectionStatusTag } from '../../utils/statusTag'
 import ProTable from '../../components/ProTable.vue'
 import ProDrawer from '../../components/ProDrawer.vue'
+import SummaryMetrics from '../../components/SummaryMetrics.vue'
 
 
 // ---- Tab 切换 ----
 const activeTab = ref('plan')
 const router = useRouter()
 const access = useAccessControl()
-const canManageInspection = computed(() => access.isManager() && access.canPermission('inspection.view'))
+const canManageInspection = computed(() => (access.isManager() || access.isRegionalManager()) && access.canPermission('inspection.manage'))
 
 const loading = ref(false)
 const exporting = ref(false)
 const total = ref(0)
 const tableData = ref<InspectionPlanItem[]>([])
 const allPlanRows = ref<InspectionPlanItem[]>([])
+const planActionLoadingKey = ref('')
+const nowTick = ref(Date.now())
+let planTickTimer: number | null = null
 const summary = ref<InspectionSummary>({
   plannedCount: 0,
   inProgressCount: 0,
@@ -450,6 +484,168 @@ const query = reactive({
   page: 1,
   size: 15,
 })
+
+type InspectionSummaryCard = {
+  key: string
+  title: string
+  value: number
+  context: string
+  note: string
+  color: string
+  active?: boolean
+  clickable?: boolean
+}
+
+const planSummaryCards = computed<InspectionSummaryCard[]>(() => [
+  {
+    key: '已计划',
+    title: '已计划',
+    value: summary.value.plannedCount,
+    context: '计划状态',
+    note: '查看已排期待执行的巡检任务',
+    color: '#7c98bc',
+    active: query.status === '已计划',
+  },
+  {
+    key: '执行中',
+    title: '执行中',
+    value: summary.value.inProgressCount,
+    context: '计划状态',
+    note: '跟进当前执行中的巡检任务',
+    color: '#c7a06c',
+    active: query.status === '执行中',
+  },
+  {
+    key: '已完成',
+    title: '已完成',
+    value: summary.value.completedCount,
+    context: '计划状态',
+    note: '查看已完成的巡检计划闭环情况',
+    color: '#7d9f92',
+    active: query.status === '已完成',
+  },
+  {
+    key: '已取消',
+    title: '已取消',
+    value: summary.value.cancelledCount,
+    context: '计划状态',
+    note: '核查已取消计划的原因与记录',
+    color: '#c58a87',
+    active: query.status === '已取消',
+  },
+  {
+    key: 'month',
+    title: '本月计划',
+    value: summary.value.thisMonthCount,
+    context: '节奏概览',
+    note: '本月周期内已纳入排期的巡检数量',
+    color: '#3f4f63',
+    clickable: false,
+  },
+  {
+    key: 'all',
+    title: '总数',
+    value: summary.value.total,
+    context: '全量视图',
+    note: '查看全部巡检计划与状态分布',
+    color: '#3f4f63',
+    active: query.status === '',
+  },
+])
+
+const inspectionFilterLabel = computed(() => {
+  if (activeTab.value === 'results' && resultQuery.healthLevel) {
+    return `结果：${resultQuery.healthLevel}`
+  }
+
+  if (activeTab.value === 'plan' && query.status) {
+    return `计划：${query.status}`
+  }
+
+  if (activeTab.value === 'plan' && query.province) {
+    return `省份：${query.province}`
+  }
+
+  if (activeTab.value === 'plan' && query.productName) {
+    return `产品：${query.productName}`
+  }
+
+  if (activeTab.value === 'results' && resultQuery.hospitalName) {
+    return `医院：${resultQuery.hospitalName}`
+  }
+
+  return activeTab.value === 'results' ? '巡检结果视图' : '巡检计划视图'
+})
+
+const inspectionHeroSignals = computed(() => {
+  const highRiskResults = resultTableData.value.filter((item) => item.healthLevel === '严重' || item.healthLevel === '警告').length
+  const planHospitalCount = new Set(tableData.value.map((item) => item.hospitalName).filter(Boolean)).size
+
+  return [
+    {
+      label: '计划总数',
+      value: String(summary.value.total),
+      note: '当前口径下全部巡检计划数量',
+    },
+    {
+      label: '执行中',
+      value: String(summary.value.inProgressCount),
+      note: '仍在推进中的巡检任务',
+    },
+    {
+      label: '本月排期',
+      value: String(summary.value.thisMonthCount),
+      note: '当前月度已排入巡检节奏的任务',
+    },
+    {
+      label: '结果风险',
+      value: String(highRiskResults),
+      note: `当前结果页高风险记录，覆盖 ${planHospitalCount} 家医院`,
+    },
+  ]
+})
+
+const inspectionQuickActions = computed(() => [
+  {
+    title: '执行中计划',
+    note: '聚焦正在执行的巡检任务',
+    onClick: () => {
+      activeTab.value = 'plan'
+      query.status = '执行中'
+      query.page = 1
+      void loadData()
+    },
+  },
+  {
+    title: '已完成计划',
+    note: '复查已完成巡检的闭环质量',
+    onClick: () => {
+      activeTab.value = 'plan'
+      query.status = '已完成'
+      query.page = 1
+      void loadData()
+    },
+  },
+  {
+    title: '严重结果',
+    note: '切到结果视图查看严重健康等级',
+    onClick: () => {
+      activeTab.value = 'results'
+      resultQuery.healthLevel = '严重'
+      resultQuery.page = 1
+      void loadResults()
+    },
+  },
+  {
+    title: '结果重置',
+    note: '清空结果筛选回到全量巡检数据',
+    onClick: () => {
+      activeTab.value = 'results'
+      onResultReset()
+    },
+  },
+])
+
 const route = useRoute()
 const planDetailVisible = ref(false)
 const planDetailRow = ref<InspectionPlanItem | null>(null)
@@ -641,6 +837,64 @@ const isSameStatus = (left: string, right: string) => normalizeStatusText(left) 
 
 const statusTag = (status: string) => resolveInspectionStatusTag(status)
 
+const parsePlanSlaDate = (value?: string | null) => {
+  if (!value) {
+    return null
+  }
+
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? null : date
+}
+
+const formatPlanSlaText = (item: InspectionPlanItem) => {
+  const dueAt = parsePlanSlaDate(item.slaDueAt)
+  if (!dueAt) {
+    return '未设置'
+  }
+
+  if (isSameStatus(item.status, '已完成')) {
+    return '已闭环'
+  }
+
+  const diff = dueAt.getTime() - nowTick.value
+  const hours = Math.round(diff / 3600000)
+  if (hours < 0) {
+    return `逾期 ${Math.abs(hours)}h`
+  }
+  if (hours < 24) {
+    return `${hours}h 内`
+  }
+  return `${Math.ceil(hours / 24)} 天内`
+}
+
+const planSlaTagType = (item: InspectionPlanItem) => {
+  if (isSameStatus(item.status, '已完成')) {
+    return 'success'
+  }
+
+  const dueAt = parsePlanSlaDate(item.slaDueAt)
+  if (!dueAt) {
+    return 'info'
+  }
+
+  const diff = dueAt.getTime() - nowTick.value
+  if (diff <= 0) {
+    return 'danger'
+  }
+  if (diff <= 24 * 3600000) {
+    return 'warning'
+  }
+  return 'success'
+}
+
+const canStartPlan = (status: string) => isSameStatus(status, '已计划')
+const canCompletePlan = (status: string) => isSameStatus(status, '执行中')
+const canReopenPlan = (status: string) => isSameStatus(status, '已完成') || isSameStatus(status, '已取消')
+
+const planActionKey = (id: number, action: string) => `${id}:${action}`
+const isPlanActionLoading = (id: number, action: string) => planActionLoadingKey.value === planActionKey(id, action)
+const isPlanRowBusy = (id: number) => planActionLoadingKey.value.startsWith(`${id}:`)
+
 const loadSummary = async () => {
   try {
     const res = await fetchInspectionSummary()
@@ -712,6 +966,14 @@ const onStatClick = (status: string) => {
     tab: 'plan',
   })
   loadData()
+}
+
+const onPlanSummaryCardSelect = (card: { key?: string | number; clickable?: boolean }) => {
+  if (card.clickable === false || typeof card.key !== 'string') {
+    return
+  }
+
+  onStatClick(card.key === 'all' ? '' : card.key)
 }
 
 const onSearch = () => {
@@ -827,6 +1089,45 @@ const resultUploadLoading = ref(false)
 const resultUploadInput = ref<HTMLInputElement | null>(null)
 
 const resultHealthCounts = reactive({ good: 0, warning: 0, critical: 0 })
+
+const resultSummaryCards = computed<InspectionSummaryCard[]>(() => [
+  {
+    key: 'all',
+    title: '全部结果',
+    value: resultTotal.value,
+    context: '结果视图',
+    note: '查看全部巡检结果与健康分布',
+    color: '#3f4f63',
+    active: resultQuery.healthLevel === '',
+  },
+  {
+    key: '良好',
+    title: '良好',
+    value: resultHealthCounts.good,
+    context: '健康等级',
+    note: '健康状态正常的巡检结果',
+    color: '#7d9f92',
+    active: resultQuery.healthLevel === '良好',
+  },
+  {
+    key: '警告',
+    title: '警告',
+    value: resultHealthCounts.warning,
+    context: '健康等级',
+    note: '需要跟进但未到严重级别的结果',
+    color: '#c7a06c',
+    active: resultQuery.healthLevel === '警告',
+  },
+  {
+    key: '严重',
+    title: '严重',
+    value: resultHealthCounts.critical,
+    context: '健康等级',
+    note: '优先处理的严重风险巡检结果',
+    color: '#c58a87',
+    active: resultQuery.healthLevel === '严重',
+  },
+])
 
 const loadResults = async () => {
   resultLoading.value = true
@@ -1002,6 +1303,97 @@ const goToResultTab = (row: Pick<InspectionPlanItem, 'hospitalName' | 'productNa
   void Promise.allSettled([loadResultFilterOptions(), loadResults()])
 }
 
+const syncPlanDetailSnapshot = (id: number) => {
+  const latest = tableData.value.find((item) => item.id === id) ?? allPlanRows.value.find((item) => item.id === id)
+  if (latest) {
+    planDetailRow.value = latest
+  }
+}
+
+const runPlanWorkflowAction = async (
+  row: InspectionPlanItem,
+  action: 'start' | 'complete' | 'reopen',
+  runner: () => Promise<InspectionPlanItem>,
+  successMessage: string,
+) => {
+  planActionLoadingKey.value = planActionKey(row.id, action)
+  try {
+    const updated = await runner()
+    planDetailRow.value = updated
+    ElMessage.success(successMessage)
+    await loadSummary()
+    await loadFilterOptions()
+    await loadData()
+    syncPlanDetailSnapshot(row.id)
+  } catch (error) {
+    ElMessage.error(getErrorMessage(error, `${successMessage}失败`))
+  } finally {
+    planActionLoadingKey.value = ''
+  }
+}
+
+const onStartPlan = async (row: InspectionPlanItem) => {
+  if (!canManageInspection.value) {
+    ElMessage.warning('当前账号无巡检管理权限')
+    return
+  }
+
+  await runPlanWorkflowAction(row, 'start', async () => {
+    const res = await startInspection(row.id, row.inspector ? { inspector: row.inspector } : undefined)
+    return res.data
+  }, '巡检已开始执行')
+}
+
+const onCompletePlan = async (row: InspectionPlanItem) => {
+  if (!canManageInspection.value) {
+    ElMessage.warning('当前账号无巡检管理权限')
+    return
+  }
+
+  try {
+    const { value } = await ElMessageBox.prompt('可选填写本次巡检结论。', '完成巡检', {
+      inputPlaceholder: '巡检结论',
+      confirmButtonText: '完成',
+      cancelButtonText: '取消',
+    })
+
+    await runPlanWorkflowAction(row, 'complete', async () => {
+      const res = await completeInspection(row.id, value?.trim() ? { remarks: value.trim() } : undefined)
+      return res.data
+    }, '巡检已完成')
+  } catch (error) {
+    if (error === 'cancel' || error === 'close') {
+      return
+    }
+    ElMessage.error(getErrorMessage(error, '完成巡检失败'))
+  }
+}
+
+const onReopenPlan = async (row: InspectionPlanItem) => {
+  if (!canManageInspection.value) {
+    ElMessage.warning('当前账号无巡检管理权限')
+    return
+  }
+
+  try {
+    const { value } = await ElMessageBox.prompt('可选填写重开原因。', '重开巡检计划', {
+      inputPlaceholder: '重开原因',
+      confirmButtonText: '重开',
+      cancelButtonText: '取消',
+    })
+
+    await runPlanWorkflowAction(row, 'reopen', async () => {
+      const res = await reopenInspection(row.id, value?.trim() ? { reason: value.trim() } : undefined)
+      return res.data
+    }, '巡检计划已重开')
+  } catch (error) {
+    if (error === 'cancel' || error === 'close') {
+      return
+    }
+    ElMessage.error(getErrorMessage(error, '重开巡检计划失败'))
+  }
+}
+
 const onResultHealthClick = (level: string) => {
   resultQuery.hospitalName = ''
   resultQuery.productName = ''
@@ -1009,6 +1401,14 @@ const onResultHealthClick = (level: string) => {
   resultQuery.healthLevel = level
   resultQuery.page = 1
   loadResults()
+}
+
+const onResultSummaryCardSelect = (card: { key?: string | number }) => {
+  if (typeof card.key !== 'string') {
+    return
+  }
+
+  onResultHealthClick(card.key === 'all' ? '' : card.key)
 }
 
 const onResultSearch = () => {
@@ -1216,6 +1616,11 @@ const storageClass = (pct: number) => {
 }
 
 onMounted(async () => {
+  planTickTimer = window.setInterval(() => {
+    nowTick.value = Date.now()
+  }, 60000)
+
+  await access.ensureAccessProfileLoaded()
   restoreFilterState()
   applyDrillQuery()
 
@@ -1237,6 +1642,13 @@ onMounted(async () => {
   })
   await syncPlanDetailFromRoute()
   await syncResultDetailFromRoute()
+})
+
+onBeforeUnmount(() => {
+  if (planTickTimer !== null) {
+    window.clearInterval(planTickTimer)
+    planTickTimer = null
+  }
 })
 
 watch(planDetailVisible, (visible) => {
@@ -1273,6 +1685,188 @@ watch(() => route.fullPath, async () => {
 </script>
 
 <style scoped>
+.inspection-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.18fr) minmax(320px, 0.82fr);
+  gap: 16px;
+  padding: 24px;
+  border-radius: 28px;
+  color: #ffffff;
+  background:
+    radial-gradient(circle at 14% 18%, rgba(171, 214, 255, 0.18), transparent 22%),
+    radial-gradient(circle at 100% 0, rgba(159, 236, 211, 0.15), transparent 24%),
+    linear-gradient(145deg, #24405d 0%, #2e5572 48%, #2f7267 100%);
+  box-shadow: 0 26px 44px rgba(28, 62, 86, 0.18);
+  margin-bottom: 12px;
+}
+
+.inspection-hero-main {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+
+.inspection-hero-kicker-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.inspection-hero-kicker,
+.inspection-hero-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 7px 12px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.inspection-hero-kicker {
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.08);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.inspection-hero-badge {
+  background: rgba(255, 255, 255, 0.14);
+  color: #eef9ff;
+}
+
+.inspection-hero-title {
+  margin: 0;
+  font-size: 34px;
+  line-height: 1.12;
+  font-weight: 700;
+}
+
+.inspection-hero-subtitle {
+  max-width: 700px;
+  font-size: 14px;
+  line-height: 1.85;
+  color: rgba(232, 245, 247, 0.84);
+}
+
+.inspection-hero-signals {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.inspection-signal-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.11), rgba(255, 255, 255, 0.05));
+}
+
+.inspection-signal-label {
+  font-size: 12px;
+  color: rgba(227, 245, 247, 0.76);
+}
+
+.inspection-signal-value {
+  font-size: 28px;
+  line-height: 1;
+  font-weight: 700;
+}
+
+.inspection-signal-note {
+  font-size: 12px;
+  line-height: 1.7;
+  color: rgba(229, 244, 246, 0.76);
+}
+
+.inspection-hero-side {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.inspection-control-card,
+.inspection-quick-action {
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 20px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.08));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+.inspection-control-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px;
+}
+
+.inspection-control-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.inspection-control-title {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.inspection-control-note {
+  font-size: 12px;
+  line-height: 1.7;
+  color: rgba(232, 244, 246, 0.74);
+}
+
+.inspection-control-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.inspection-control-actions :deep(.el-button) {
+  min-height: 40px;
+}
+
+.inspection-quick-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.inspection-quick-action {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+  color: #ffffff;
+  text-align: left;
+  cursor: pointer;
+  transition: transform 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+}
+
+.inspection-quick-action:hover {
+  transform: translateY(-1px);
+  border-color: rgba(255, 255, 255, 0.24);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.09));
+}
+
+.inspection-quick-title {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.inspection-quick-note {
+  font-size: 12px;
+  line-height: 1.65;
+  color: rgba(232, 245, 247, 0.76);
+}
+
 .main-tabs {
   margin-bottom: 0;
 }
@@ -1309,10 +1903,48 @@ watch(() => route.fullPath, async () => {
   margin-bottom: 8px;
 }
 
+.deadline-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
 .detail-actions {
   margin-top: 16px;
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+:deep(.table-action-group) {
+  flex-wrap: nowrap;
+  white-space: nowrap;
+}
+
+@media (max-width: 1280px) {
+  .inspection-hero {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .inspection-hero {
+    padding: 18px;
+  }
+
+  .inspection-hero-title {
+    font-size: 28px;
+  }
+
+  .inspection-hero-signals,
+  .inspection-quick-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .inspection-control-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
 }
 </style>

@@ -34,14 +34,14 @@
         <el-card shadow="never" style="margin-top: 20px">
           <template #header><span>数据备份与恢复</span></template>
           <div class="backup-section">
-            <el-button type="primary" :loading="downloading" @click="onDownloadBackup">下载数据库备份</el-button>
+            <el-button type="primary" :loading="downloading" @click="onDownloadBackup" icon="Download">下载数据库备份</el-button>
             <el-upload
               :auto-upload="false"
               :show-file-list="false"
               accept=".db"
               :on-change="onRestoreFileSelected"
             >
-              <el-button type="warning" :loading="restoring">上传恢复备份</el-button>
+              <el-button type="warning" :loading="restoring" icon="Upload">上传恢复备份</el-button>
             </el-upload>
           </div>
         </el-card>

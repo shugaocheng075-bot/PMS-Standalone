@@ -23,6 +23,8 @@ public class RepairRecordItemDto
     public string Status { get; set; } = string.Empty;
     public string Urgency { get; set; } = string.Empty;
     public string AssigneeName { get; set; } = string.Empty;
+    public DateTime? AcceptedAt { get; set; }
+    public DateTime? SlaDueAt { get; set; }
     public DateTime? CompletedAt { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
@@ -60,6 +62,21 @@ public class RepairRecordStatusTransitionDto
 public class RepairRecordAssignDto
 {
     public string AssigneeName { get; set; } = string.Empty;
+}
+
+public class RepairRecordAcceptDto
+{
+    public string? AssigneeName { get; set; }
+}
+
+public class RepairRecordResolveDto
+{
+    public string Resolution { get; set; } = string.Empty;
+}
+
+public class RepairRecordReopenDto
+{
+    public string? Reason { get; set; }
 }
 
 public class RepairRecordQuery

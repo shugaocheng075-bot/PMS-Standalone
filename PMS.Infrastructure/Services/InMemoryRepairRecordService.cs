@@ -14,6 +14,32 @@ public class InMemoryRepairRecordService : IRepairRecordService
     private static readonly List<RepairRecordEntity> Records = SqliteTableStore.LoadAll<RepairRecordEntity>(TableName, LegacyJsonKey);
     private static long _nextId = Records.Count > 0 ? Records.Max(x => x.Id) + 1 : 1;
 
+    private static DateTime CalculateSlaDueAt(RepairRecordEntity entity, DateTime referenceTimeUtc)
+    {
+        return referenceTimeUtc.AddHours(ResolveSlaHours(entity));
+    }
+
+    private static int ResolveSlaHours(RepairRecordEntity entity)
+    {
+        var urgency = (entity.Urgency ?? string.Empty).Trim();
+        var severity = (entity.Severity ?? string.Empty).Trim();
+
+        if (string.Equals(urgency, "非常紧急", StringComparison.OrdinalIgnoreCase)
+            || severity.Contains("严重", StringComparison.OrdinalIgnoreCase)
+            || severity.Contains("高", StringComparison.OrdinalIgnoreCase))
+        {
+            return 4;
+        }
+
+        if (string.Equals(urgency, "紧急", StringComparison.OrdinalIgnoreCase)
+            || severity.Contains("中", StringComparison.OrdinalIgnoreCase))
+        {
+            return 12;
+        }
+
+        return 24;
+    }
+
     public Task<RepairRecordSummaryDto> GetSummaryAsync(CancellationToken cancellationToken = default)
     {
         lock (SyncRoot)
@@ -92,6 +118,7 @@ public class InMemoryRepairRecordService : IRepairRecordService
     {
         lock (SyncRoot)
         {
+            var now = DateTime.UtcNow;
             var entity = new RepairRecordEntity
             {
                 Id = _nextId++,
@@ -112,11 +139,13 @@ public class InMemoryRepairRecordService : IRepairRecordService
                 AttachmentImages = dto.AttachmentImages.Trim(),
                 RegistrationStatus = dto.RegistrationStatus.Trim(),
                 AssigneeName = dto.AssigneeName?.Trim() ?? string.Empty,
-                Status = string.IsNullOrWhiteSpace(dto.Status) ? "待处理" : dto.Status.Trim(),
+                Status = "待处理",
                 Urgency = string.IsNullOrWhiteSpace(dto.Urgency) ? "普通" : dto.Urgency.Trim(),
-                CreatedAt = DateTime.UtcNow,
-                UpdatedAt = DateTime.UtcNow
+                CreatedAt = now,
+                UpdatedAt = now
             };
+
+            entity.SlaDueAt = CalculateSlaDueAt(entity, now);
 
             Records.Add(entity);
             SqliteTableStore.Insert(TableName, entity);
@@ -157,7 +186,25 @@ public class InMemoryRepairRecordService : IRepairRecordService
             }
             entity.Status = string.IsNullOrWhiteSpace(dto.Status) ? entity.Status : dto.Status.Trim();
             entity.Urgency = string.IsNullOrWhiteSpace(dto.Urgency) ? entity.Urgency : dto.Urgency.Trim();
-            entity.UpdatedAt = DateTime.UtcNow;
+            var now = DateTime.UtcNow;
+            if (entity.Status == "处理中")
+            {
+                entity.AcceptedAt ??= now;
+                entity.CompletedAt = null;
+                entity.SlaDueAt = CalculateSlaDueAt(entity, entity.AcceptedAt.Value);
+            }
+            else if (entity.Status == "已完成" || entity.Status == "已关闭")
+            {
+                entity.AcceptedAt ??= now;
+                entity.CompletedAt ??= now;
+            }
+            else
+            {
+                entity.AcceptedAt = null;
+                entity.CompletedAt = null;
+                entity.SlaDueAt = CalculateSlaDueAt(entity, now);
+            }
+            entity.UpdatedAt = now;
 
             SqliteTableStore.Update(TableName, entity, entity.Id);
             var workHours = InMemoryWorkHoursService.GetSnapshot();
@@ -167,14 +214,122 @@ public class InMemoryRepairRecordService : IRepairRecordService
 
     private static readonly Dictionary<string, HashSet<string>> ValidTransitions = new()
     {
-        ["待处理"] = ["处理中", "已关闭"],
+        ["待处理"] = ["处理中", "已完成", "已关闭"],
         ["处理中"] = ["已完成", "已关闭"],
-        ["已完成"] = ["已关闭"],
-        ["已关闭"] = []
+        ["已完成"] = ["已关闭", "待处理"],
+        ["已关闭"] = ["待处理"]
     };
+
+    public Task<RepairRecordItemDto?> AcceptAsync(long id, string assigneeName, CancellationToken cancellationToken = default)
+    {
+        lock (SyncRoot)
+        {
+            var entity = Records.FirstOrDefault(x => x.Id == id);
+            if (entity is null) return Task.FromResult<RepairRecordItemDto?>(null);
+
+            if (entity.Status == "已完成" || entity.Status == "已关闭")
+            {
+                throw new InvalidOperationException("已完成或已关闭的报修不能直接签收");
+            }
+
+            var now = DateTime.UtcNow;
+            if (!string.IsNullOrWhiteSpace(assigneeName))
+            {
+                entity.AssigneeName = assigneeName.Trim();
+            }
+
+            entity.Status = "处理中";
+            entity.AcceptedAt ??= now;
+            entity.CompletedAt = null;
+            entity.SlaDueAt = CalculateSlaDueAt(entity, entity.AcceptedAt.Value);
+            entity.UpdatedAt = now;
+
+            SqliteTableStore.Update(TableName, entity, entity.Id);
+            var workHours = InMemoryWorkHoursService.GetSnapshot();
+            return Task.FromResult<RepairRecordItemDto?>(MapToDto(entity, workHours));
+        }
+    }
+
+    public Task<RepairRecordItemDto?> ResolveAsync(long id, string resolution, CancellationToken cancellationToken = default)
+    {
+        lock (SyncRoot)
+        {
+            var entity = Records.FirstOrDefault(x => x.Id == id);
+            if (entity is null) return Task.FromResult<RepairRecordItemDto?>(null);
+
+            if (entity.Status == "已完成" || entity.Status == "已关闭")
+            {
+                throw new InvalidOperationException("当前报修已完成或已关闭，无需重复完成");
+            }
+
+            if (string.IsNullOrWhiteSpace(resolution))
+            {
+                throw new InvalidOperationException("请填写处理结果");
+            }
+
+            var now = DateTime.UtcNow;
+            entity.AcceptedAt ??= now;
+            entity.Status = "已完成";
+            entity.Resolution = resolution.Trim();
+            entity.CompletedAt = now;
+            entity.SlaDueAt ??= CalculateSlaDueAt(entity, entity.AcceptedAt.Value);
+            entity.UpdatedAt = now;
+
+            SqliteTableStore.Update(TableName, entity, entity.Id);
+            var workHours = InMemoryWorkHoursService.GetSnapshot();
+            return Task.FromResult<RepairRecordItemDto?>(MapToDto(entity, workHours));
+        }
+    }
+
+    public Task<RepairRecordItemDto?> ReopenAsync(long id, string? reason, CancellationToken cancellationToken = default)
+    {
+        lock (SyncRoot)
+        {
+            var entity = Records.FirstOrDefault(x => x.Id == id);
+            if (entity is null) return Task.FromResult<RepairRecordItemDto?>(null);
+
+            if (entity.Status != "已完成" && entity.Status != "已关闭")
+            {
+                throw new InvalidOperationException("仅已完成或已关闭的报修可重开");
+            }
+
+            var now = DateTime.UtcNow;
+            entity.Status = "待处理";
+            entity.AcceptedAt = null;
+            entity.CompletedAt = null;
+            entity.SlaDueAt = CalculateSlaDueAt(entity, now);
+            entity.UpdatedAt = now;
+
+            if (!string.IsNullOrWhiteSpace(reason))
+            {
+                entity.Content = string.IsNullOrWhiteSpace(entity.Content)
+                    ? $"重开原因：{reason.Trim()}"
+                    : $"{entity.Content}\n重开原因：{reason.Trim()}";
+            }
+
+            SqliteTableStore.Update(TableName, entity, entity.Id);
+            var workHours = InMemoryWorkHoursService.GetSnapshot();
+            return Task.FromResult<RepairRecordItemDto?>(MapToDto(entity, workHours));
+        }
+    }
 
     public Task<RepairRecordItemDto?> TransitionStatusAsync(long id, string newStatus, string? resolution, CancellationToken cancellationToken = default)
     {
+        if (newStatus == "处理中")
+        {
+            return AcceptAsync(id, string.Empty, cancellationToken);
+        }
+
+        if (newStatus == "已完成")
+        {
+            return ResolveAsync(id, resolution ?? string.Empty, cancellationToken);
+        }
+
+        if (newStatus == "待处理")
+        {
+            return ReopenAsync(id, resolution, cancellationToken);
+        }
+
         lock (SyncRoot)
         {
             var entity = Records.FirstOrDefault(x => x.Id == id);
@@ -190,11 +345,13 @@ public class InMemoryRepairRecordService : IRepairRecordService
             {
                 entity.Resolution = resolution.Trim();
             }
-            if (newStatus == "已完成" || newStatus == "已关闭")
+            var now = DateTime.UtcNow;
+            if (newStatus == "已关闭")
             {
-                entity.CompletedAt ??= DateTime.UtcNow;
+                entity.AcceptedAt ??= now;
+                entity.CompletedAt ??= now;
             }
-            entity.UpdatedAt = DateTime.UtcNow;
+            entity.UpdatedAt = now;
 
             SqliteTableStore.Update(TableName, entity, entity.Id);
             var workHours = InMemoryWorkHoursService.GetSnapshot();
@@ -210,11 +367,14 @@ public class InMemoryRepairRecordService : IRepairRecordService
             if (entity is null) return Task.FromResult<RepairRecordItemDto?>(null);
 
             entity.AssigneeName = assigneeName.Trim();
+            var now = DateTime.UtcNow;
             if (entity.Status == "待处理")
             {
                 entity.Status = "处理中";
+                entity.AcceptedAt ??= now;
+                entity.SlaDueAt = CalculateSlaDueAt(entity, entity.AcceptedAt.Value);
             }
-            entity.UpdatedAt = DateTime.UtcNow;
+            entity.UpdatedAt = now;
 
             SqliteTableStore.Update(TableName, entity, entity.Id);
             var workHours = InMemoryWorkHoursService.GetSnapshot();
@@ -235,6 +395,11 @@ public class InMemoryRepairRecordService : IRepairRecordService
     private static RepairRecordItemDto MapToDto(RepairRecordEntity entity, IReadOnlyList<WorkHoursEntity>? workHours = null)
     {
         var workHoursDetail = BuildWorkHoursDetail(entity, workHours ?? InMemoryWorkHoursService.GetSnapshot());
+        var effectiveSlaDueAt = entity.SlaDueAt;
+        if (effectiveSlaDueAt is null && entity.Status != "已完成" && entity.Status != "已关闭")
+        {
+            effectiveSlaDueAt = CalculateSlaDueAt(entity, entity.AcceptedAt ?? entity.CreatedAt);
+        }
 
         return new RepairRecordItemDto
         {
@@ -257,6 +422,8 @@ public class InMemoryRepairRecordService : IRepairRecordService
             RegistrationStatus = entity.RegistrationStatus,
             WorkHoursDetail = workHoursDetail,
             AssigneeName = entity.AssigneeName,
+            AcceptedAt = entity.AcceptedAt,
+            SlaDueAt = effectiveSlaDueAt,
             CompletedAt = entity.CompletedAt,
             Status = entity.Status,
             Urgency = entity.Urgency,
