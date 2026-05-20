@@ -24,15 +24,6 @@
               <el-input v-model="form.password" type="password" show-password autocomplete="current-password" placeholder="密码" @keyup.enter="onLogin" class="apple-input" />
             </el-form-item>
 
-            <el-form-item prop="captcha">
-              <div class="captcha-row">
-                <el-input v-model="form.captcha" clearable maxlength="4" placeholder="验证码" @keyup.enter="onLogin" class="apple-input" />
-                <button type="button" class="captcha-preview" @click="refreshCaptcha" aria-label="刷新验证码">
-                  <span>{{ captchaCode }}</span>
-                </button>
-              </div>
-            </el-form-item>
-
             <div class="login-actions">
               <button type="button" :disabled="submitLoading" class="apple-btn-primary" @click="onLogin">
                 <span v-if="submitLoading" class="loading-spinner"></span>
@@ -145,50 +136,18 @@ const toggleMode = () => {
 
 const formRef = ref<FormInstance>()
 const submitLoading = ref(false)
-const captchaCode = ref('ABCD')
 
 const form = reactive({
   
   account: '',
-  password: '',
-  captcha: ''
+  password: ''
 })
-
-
-
-const validateCaptcha = (_rule: any, value: string, callback: any) => {
-  if (!value) {
-    callback(new Error('请输入验证码'))
-  } else if (value.toUpperCase() !== captchaCode.value.toUpperCase()) {
-    callback(new Error('验证码不正确(注意大小写)'))
-  } else {
-    callback()
-  }
-}
 
 const rules = reactive<FormRules>({
   
   account: [{ required: true, message: '请输入账号', trigger: 'blur' }],
-  password: [{ required: true, message: '请输入密码', trigger: 'blur' }],
-  captcha: [{ required: true, validator: validateCaptcha, trigger: 'blur' }]
+  password: [{ required: true, message: '请输入密码', trigger: 'blur' }]
 })
-
-const generateCaptcha = () => {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
-  let result = ''
-  for (let i = 0; i < 4; i++) {
-    result += chars.charAt(Math.floor(Math.random() * chars.length))
-  }
-  return result
-}
-
-const refreshCaptcha = () => {
-  captchaCode.value = generateCaptcha()
-  form.captcha = ''
-  if (formRef.value) {
-    formRef.value.clearValidate('captcha')
-  }
-}
 
 const onLogin = async () => {
   if (!formRef.value) return
@@ -208,30 +167,26 @@ const onLogin = async () => {
       })
 
       if (res.code === 200 && res.data) {
-        setAccessToken((res.data as any).token || (res.data as any).accessToken);
-        localStorage.setItem(CURRENT_PERSONNEL_STORAGE_KEY, JSON.stringify((res.data as any).personnel || res.data))
-        
-        if((access as any).initialize) { await (access as any).initialize(); } else if((access as any).init) { await (access as any).init(); }
+        const payload = res.data as any
+        const accessToken = payload.accessToken || payload.token || ''
+        const personnelId = Number(payload.personnelId) || 1
+
+        setAccessToken(accessToken)
+        localStorage.setItem(CURRENT_PERSONNEL_STORAGE_KEY, String(personnelId))
+        access.setCurrentPersonnelId(personnelId)
+        await access.ensureAccessProfileLoaded(true)
         setAuthenticated(true)
 
-        ElMessage.success('欢迎回来，' + (res.data as any).username || (res.data as any).personnelName || '')
+        ElMessage.success(`欢迎回来，${payload.personnelName || payload.username || '用户'}`)
 
         nextTick(() => {
-          if ((access as any).canAccess && (access as any).canAccess('dashboard')) {
-            router.push('/dashboard')
-          } else if ((access as any).canAccess && (access as any).canAccess('projects')) {
-            router.push('/projects')
-          } else {
-            router.push('/')
-          }
+          router.push(access.getFirstAccessiblePath())
         })
       } else {
         ElMessage.error(res.message || '登录失败，请检查账号密码')
-        refreshCaptcha()
       }
     } catch (error: any) {
       ElMessage.error(getErrorMessage(error, '登录请求异常，请稍后重试'))
-      refreshCaptcha()
     } finally {
       submitLoading.value = false
     }
@@ -239,7 +194,6 @@ const onLogin = async () => {
 }
 
 onMounted(() => {
-  refreshCaptcha()
 })
 
 onBeforeUnmount(() => {
