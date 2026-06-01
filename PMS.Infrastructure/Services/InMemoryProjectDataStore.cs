@@ -11,6 +11,20 @@ public sealed class ProjectDataCleanupStats
     public int DeduplicatedCount { get; set; }
 }
 
+public sealed class ProjectLedgerSyncStats
+{
+    public int ExistingProjectCount { get; set; }
+    public int FinalProjectCount { get; set; }
+    public int SourceRowCount { get; set; }
+    public int MatchedProjectCount { get; set; }
+    public int UpdatedProjectCount { get; set; }
+    public int UnchangedMatchedProjectCount { get; set; }
+    public int AddedProjectCount { get; set; }
+    public int PreservedUnmatchedProjectCount { get; set; }
+    public int SkippedSourceRowCount { get; set; }
+    public string IncludeGroupName { get; set; } = string.Empty;
+}
+
 public static class InMemoryProjectDataStore
 {
     private static readonly object SyncRoot = new();
@@ -186,6 +200,80 @@ public static class InMemoryProjectDataStore
         {
             var normalized = NormalizeProjects(rawProjects, out var stats);
             ReplaceInternal(normalized);
+            return stats;
+        }
+    }
+
+    public static ProjectLedgerSyncStats SyncProjectLedgerFromSource(
+        IReadOnlyList<ProjectEntity> sourceProjects,
+        string includeGroupName)
+    {
+        lock (SyncRoot)
+        {
+            var stats = new ProjectLedgerSyncStats
+            {
+                ExistingProjectCount = ProjectsInternal.Count,
+                SourceRowCount = sourceProjects.Count,
+                IncludeGroupName = includeGroupName.Trim()
+            };
+
+            var existingIndex = BuildProjectLedgerIndex(ProjectsInternal);
+            var seenSourceKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var nextId = ProjectsInternal.Count == 0 ? 1 : ProjectsInternal.Max(x => x.Id) + 1;
+
+            foreach (var source in sourceProjects)
+            {
+                if (!HasProjectLedgerIdentity(source))
+                {
+                    stats.SkippedSourceRowCount++;
+                    continue;
+                }
+
+                if (TryFindProjectLedgerMatch(source, existingIndex, out var existing))
+                {
+                    stats.MatchedProjectCount++;
+                    if (HasProjectLedgerFieldChanges(existing, source))
+                    {
+                        ApplyProjectLedgerFields(existing, source);
+                        AddProjectLedgerIndexItem(existingIndex, existing);
+                        stats.UpdatedProjectCount++;
+                    }
+                    else
+                    {
+                        stats.UnchangedMatchedProjectCount++;
+                    }
+
+                    continue;
+                }
+
+                if (!IsProjectLedgerIncludedGroup(source.GroupName, stats.IncludeGroupName))
+                {
+                    stats.SkippedSourceRowCount++;
+                    continue;
+                }
+
+                var sourceKey = BuildSourceDeduplicationKey(source);
+                if (!seenSourceKeys.Add(sourceKey))
+                {
+                    stats.SkippedSourceRowCount++;
+                    continue;
+                }
+
+                var added = CloneProject(source);
+                added.Id = nextId++;
+                ProjectsInternal.Add(added);
+                AddProjectLedgerIndexItem(existingIndex, added);
+                stats.AddedProjectCount++;
+            }
+
+            stats.PreservedUnmatchedProjectCount = Math.Max(0, stats.ExistingProjectCount - stats.MatchedProjectCount);
+            stats.FinalProjectCount = ProjectsInternal.Count;
+
+            if (stats.UpdatedProjectCount > 0 || stats.AddedProjectCount > 0)
+            {
+                Persist();
+            }
+
             return stats;
         }
     }
@@ -383,6 +471,233 @@ public static class InMemoryProjectDataStore
 
             return affected;
         }
+    }
+
+    private sealed class ProjectLedgerIndex
+    {
+        public Dictionary<string, ProjectEntity> Primary { get; } = new(StringComparer.OrdinalIgnoreCase);
+        public Dictionary<string, ProjectEntity> Secondary { get; } = new(StringComparer.OrdinalIgnoreCase);
+        public HashSet<string> AmbiguousSecondary { get; } = new(StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static ProjectLedgerIndex BuildProjectLedgerIndex(IEnumerable<ProjectEntity> projects)
+    {
+        var index = new ProjectLedgerIndex();
+        foreach (var project in projects)
+        {
+            AddProjectLedgerIndexItem(index, project);
+        }
+
+        return index;
+    }
+
+    private static void AddProjectLedgerIndexItem(ProjectLedgerIndex index, ProjectEntity project)
+    {
+        var primaryKey = BuildProjectLedgerPrimaryKey(project);
+        if (!string.IsNullOrWhiteSpace(primaryKey) && !index.Primary.ContainsKey(primaryKey))
+        {
+            index.Primary[primaryKey] = project;
+        }
+
+        var secondaryKey = BuildProjectLedgerSecondaryKey(project);
+        if (string.IsNullOrWhiteSpace(secondaryKey))
+        {
+            return;
+        }
+
+        if (index.Secondary.TryGetValue(secondaryKey, out var indexedProject))
+        {
+            if (!ReferenceEquals(indexedProject, project))
+            {
+                index.AmbiguousSecondary.Add(secondaryKey);
+            }
+
+            return;
+        }
+
+        index.Secondary[secondaryKey] = project;
+    }
+
+    private static bool TryFindProjectLedgerMatch(
+        ProjectEntity source,
+        ProjectLedgerIndex index,
+        out ProjectEntity existing)
+    {
+        var primaryKey = BuildProjectLedgerPrimaryKey(source);
+        if (!string.IsNullOrWhiteSpace(primaryKey) && index.Primary.TryGetValue(primaryKey, out var primaryMatch))
+        {
+            existing = primaryMatch;
+            return true;
+        }
+
+        var secondaryKey = BuildProjectLedgerSecondaryKey(source);
+        if (!string.IsNullOrWhiteSpace(secondaryKey)
+            && !index.AmbiguousSecondary.Contains(secondaryKey)
+            && index.Secondary.TryGetValue(secondaryKey, out var secondaryMatch))
+        {
+            existing = secondaryMatch;
+            return true;
+        }
+
+        existing = null!;
+        return false;
+    }
+
+    private static bool HasProjectLedgerIdentity(ProjectEntity project)
+    {
+        return !string.IsNullOrWhiteSpace(NormalizeProjectLedgerKeyPart(project.HospitalName))
+               && !string.IsNullOrWhiteSpace(NormalizeProjectLedgerKeyPart(project.ProductName));
+    }
+
+    private static string BuildProjectLedgerPrimaryKey(ProjectEntity project)
+    {
+        var opportunity = NormalizeProjectLedgerKeyPart(project.OpportunityNumber);
+        if (string.IsNullOrWhiteSpace(opportunity))
+        {
+            return string.Empty;
+        }
+
+        var secondary = BuildProjectLedgerSecondaryKey(project);
+        return string.IsNullOrWhiteSpace(secondary) ? string.Empty : $"opp:{opportunity}|{secondary}";
+    }
+
+    private static string BuildProjectLedgerSecondaryKey(ProjectEntity project)
+    {
+        var hospital = NormalizeProjectLedgerKeyPart(project.HospitalName);
+        var product = NormalizeProjectLedgerKeyPart(project.ProductName);
+        return string.IsNullOrWhiteSpace(hospital) || string.IsNullOrWhiteSpace(product)
+            ? string.Empty
+            : $"hp:{hospital}|{product}";
+    }
+
+    private static string BuildSourceDeduplicationKey(ProjectEntity project)
+    {
+        var primary = BuildProjectLedgerPrimaryKey(project);
+        return string.IsNullOrWhiteSpace(primary) ? BuildProjectLedgerSecondaryKey(project) : primary;
+    }
+
+    private static string NormalizeProjectLedgerKeyPart(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value)
+            ? string.Empty
+            : Regex.Replace(value.Trim(), @"\s+", string.Empty);
+    }
+
+    private static bool IsProjectLedgerIncludedGroup(string sourceGroupName, string includeGroupName)
+    {
+        if (string.IsNullOrWhiteSpace(sourceGroupName) || string.IsNullOrWhiteSpace(includeGroupName))
+        {
+            return false;
+        }
+
+        var source = NormalizeProjectLedgerGroupName(sourceGroupName);
+        var expected = NormalizeProjectLedgerGroupName(includeGroupName);
+        return source.Equals(expected, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string NormalizeProjectLedgerGroupName(string value)
+    {
+        return NormalizeProjectLedgerKeyPart(value)
+            .Replace("组", string.Empty, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool HasProjectLedgerFieldChanges(ProjectEntity target, ProjectEntity source)
+    {
+        return !string.Equals(target.SerialNumber, source.SerialNumber, StringComparison.Ordinal)
+               || !string.Equals(target.OpportunityNumber, source.OpportunityNumber, StringComparison.Ordinal)
+               || !string.Equals(target.HospitalName, source.HospitalName, StringComparison.Ordinal)
+               || !string.Equals(target.ProductName, source.ProductName, StringComparison.Ordinal)
+               || !string.Equals(target.Province, source.Province, StringComparison.Ordinal)
+               || !string.Equals(target.GroupName, source.GroupName, StringComparison.Ordinal)
+               || !string.Equals(target.SalesName, source.SalesName, StringComparison.Ordinal)
+               || !string.Equals(target.MaintenancePersonName, source.MaintenancePersonName, StringComparison.Ordinal)
+               || !string.Equals(target.AfterSalesStartDate, source.AfterSalesStartDate, StringComparison.Ordinal)
+               || !string.Equals(target.AfterSalesEndDate, source.AfterSalesEndDate, StringComparison.Ordinal)
+               || !string.Equals(target.HospitalLevel, source.HospitalLevel, StringComparison.Ordinal)
+               || !string.Equals(target.ContractStatus, source.ContractStatus, StringComparison.Ordinal)
+               || target.MaintenanceAmount != source.MaintenanceAmount
+               || target.OverdueDays != source.OverdueDays
+               || !string.Equals(target.Remarks, source.Remarks, StringComparison.Ordinal)
+               || !string.Equals(target.ServiceArea, source.ServiceArea, StringComparison.Ordinal)
+               || !string.Equals(target.City, source.City, StringComparison.Ordinal)
+               || !string.Equals(target.Points, source.Points, StringComparison.Ordinal)
+               || target.SalesAmount != source.SalesAmount
+               || target.AnnualOutput != source.AnnualOutput
+               || !string.Equals(target.StationLocation, source.StationLocation, StringComparison.Ordinal)
+               || !string.Equals(target.IsStationedOnsite, source.IsStationedOnsite, StringComparison.Ordinal)
+               || !string.Equals(target.StationedCount, source.StationedCount, StringComparison.Ordinal)
+               || !string.Equals(target.AcceptanceDate, source.AcceptanceDate, StringComparison.Ordinal);
+    }
+
+    private static void ApplyProjectLedgerFields(ProjectEntity target, ProjectEntity source)
+    {
+        target.SerialNumber = source.SerialNumber;
+        target.OpportunityNumber = source.OpportunityNumber;
+        target.HospitalName = source.HospitalName;
+        target.ProductName = source.ProductName;
+        target.Province = source.Province;
+        target.GroupName = source.GroupName;
+        target.SalesName = source.SalesName;
+        target.MaintenancePersonName = source.MaintenancePersonName;
+        target.AfterSalesStartDate = source.AfterSalesStartDate;
+        target.AfterSalesEndDate = source.AfterSalesEndDate;
+        target.HospitalLevel = source.HospitalLevel;
+        target.ContractStatus = source.ContractStatus;
+        target.ContractValidityStatus = string.Empty;
+        target.MaintenanceAmount = source.MaintenanceAmount;
+        target.OverdueDays = source.OverdueDays;
+        target.Remarks = source.Remarks;
+        target.ServiceArea = source.ServiceArea;
+        target.City = source.City;
+        target.Points = source.Points;
+        target.SalesAmount = source.SalesAmount;
+        target.AnnualOutput = source.AnnualOutput;
+        target.StationLocation = source.StationLocation;
+        target.IsStationedOnsite = source.IsStationedOnsite;
+        target.StationedCount = source.StationedCount;
+        target.AcceptanceDate = source.AcceptanceDate;
+    }
+
+    private static ProjectEntity CloneProject(ProjectEntity project)
+    {
+        return new ProjectEntity
+        {
+            Id = project.Id,
+            SerialNumber = project.SerialNumber,
+            OpportunityNumber = project.OpportunityNumber,
+            HospitalName = project.HospitalName,
+            ProductName = project.ProductName,
+            Province = project.Province,
+            GroupName = project.GroupName,
+            SalesName = project.SalesName,
+            MaintenancePersonName = project.MaintenancePersonName,
+            AfterSalesStartDate = project.AfterSalesStartDate,
+            AfterSalesEndDate = project.AfterSalesEndDate,
+            HospitalLevel = project.HospitalLevel,
+            ContractStatus = project.ContractStatus,
+            ContractValidityStatus = project.ContractValidityStatus,
+            MaintenanceAmount = project.MaintenanceAmount,
+            OverdueDays = project.OverdueDays,
+            ImplementationStatus = project.ImplementationStatus,
+            WorkHoursManDays = project.WorkHoursManDays,
+            PersonnelCount = project.PersonnelCount,
+            Personnel1 = project.Personnel1,
+            Personnel2 = project.Personnel2,
+            Personnel3 = project.Personnel3,
+            Personnel4 = project.Personnel4,
+            Personnel5 = project.Personnel5,
+            AfterSalesProjectType = project.AfterSalesProjectType,
+            Remarks = project.Remarks,
+            ServiceArea = project.ServiceArea,
+            City = project.City,
+            Points = project.Points,
+            SalesAmount = project.SalesAmount,
+            AnnualOutput = project.AnnualOutput,
+            StationLocation = project.StationLocation,
+            IsStationedOnsite = project.IsStationedOnsite,
+            StationedCount = project.StationedCount,
+            AcceptanceDate = project.AcceptanceDate
+        };
     }
 
     private static bool IsMatchedGroup(string projectGroup, string personName, string groupName)

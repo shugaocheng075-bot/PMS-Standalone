@@ -65,30 +65,32 @@ const onUpdate = (value: boolean) => {
 .app-form-dialog-content {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 16px;
 }
 
 .app-form-dialog-footer {
   display: flex;
   justify-content: flex-end;
-  gap: 12px;
+  gap: 8px;
 }
 
 :deep(.app-form-dialog .el-dialog__header) {
-  padding: 20px 24px 16px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--pms-border-soft, #eef2f6);
 }
 
 :deep(.app-form-dialog .el-dialog__body) {
-  padding: 24px;
+  padding: 20px;
 }
 
 :deep(.app-form-dialog .el-dialog__footer) {
-  padding: 16px 24px 20px;
+  padding: 14px 20px 18px;
+  border-top: 1px solid var(--pms-border-soft, #eef2f6);
 }
 
 :deep(.app-form-dialog .el-dialog__title) {
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 700;
-  color: #1f2937;
+  color: var(--pms-text, #111827);
 }
 </style>

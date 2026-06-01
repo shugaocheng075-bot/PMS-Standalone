@@ -47,7 +47,11 @@
           <div style="margin-top: 12px; display: flex; align-items: center; gap: 8px;">
             <el-input v-model="projectSheetName" placeholder="工作表名（默认：维护项目明细）" clearable style="flex: 1;" />
             <el-button size="small" :loading="loading.validateProject" :disabled="!projectFile" @click="onValidateProject">验证</el-button>
-            <el-button type="primary" :loading="loading.uploadProject" :disabled="!projectFile" @click="onUploadProject" icon="Upload">导入</el-button>
+            <el-button type="primary" :loading="loading.uploadProject" :disabled="!projectFile" @click="onUploadProject" icon="Upload">全量导入</el-button>
+            <el-button type="success" :loading="loading.syncProject" :disabled="!projectFile" @click="onSyncProject" icon="RefreshRight">增量同步</el-button>
+          </div>
+          <div style="margin-top: 8px;">
+            <el-input v-model="syncGroupName" placeholder="新增项目组别（默认：舒高成）" clearable />
           </div>
           <div v-if="validateProjectResult" style="margin-top: 8px; font-size: 13px;">
             <div v-if="validateProjectResult.errors.length" style="color: var(--el-color-danger)">
@@ -62,6 +66,9 @@
           </div>
           <div v-if="uploadProjectResult" style="margin-top: 8px; color: var(--el-color-success); font-size: 13px;">
             {{ uploadProjectResult }}
+          </div>
+          <div v-if="syncProjectResult" style="margin-top: 8px; color: var(--el-color-success); font-size: 13px; line-height: 1.6;">
+            {{ syncProjectResult }}
           </div>
         </el-card>
       </el-col>
@@ -134,7 +141,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Upload } from '@element-plus/icons-vue'
-import { fetchOwnershipAudit, reassignOwnership, runAutoImport, runCleanup, uploadProjectLedger, uploadMajorDemand, downloadImportTemplate, validateProjectLedger } from '../../api/modules/maintenance'
+import { fetchOwnershipAudit, reassignOwnership, runAutoImport, runCleanup, uploadProjectLedger, syncProjectLedger, uploadMajorDemand, downloadImportTemplate, validateProjectLedger } from '../../api/modules/maintenance'
 import { getErrorMessage } from '../../utils/error'
 import { useLinkedRealtimeRefresh } from '../../composables/useLinkedRealtimeRefresh'
 import { useAccessControl } from '../../composables/useAccessControl'
@@ -148,6 +155,7 @@ const loading = reactive({
   audit: false,
   reassign: false,
   uploadProject: false,
+  syncProject: false,
   uploadDemand: false,
   validateProject: false,
 })
@@ -157,6 +165,8 @@ const projectFile = ref<File | null>(null)
 const projectFileList = ref<UploadFile[]>([])
 const projectSheetName = ref('')
 const uploadProjectResult = ref('')
+const syncGroupName = ref('舒高成')
+const syncProjectResult = ref('')
 const validateProjectResult = ref<{ valid: boolean; totalRows: number; errors: string[]; warnings: string[] } | null>(null)
 
 const demandFile = ref<File | null>(null)
@@ -176,6 +186,7 @@ const onUploadProject = async () => {
   if (!projectFile.value) return
   loading.uploadProject = true
   uploadProjectResult.value = ''
+  syncProjectResult.value = ''
   try {
     const res = await uploadProjectLedger(projectFile.value, projectSheetName.value || undefined)
     uploadProjectResult.value = `导入成功：${res.data.importedRowCount} 行 — ${res.data.message}`
@@ -188,6 +199,33 @@ const onUploadProject = async () => {
     ElMessage.error(getErrorMessage(error, '项目台账上传导入失败'))
   } finally {
     loading.uploadProject = false
+  }
+}
+
+const onSyncProject = async () => {
+  if (!projectFile.value) return
+  loading.syncProject = true
+  uploadProjectResult.value = ''
+  syncProjectResult.value = ''
+  try {
+    const res = await syncProjectLedger(
+      projectFile.value,
+      projectSheetName.value || undefined,
+      syncGroupName.value || undefined,
+    )
+    syncProjectResult.value = [
+      `同步成功：匹配 ${res.data.matchedProjectCount}，更新 ${res.data.updatedProjectCount}，新增 ${res.data.addedProjectCount}，保留未匹配 ${res.data.preservedUnmatchedProjectCount}。`,
+      `${res.data.message}`,
+    ].join(' ')
+    ElMessage.success('项目台账增量同步成功')
+    projectFile.value = null
+    projectFileList.value = []
+    await loadAudit()
+    notifyDataChanged('global')
+  } catch (error) {
+    ElMessage.error(getErrorMessage(error, '项目台账增量同步失败'))
+  } finally {
+    loading.syncProject = false
   }
 }
 

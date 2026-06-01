@@ -66,38 +66,37 @@ const onUpdate = (value: boolean) => {
 .pro-drawer-content {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 16px;
   min-height: 100%;
-  padding-right: 4px;
 }
 
 .pro-drawer-footer {
   display: flex;
   justify-content: flex-end;
-  gap: 12px;
-  padding-top: 16px;
-  border-top: 1px solid #eef2f6;
+  gap: 8px;
+  padding-top: 14px;
+  border-top: 1px solid var(--pms-border-soft, #eef2f6);
 }
 
 :deep(.pro-drawer .el-drawer__header) {
-  padding: 20px 24px 16px;
-  border-bottom: 1px solid #eef2f6;
-  background: #ffffff;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--pms-border-soft, #eef2f6);
+  background: var(--pms-surface, #ffffff);
 }
 
 :deep(.pro-drawer .el-drawer__title) {
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 700;
-  color: #1f2937;
+  color: var(--pms-text, #111827);
 }
 
 :deep(.pro-drawer .el-drawer__body) {
-  padding: 24px;
+  padding: 20px;
 }
 
 @media (max-width: 992px) {
   :deep(.pro-drawer .el-drawer__body) {
-    padding: 18px;
+    padding: 16px;
   }
 }
 </style>

@@ -1,6 +1,114 @@
 # Implementation Plan
 
 ## Goal
+- 将当前 PMS 工作区的有效项目改动提交到 Git 仓库，并与 `origin/main` 对齐后推送。
+## Non-goals
+- 不回滚现有工作区改动，不清理用户本地备份、截图或运行日志。
+- 不额外重构业务代码或扩大本次提交范围。
+## Constraints
+- 仅提交应进仓库的源码、数据库和 `memory-bank` 记录，不纳入 `.tmp/`、`backups/`、`*.db-wal`、`*.db-shm` 等本地产物。
+- 以当前 `main` 分支为基础，先确认与 `origin/main` 的差异，再执行提交与推送。
+- 保留仓库里既有 `.slnx` 构建问题记录，如实说明验证结果。
+## Acceptance criteria
+- 当前有效改动完成一次明确 commit，并成功推送到 `origin/main`。
+- 推送前后本地分支与远端分支保持对齐。
+- 本次提交与推送结果记录到 `progress.md`。
+## Steps
+1. 检查分支、远端和工作区状态，区分源码改动与本地产物。
+2. 暂存有效文件并创建提交。
+3. 推送到远端并确认 `main` 与 `origin/main` 对齐。
+
+## Goal
+- 修复本地 PMS 预览站点无法使用管理员账号登录的问题。
+## Non-goals
+- 不重做登录页 UI，不改动权限模型或业务模块 API。
+- 不执行数据导入、项目同步、备份恢复等无关操作。
+## Constraints
+- 保持现有 `/api/auth/login` 契约兼容，前端仍提交 `account/password`。
+- 优先复现登录接口返回，再按认证服务最小范围修复。
+- 修复后必须验证 API 登录和前端页面登录链路。
+## Acceptance criteria
+- `admin/123456` 能成功调用登录接口并返回 token。
+- 前端 `http://localhost:5173/` 可完成登录并进入业务页面。
+- 登录修复和验证结果记录到 `progress.md`。
+## Steps
+1. 复现当前登录失败，确认失败点在前端、代理还是后端认证。
+2. 检查 `AuthController`、前端登录 API 与 `InMemoryAuthService` 的账号种子逻辑。
+3. 做最小修复或运行级修正，并重启/验证前后端登录链路。
+
+## Goal
+- 启动 PMS 本地前后端开发服务，提供可操作的网站预览入口。
+## Non-goals
+- 不修改业务代码、API 契约、配置默认值或数据库内容。
+- 不执行数据导入、同步、备份恢复等会改变业务数据的操作。
+## Constraints
+- 后端使用现有 Development/http 配置监听 `http://localhost:5111`。
+- 前端使用现有 Vite 配置监听 `http://localhost:5173`，并通过 `/api` 代理到 `http://127.0.0.1:5111`。
+- 若端口已占用，先确认占用来源，不静默改默认端口。
+## Acceptance criteria
+- `5111` 后端端口和 `5173` 前端端口均处于监听状态。
+- 前端首页可通过浏览器访问，后端 API 可通过健康或认证受保护接口确认服务存活。
+- 本次启动和验证结果记录到 `progress.md`。
+## Steps
+1. 检查默认端口占用和本地启动脚本。
+2. 以后台进程启动 PMS.API 与 pms-web。
+3. 验证前端页面和后端接口可达，并打开浏览器预览入口。
+
+## Goal
+- 从金山共享文档同步项目台账：PMS 中已存在的项目仅更新产品、维护日期、销售等字段；PMS 中不存在但共享文档组别为“舒高成”的项目新增到 PMS；同步后刷新关联模块数据。
+
+## Non-goals
+- 不改动项目匹配主规则，不重做后端项目导入算法。
+- 不扩散到重大需求、工时报表等无关导入流程。
+- 不把本次同步改成全量覆盖导入。
+
+## Constraints
+- 优先复用现有后端增量同步接口 `/api/admin/import/upload/sync-project-ledger`。
+- 前端改动仅限 `pms-web/src/api/modules/maintenance.ts` 与 `pms-web/src/views/maintenance/DataMaintenanceView.vue`，以及 memory-bank 记录。
+- 同步完成后必须触发全局数据刷新信号，并完成前端构建验证与一次实际同步验证。
+
+## Acceptance criteria
+- 数据维护中心可直接执行“增量同步项目台账”，并展示 matched/updated/added 等结果。
+- 共享文档同步后：已有 PMS 项目字段被更新，缺失但组别为“舒高成”的项目被新增，其余未匹配 PMS 项目保留不删。
+- 实际完成一次共享文档同步，并抽样核对项目台账及至少一个关联模块数据已更新。
+
+## Steps
+1. 在维护中心接入现有 `sync-project-ledger` API，补齐上传按钮与结果展示。
+2. 构建前端并确认维护中心入口可用。
+3. 从金山共享文档导出目标工作表，执行一次增量同步。
+4. 抽样核对项目台账与关联模块数据，并记录结果到 `progress.md`。
+
+# Implementation Plan
+
+## Goal
+- 将项目台账按共享文档“维护情况统计表20260527 / 项目明细.xlsx”的 `维护项目明细` 工作表同步到 PMS：只更新 PMS 项目台账中已存在的项目，或新增共享文档中 `服务组别=舒高成` 的项目。
+- 同步时保留现有项目 `Id`，避免年度报告、巡检、交接、告警、工时等依赖项目 ID 的模块被全量重排打断。
+
+## Non-goals
+- 不做全量替换、不删除 PMS 里当前存在但共享文档未命中的项目。
+- 不改变前端项目台账列表 API 契约，不调整页面样式和业务流程。
+- 不把 KDocs 登录态、Cookie 或外部导出能力固化到代码中，本次以已同步到本机的 Excel 文件作为共享文档可读源。
+
+## Constraints
+- 后端仍遵守现有分层，导入解析留在 `PMS.API`，项目数据合并留在 `PMS.Infrastructure`。
+- 合并必须按业务键匹配并保留 `Id`：优先 `机会号+医院+产品`，其次非歧义的 `医院+产品`。
+- 写库前必须保留数据库备份；写库后必须重建医院模块派生数据。
+
+## Acceptance criteria
+- 新增一个增量同步入口，能够上传项目明细 Excel 并按上述规则合并。
+- 同步后项目台账、医院派生数据、合同预警、Dashboard、年度报告、巡检、交接等基于项目库的模块读取到最新项目字段。
+- `dotnet build PMS.sln` 通过，并完成一次真实源文件同步验证。
+
+## Steps
+1. 增加项目台账增量合并方法，保留现有 `Id` 并返回匹配、更新、新增、跳过统计。
+2. 增加 `upload/sync-project-ledger` 后端入口，复用现有 Excel 解析并触发医院派生数据重建。
+3. 备份数据库后，用本机 WPS/KDocs 同步文件执行真实同步。
+4. 构建并通过 API/页面抽样验证关联模块数据。
+
+## Status
+- 2026-05-27: 已完成。新增上传式项目台账增量同步入口 `POST /api/admin/import/upload/sync-project-ledger`，按 `机会号+医院+产品` / 非歧义 `医院+产品` 匹配并保留项目 `Id`；已用本机 WPS/KDocs 同步文件 `项目明细.xlsx` 执行真实同步：源表 222 行，匹配 215 个项目，更新 122 个，新增 7 个，保留未命中现有项目 5 个，最终项目数 227；同步后重建医院派生数据。
+
+## Goal
 - 继续实施登录后主干业务页门户化收口：在上一轮 KPI、统一预警、工时报表、项目台账基础上，继续推进合同预警与巡检管理的首屏升级，形成连续的一屏决策入口。
 
 ## Non-goals
@@ -435,3 +543,199 @@
 ## Verification
 - `.agents/skills/pua/SKILL.md` 已生成（29106 bytes）。
 - 已验证当前仅保留一个 pua 入口来源（skill）。
+
+## Goal
+- 审查 PMS 项目前后端代码，覆盖后端权限/数据范围、认证、关键 API 契约以及前端登录态、路由和构建状态。
+
+## Non-goals
+- 不修改业务代码、不重构模块、不调整接口契约。
+- 不修复审查中发现的问题，仅输出风险清单和验证结果。
+
+## Constraints
+- 遵守现有后端分层和前端目录约束。
+- 保留当前工作区已有改动，不回滚 `pms-web/src/views/login/LoginView.vue` 或数据库文件。
+
+## Acceptance criteria
+- 审查输出包含后端和前端发现，按风险排序并标明文件/行号。
+- 完成后端和前端构建验证，记录 `.slnx` 与传统 `.sln` 的验证差异。
+
+## Steps
+1. 阅读项目 brief、架构说明、当前实现计划和进度。
+2. 审查认证、权限映射、数据范围过滤、报表/审计/API 关键链路。
+3. 审查前端请求封装、路由权限、登录态和关键页面 API 调用。
+4. 执行 `dotnet build PMS.slnx`、`dotnet build PMS.sln` 与 `npm run build`。
+5. 记录审查进度与最终发现。
+
+## Status
+- 2026-05-27: 已完成前后端审查。主要发现包括 `/api/reports` 权限映射缺失、认证种子逻辑重置改密账号、部分医院范围为空时列表/汇总回退全量、Handover 看板未按数据范围过滤、若干明细/写接口缺少目标记录范围校验。
+
+## Verification
+- `dotnet build PMS.slnx` 失败：当前 SDK 不识别 `.slnx` 的 `<Solution>` 格式。
+- `dotnet build PMS.sln` 通过：0 warning, 0 error。
+- `cd pms-web && npm run build` 通过；Vite 报告一个约 590KB 的 chunk size warning。
+
+## Goal
+- 将 PMS 各业务模块界面统一收口为简约、干净、低视觉噪音的后台产品风格，重点统一字体、设计令牌、卡片、表格、筛选区、抽屉与弹窗体验。
+
+## Non-goals
+- 不改后端 API、权限模型、业务流程状态语义。
+- 不重写各业务页面的数据流，不做跨模块信息架构大迁移。
+- 不新增营销式插画或装饰图片；当前是运维后台，优先用克制 UI 语言统一。
+
+## Constraints
+- 主要改动限制在 `pms-web/src` 的全局样式与通用组件。
+- 保留 Element Plus 兼容，不新增运行时依赖。
+- 页面操作入口和现有业务动作必须保持可用。
+
+## Acceptance criteria
+- 全站背景、字体、按钮、表格、筛选、卡片、弹窗/抽屉视觉语言统一。
+- 避免继续叠加渐变、光晕、浮动阴影等视觉噪音。
+- 至少处理一个明显不一致的原生 `el-drawer` 使用点。
+- 前端构建通过。
+
+## Steps
+1. 新增统一 clean UI 覆盖层，放在现有全局样式之后加载，集中收口设计令牌和 Element Plus 组件视觉。
+2. 调整 `ProTable`、`AppTableCard`、`AppFormDialog`、`ProDrawer` 的局部样式，避免与全局样式互相打架。
+3. 将 `MajorDemandView` 的原生 `el-drawer` 改为统一 `ProDrawer`。
+4. 执行 `pms-web` 前端构建验证，并记录进度。
+
+## Status
+- 2026-05-27: 已完成本轮前端 UI 统一收口。新增 `clean-ui.css` 作为最后加载的统一覆盖层，收敛字体、背景、颜色、圆角、阴影、按钮、筛选区、表格、卡片、弹窗和抽屉；同步调整 `ProTable`、`AppTableCard`、`AppFormDialog`、`ProDrawer`，并将重大需求详情从原生 `el-drawer` 改为 `ProDrawer`。
+
+## Verification
+- `cd pms-web && npm run build` 通过；Vite 仍提示既有约 590KB chunk size warning。
+- 本地 Vite `http://127.0.0.1:5173/` 返回 200。
+- Playwright headless 登录 `admin/123456` 后访问 `/major-demand/list`，确认页面非空、`--pms-primary=#2563eb` 与 `--pms-bg=#f5f7fa` 生效，表格卡片弱阴影和小圆角生效，详情抽屉由 `.pro-drawer` 渲染。
+
+## Goal
+- 强化 PMS 前端跨模块数据联动和专业化交互质感：任一模块写操作成功后，相关模块、首页、预警、报表等依赖视图能自动收到刷新信号，减少“改一处其他地方不动”的割裂感。
+
+## Non-goals
+- 不改变后端 API 契约、不新增后端接口、不改业务状态机语义。
+- 不一次性重写所有页面数据流；本轮先落地统一变更广播和依赖刷新基础设施。
+- 不引入新的状态管理库或运行时依赖。
+
+## Constraints
+- 保持现有 Vue 3 + Element Plus 架构，优先复用 `useLinkedRealtimeRefresh`。
+- 避免页面初始加载重复请求风暴，事件刷新需要节流/去重。
+- 保持现有手动 `notifyDataChanged` 调用兼容。
+
+## Acceptance criteria
+- 写接口成功后能够自动广播模块数据变更。
+- 页面默认监听数据变更事件，不再因为 `enableAutoRefresh=false` 而失效。
+- 支持模块依赖扩散，例如项目/医院/人员/工时/报修变更会刷新首页、预警或报表等关联视图。
+- 视觉上进一步压低 hero 渐变和装饰噪音，靠数据卡片和清晰层级呈现专业后台感。
+- 前端构建通过，并完成至少一个业务页联动验证。
+
+## Steps
+1. 新增前端数据同步工具，集中维护 API 路径到业务 scope 的映射、scope 依赖扩散和浏览器事件广播。
+2. 改造 `useLinkedRealtimeRefresh`：默认监听数据变更事件，保留定时/聚焦刷新开关，并加入刷新去重。
+3. 在 Axios 响应拦截器中对成功写操作自动广播变更，覆盖 POST/PUT/PATCH/DELETE。
+4. 补充 `clean-ui.css` 对模块 hero/信号卡/控制卡的专业化收口，减少大面积渐变和强装饰。
+5. 执行前端构建与本地页面验证，并记录进度。
+
+## Status
+- 2026-05-27: 已完成本轮数据联动和专业化视觉收口。新增 `dataSync.ts` 集中维护变更事件、API 写操作 scope 推断和跨模块依赖扩散；改造 `useLinkedRealtimeRefresh` 使页面默认监听变更事件并节流刷新；在 Axios 响应拦截器中对成功写操作自动广播变更；补充 `clean-ui.css` 对模块 hero 与信号卡的低噪音覆盖。
+
+## Verification
+- `cd pms-web && npm run build` 通过；Vite 仍提示既有约 593KB chunk size warning。
+- 新开干净 Vite 实例 `http://127.0.0.1:5174/` 返回 200。
+- Playwright headless 登录 `admin/123456` 后访问 `/dashboard`，模拟 `workhours` 数据变更事件，首页自动新增请求 `/api/projects`、`/api/alerts/center`、`/api/annual-reports/summary`、`/api/dashboard/v2`。
+- 同一验证中确认 `clean-ui.css` 规则已加载，首页 hero 背景为白底线性层、文字为深色、圆角为 10px、阴影为弱阴影。
+
+## Goal
+- 统一 PMS 各模块分页控件视觉，让页码、总数、每页条数、跳转输入和前后翻页按钮符合简约、专业、低噪音后台风格。
+
+## Non-goals
+- 不修改分页数据逻辑、默认 page size、接口参数或表格组件契约。
+- 不逐页替换 `el-pagination` 模板。
+
+## Constraints
+- 只在最终全局覆盖层 `clean-ui.css` 中处理，避免继续增加页面级样式冲突。
+- 必须兼容已有 `background` 模式和普通 `el-pagination` 用法。
+- 移动端需要可横向滚动，不挤压表格布局。
+
+## Acceptance criteria
+- 全站分页按钮尺寸、间距、边框、激活态、禁用态统一。
+- 去除旧样式里的渐变、上浮、重阴影。
+- 每页条数选择器、跳转输入、总数字体与整体 UI 变量一致。
+- 前端构建通过，并通过页面实测确认分页样式生效。
+
+## Steps
+1. 扩展 `clean-ui.css` 的分页最终覆盖规则。
+2. 执行前端构建。
+3. 用 Playwright 检查至少一个有分页的业务页，确认 computed style 生效。
+
+## Status
+- 2026-05-27: 已完成分页统一收口。`clean-ui.css` 现在覆盖 `.pager`、`.el-pagination`、页码、上一页/下一页、总数、每页条数选择器、跳转输入、禁用态和移动端横向滚动，去除旧分页的渐变、上浮和重阴影。
+
+## Verification
+- `cd pms-web && npm run build` 通过；Vite 仍提示既有约 593KB chunk size warning。
+- Playwright headless 登录 `admin/123456` 后访问 `http://127.0.0.1:5174/project/list`，确认分页规则已加载，普通页码和激活页码均为 32px 高、6px 圆角、无阴影无上浮；激活态为 `#2563eb`；总数和每页条数选择器样式统一。
+
+## Goal
+- 修复 Dashboard 重大需求明细中医院/客户、负责人、计划完成等字段显示 `--` 的问题，并举一反三统一重大需求原始导入列的字段解析规则。
+
+## Non-goals
+- 不修改重大需求后端接口契约，不迁移数据，不改变 workflow 状态机。
+- 不调整图表结构、路由结构或权限逻辑。
+
+## Constraints
+- 字段解析应兼容 Excel 原始列名、历史导入列名和 `_RowId`。
+- 不能把 `XXXX`、`--`、`未设置` 等占位值当成有效业务字段。
+- Dashboard 和重大需求列表页应共用同一套解析逻辑，避免下次字段名变化时再次空白。
+
+## Acceptance criteria
+- Dashboard 重大需求明细能显示真实医院、负责人、需求标题。
+- 重大需求列表页负责人能从 `服务人员` 等原始列兜底展示。
+- 行跳转仍使用正确 rowId。
+- 前端构建通过，并通过实页验证。
+
+## Steps
+1. 新增 `majorDemandFields.ts`，集中解析 rowId、需求标题、医院/客户、负责人、计划完成、状态。
+2. 改造 `DashboardView` 重大需求 drill 数据源，支持 `_RowId` 并使用解析工具。
+3. 改造 `MajorDemandView` 的 owner/filter/displayRows，使用解析工具作为 workflow 字段兜底。
+4. 构建验证并用 Playwright 检查 Dashboard 与重大需求列表页字段不再空白。
+
+## Status
+- 2026-05-27: 已完成。新增重大需求字段解析工具，Dashboard 重大需求 drill 改为通过 `_RowId` 关联原始行并统一解析医院/客户、负责人、标题、状态和计划完成；重大需求列表页的负责人筛选与展示同步使用同一套兜底规则，避免 workflow 字段为空时页面再次显示空白。
+
+## Verification
+- `cd pms-web && npm run build` 通过；Vite 仍提示既有约 593KB chunk size warning。
+- `dotnet build PMS.slnx` 失败：当前 .NET SDK/MSBuild 不识别 `.slnx` 的 `<Solution>` 格式。
+- `dotnet build PMS.sln` 通过：0 warning, 0 error。
+- Playwright headless 登录 `admin/123456` 后访问 `http://127.0.0.1:5174/dashboard`，切到重大需求标签，确认首屏行显示 `武汉儿童医院`、`舒高成`、`传染病上报`，不再是医院/负责人全 `--`。
+- Playwright headless 访问 `http://127.0.0.1:5174/major-demand/list`，确认列表负责人可从原始 `服务人员` 列兜底显示，如 `舒高成`、`孟卓`、`林峰`。
+
+## Goal
+- 强化各模块顶部工作台/hero 的专业化视觉区分，让首屏顶区明显承担“模块工作台”角色，而不是与普通内容卡片混在一起。
+
+## Non-goals
+- 不逐页重写页面模板，不改变业务入口、筛选逻辑、按钮动作或后端 API。
+- 不新增图片、插画或装饰性资源。
+
+## Constraints
+- 优先在最终全局覆盖层 `clean-ui.css` 中收口，避免继续制造页面级样式分叉。
+- 保持简约、干净、低视觉噪音，使用结构、边框、浅色分区和模块色标区分，不回到大面积强渐变。
+- 需要覆盖已有 hero 类和仍使用 `.page-head` 的普通模块顶部。
+
+## Acceptance criteria
+- 顶部工作台与下方表格/筛选区有清晰视觉边界。
+- 左侧标题区、指标区、右侧动作区层级清楚，文字不再因为白底/低对比而发淡。
+- project/contract/alert/inspection/handover/map/kpi/report/dashboard 等 hero 的控制卡、快捷动作卡风格统一。
+- 前端构建通过，并实测至少巡检管理页顶部工作台样式生效。
+
+## Steps
+1. 扩展 `clean-ui.css` 的顶部工作台规则，补齐各模块 hero、signal、control、quick action 的统一覆盖。
+2. 对 `.page-head` 增加轻量工作台边界和标题层级，覆盖未升级 hero 的模块。
+3. 构建并用 Playwright 验证巡检管理页顶部工作台对比度、边界和动作区样式。
+
+## Status
+- 2026-05-27: 已完成。`clean-ui.css` 已统一各模块顶部工作台的模块色标、浅色背景、顶部强调线、指标卡左侧色标、右侧动作区分栏、control 卡和 quick action 卡；同步给仍使用 `.page-head` 的普通模块增加轻量工作台边界。
+
+## Verification
+- `cd pms-web && npm run build` 通过；Vite 仍提示既有约 593KB chunk size warning。
+- `dotnet build PMS.slnx` 失败：当前 .NET SDK/MSBuild 不识别 `.slnx` 的 `<Solution>` 格式。
+- `dotnet build PMS.sln` 通过：0 warning, 0 error。
+- Playwright headless 登录 `admin/123456` 后访问 `http://127.0.0.1:5174/inspection/plan`，确认 `.inspection-hero` 使用巡检模块色标、右侧动作区有浅色分栏，quick action 标题为深色、说明为灰色，不再出现白底低对比。
+- Playwright headless 访问 `http://127.0.0.1:5174/product/list`，确认普通 `.page-head` 具备 4px 左侧主色边界、浅色背景和统一圆角阴影。

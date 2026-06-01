@@ -1,77 +1,101 @@
 import { onMounted, onUnmounted } from 'vue'
+import {
+  DATA_CHANGED_EVENT,
+  DATA_SYNC_CHANNEL,
+  emitDataChanged,
+  shouldRefreshForScopes,
+  type DataChangePayload,
+} from '../utils/dataSync'
 
-const EVENT_NAME = 'pms:data-changed'
-const CHANNEL_NAME = 'pms-realtime-sync'
 const DEFAULT_INTERVAL_MS = 60000
 const MIN_INTERVAL_MS = 30000
+const REFRESH_DEBOUNCE_MS = 180
 
 type LinkedRefreshOptions = {
   refresh: () => Promise<void> | void
-  scope?: string
+  scope?: string | string[]
   intervalMs?: number
   immediate?: boolean
   enableAutoRefresh?: boolean
+  refreshOnFocus?: boolean
 }
 
 export function useLinkedRealtimeRefresh(options: LinkedRefreshOptions) {
-  const scope = options.scope ?? 'global'
+  const scopes = (Array.isArray(options.scope) ? options.scope : [options.scope ?? 'global'])
+    .map((scope) => scope.trim().toLowerCase())
+    .filter(Boolean)
   const intervalMs = Math.max(options.intervalMs ?? DEFAULT_INTERVAL_MS, MIN_INTERVAL_MS)
-  const immediate = options.immediate ?? true
+  const immediate = options.immediate ?? false
   const enableAutoRefresh = options.enableAutoRefresh ?? false
+  const refreshOnFocus = options.refreshOnFocus ?? enableAutoRefresh
   let timer: ReturnType<typeof setInterval> | null = null
+  let debounceTimer: ReturnType<typeof setTimeout> | null = null
   let channel: BroadcastChannel | null = null
+  let refreshing = false
+  let pending = false
 
-  const triggerRefresh = async () => {
+  const runRefresh = async () => {
     if (typeof document !== 'undefined' && document.hidden) {
       return
     }
 
-    await Promise.resolve(options.refresh())
-  }
-
-  const shouldRefresh = (targetScope?: string) => {
-    if (!targetScope || targetScope === 'global') {
-      return true
-    }
-
-    return scope === 'global' || scope === targetScope
-  }
-
-  const onChanged = (event: Event) => {
-    const customEvent = event as CustomEvent<{ scope?: string }>
-    if (!shouldRefresh(customEvent.detail?.scope)) {
+    if (refreshing) {
+      pending = true
       return
     }
 
-    void triggerRefresh()
+    refreshing = true
+    try {
+      await Promise.resolve(options.refresh())
+    } finally {
+      refreshing = false
+      if (pending) {
+        pending = false
+        scheduleRefresh()
+      }
+    }
+  }
+
+  const scheduleRefresh = () => {
+    if (debounceTimer) {
+      clearTimeout(debounceTimer)
+    }
+
+    debounceTimer = setTimeout(() => {
+      debounceTimer = null
+      void runRefresh()
+    }, REFRESH_DEBOUNCE_MS)
+  }
+
+  const onChanged = (event: Event) => {
+    const customEvent = event as CustomEvent<DataChangePayload>
+    if (!shouldRefreshForScopes(scopes, customEvent.detail?.scopes ?? ['global'])) {
+      return
+    }
+
+    scheduleRefresh()
   }
 
   const onFocus = () => {
-    void triggerRefresh()
+    scheduleRefresh()
   }
 
   const onVisibility = () => {
     if (!document.hidden) {
-      void triggerRefresh()
+      scheduleRefresh()
     }
   }
 
-  const onChannelMessage = (message: MessageEvent<{ scope?: string }>) => {
-    if (!shouldRefresh(message.data?.scope)) {
+  const onChannelMessage = (message: MessageEvent<DataChangePayload>) => {
+    if (!shouldRefreshForScopes(scopes, message.data?.scopes ?? ['global'])) {
       return
     }
 
-    void triggerRefresh()
+    scheduleRefresh()
   }
 
   const notifyDataChanged = (targetScope = 'global') => {
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent(EVENT_NAME, { detail: { scope: targetScope } }))
-    }
-
-    if (channel) {
-      channel.postMessage({ scope: targetScope })
-    }
+    emitDataChanged(targetScope, 'manual')
   }
 
   onMounted(() => {
@@ -79,33 +103,39 @@ export function useLinkedRealtimeRefresh(options: LinkedRefreshOptions) {
       return
     }
 
-    if (!enableAutoRefresh) {
-      return
+    window.addEventListener(DATA_CHANGED_EVENT, onChanged as EventListener)
+
+    if (refreshOnFocus) {
+      window.addEventListener('focus', onFocus)
+      document.addEventListener('visibilitychange', onVisibility)
     }
 
-    window.addEventListener(EVENT_NAME, onChanged as EventListener)
-    window.addEventListener('focus', onFocus)
-    document.addEventListener('visibilitychange', onVisibility)
-
     if (typeof BroadcastChannel !== 'undefined') {
-      channel = new BroadcastChannel(CHANNEL_NAME)
+      channel = new BroadcastChannel(DATA_SYNC_CHANNEL)
       channel.addEventListener('message', onChannelMessage)
     }
 
-    timer = setInterval(() => {
-      void triggerRefresh()
-    }, intervalMs)
+    if (enableAutoRefresh) {
+      timer = setInterval(() => {
+        scheduleRefresh()
+      }, intervalMs)
+    }
 
     if (immediate) {
-      void triggerRefresh()
+      scheduleRefresh()
     }
   })
 
   onUnmounted(() => {
     if (typeof window !== 'undefined') {
-      window.removeEventListener(EVENT_NAME, onChanged as EventListener)
+      window.removeEventListener(DATA_CHANGED_EVENT, onChanged as EventListener)
       window.removeEventListener('focus', onFocus)
       document.removeEventListener('visibilitychange', onVisibility)
+    }
+
+    if (debounceTimer) {
+      clearTimeout(debounceTimer)
+      debounceTimer = null
     }
 
     if (timer) {

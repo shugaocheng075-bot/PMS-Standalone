@@ -151,46 +151,43 @@ const rules = reactive<FormRules>({
 
 const onLogin = async () => {
   if (!formRef.value) return
-  
-  await formRef.value.validate(async (valid) => {
-    if (!valid) return
-    
-    submitLoading.value = true
-    try {
-      clearAuthState()
-      
 
-      const res = await login({
-        // organizationCode: form.organizationCode,
-        account: form.account,
-        password: form.password
+  const valid = await formRef.value.validate().catch(() => false)
+  if (!valid) return
+
+  submitLoading.value = true
+  try {
+    clearAuthState()
+
+    const res = await login({
+      account: form.account,
+      password: form.password,
+    })
+
+    if (res.code === 200 && res.data) {
+      const payload = res.data as any
+      const accessToken = payload.accessToken || payload.token || ''
+      const personnelId = Number(payload.personnelId) || 1
+
+      setAccessToken(accessToken)
+      localStorage.setItem(CURRENT_PERSONNEL_STORAGE_KEY, String(personnelId))
+      access.setCurrentPersonnelId(personnelId)
+      await access.ensureAccessProfileLoaded(true)
+      setAuthenticated(true)
+
+      ElMessage.success(`欢迎回来，${payload.personnelName || payload.username || '用户'}`)
+
+      nextTick(() => {
+        router.push(access.getFirstAccessiblePath())
       })
-
-      if (res.code === 200 && res.data) {
-        const payload = res.data as any
-        const accessToken = payload.accessToken || payload.token || ''
-        const personnelId = Number(payload.personnelId) || 1
-
-        setAccessToken(accessToken)
-        localStorage.setItem(CURRENT_PERSONNEL_STORAGE_KEY, String(personnelId))
-        access.setCurrentPersonnelId(personnelId)
-        await access.ensureAccessProfileLoaded(true)
-        setAuthenticated(true)
-
-        ElMessage.success(`欢迎回来，${payload.personnelName || payload.username || '用户'}`)
-
-        nextTick(() => {
-          router.push(access.getFirstAccessiblePath())
-        })
-      } else {
-        ElMessage.error(res.message || '登录失败，请检查账号密码')
-      }
-    } catch (error: any) {
-      ElMessage.error(getErrorMessage(error, '登录请求异常，请稍后重试'))
-    } finally {
-      submitLoading.value = false
+    } else {
+      ElMessage.error(res.message || '登录失败，请检查账号密码')
     }
-  })
+  } catch (error: any) {
+    ElMessage.error(getErrorMessage(error, '登录请求异常，请稍后重试'))
+  } finally {
+    submitLoading.value = false
+  }
 }
 
 onMounted(() => {

@@ -290,6 +290,56 @@ public class DataImportController : ControllerBase
         }));
     }
 
+    [HttpPost("upload/sync-project-ledger")]
+    [RequestSizeLimit(50 * 1024 * 1024)]
+    public IActionResult UploadProjectLedgerSync(
+        IFormFile file,
+        [FromForm] string? sheetName,
+        [FromForm] string? includeGroupName)
+    {
+        if (file is null || file.Length == 0)
+        {
+            return BadRequest(new ApiResponse<object> { Code = 400, Message = "请选择要同步的Excel文件" });
+        }
+
+        if (!IsExcelFile(file.FileName))
+        {
+            return BadRequest(new ApiResponse<object> { Code = 400, Message = "仅支持 .xlsx / .xls / .xlsm 格式" });
+        }
+
+        var sheet = string.IsNullOrWhiteSpace(sheetName) ? DefaultProjectLedgerSheetName : sheetName.Trim();
+        var groupName = string.IsNullOrWhiteSpace(includeGroupName) ? "舒高成" : includeGroupName.Trim();
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+
+        using var stream = file.OpenReadStream();
+        var projects = ReadProjectLedgerFromStream(stream, sheet);
+
+        if (projects.Count == 0)
+        {
+            return BadRequest(new ApiResponse<object> { Code = 400, Message = $"未在工作表“{sheet}”中识别到有效数据" });
+        }
+
+        var stats = InMemoryProjectDataStore.SyncProjectLedgerFromSource(projects, groupName);
+        InMemoryHospitalService.RebuildFromProjects(InMemoryProjectDataStore.Projects);
+
+        return Ok(ApiResponse<object>.Success(new
+        {
+            fileName = file.FileName,
+            sheetName = sheet,
+            includeGroupName = stats.IncludeGroupName,
+            sourceRowCount = stats.SourceRowCount,
+            existingProjectCount = stats.ExistingProjectCount,
+            matchedProjectCount = stats.MatchedProjectCount,
+            updatedProjectCount = stats.UpdatedProjectCount,
+            unchangedMatchedProjectCount = stats.UnchangedMatchedProjectCount,
+            addedProjectCount = stats.AddedProjectCount,
+            preservedUnmatchedProjectCount = stats.PreservedUnmatchedProjectCount,
+            skippedSourceRowCount = stats.SkippedSourceRowCount,
+            finalProjectCount = stats.FinalProjectCount,
+            message = "项目台账已按共享文档增量同步，现有项目ID已保留"
+        }));
+    }
+
     [HttpPost("upload/major-demand")]
     [RequestSizeLimit(50 * 1024 * 1024)]
     public IActionResult UploadMajorDemand(IFormFile file, [FromForm] string? sheetName)

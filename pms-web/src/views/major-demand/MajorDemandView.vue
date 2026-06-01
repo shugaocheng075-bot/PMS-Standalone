@@ -166,7 +166,7 @@
     
     </ProTable>
 
-    <el-drawer v-model="detailVisible" title="重大需求详情" size="48%">
+    <ProDrawer v-model="detailVisible" title="重大需求详情" size-class="xl">
       <template v-if="activeRow">
         <el-descriptions :column="1" border>
           <el-descriptions-item label="状态">{{ activeWorkflow?.status || '待评估' }}</el-descriptions-item>
@@ -211,7 +211,7 @@
         </el-timeline>
         <el-empty v-else description="暂无日志" :image-size="60" />
       </template>
-    </el-drawer>
+    </ProDrawer>
 
     <ProDrawer v-model="commentVisible" title="新增评论" width="520px">
       <el-input v-model="commentContent" type="textarea" :rows="4" maxlength="500" show-word-limit />
@@ -270,6 +270,13 @@ import { useAccessControl } from '../../composables/useAccessControl'
 import { useFilterStatePersist } from '../../composables/useFilterStatePersist'
 import { useResilientLoad } from '../../composables/useResilientLoad'
 import { normalizeStatusText, resolveMajorDemandStatusTag } from '../../utils/statusTag'
+import {
+  normalizeMajorDemandValue,
+  resolveMajorDemandDueDate,
+  resolveMajorDemandOwner,
+  resolveMajorDemandRowId,
+  resolveMajorDemandStatus,
+} from '../../utils/majorDemandFields'
 import ProTable from '../../components/ProTable.vue'
 import ProDrawer from '../../components/ProDrawer.vue'
 
@@ -385,7 +392,13 @@ const workflowMap = computed(() => {
 })
 
 const ownerOptions = computed(() => {
-  const owners = workflows.value.map((item) => item.owner).filter((x) => !!x)
+  const owners = rows.value
+    .map((row, index) => {
+      const rowId = resolveMajorDemandRowId(row, index + 1)
+      const workflow = workflowMap.value.get(rowId)
+      return normalizeMajorDemandValue(workflow?.owner) || resolveMajorDemandOwner(row)
+    })
+    .filter((x) => !!x)
   return Array.from(new Set(owners))
 })
 
@@ -398,26 +411,32 @@ const remainingColumns = computed(() => columns.value.filter((c) => !priorityCol
 const displayRows = computed(() => {
   const keyword = query.keyword.trim().toLowerCase()
   return rows.value
-    .filter((row) => {
-      const rowId = row._RowId ?? ''
+    .filter((row, index) => {
+      const rowId = resolveMajorDemandRowId(row, index + 1)
       const workflow = workflowMap.value.get(rowId)
-      if (query.status && normalizeStatusText(workflow?.status) !== normalizeStatusText(query.status)) return false
-      if (query.owner && workflow?.owner !== query.owner) return false
+      const status = normalizeMajorDemandValue(workflow?.status) || resolveMajorDemandStatus(row) || '待评估'
+      const owner = normalizeMajorDemandValue(workflow?.owner) || resolveMajorDemandOwner(row)
+      const dueDate = normalizeMajorDemandValue(workflow?.dueDate) || resolveMajorDemandDueDate(row)
+      if (query.status && normalizeStatusText(status) !== normalizeStatusText(query.status)) return false
+      if (query.owner && owner !== query.owner) return false
       if (!keyword) return true
 
       const inColumns = columns.value.some((column) => String(row[column] ?? '').toLowerCase().includes(keyword))
-      const inWorkflow = [workflow?.status, workflow?.owner, workflow?.dueDate].some((x) => String(x ?? '').toLowerCase().includes(keyword))
+      const inWorkflow = [status, owner, dueDate].some((x) => String(x ?? '').toLowerCase().includes(keyword))
       return inColumns || inWorkflow
     })
-    .map((row) => {
-      const rowId = row._RowId ?? ''
+    .map((row, index) => {
+      const rowId = resolveMajorDemandRowId(row, index + 1)
       const workflow = workflowMap.value.get(rowId)
+      const status = normalizeMajorDemandValue(workflow?.status) || resolveMajorDemandStatus(row) || '待评估'
+      const owner = normalizeMajorDemandValue(workflow?.owner) || resolveMajorDemandOwner(row)
+      const dueDate = normalizeMajorDemandValue(workflow?.dueDate) || resolveMajorDemandDueDate(row)
       return {
         ...row,
         _rowId: rowId,
-        _status: workflow?.status ?? '待评估',
-        _owner: workflow?.owner ?? '',
-        _dueDate: workflow?.dueDate ?? '',
+        _status: status,
+        _owner: owner,
+        _dueDate: dueDate,
         _acceptedAt: workflow?.acceptedAt ?? '',
         _completedAt: workflow?.completedAt ?? '',
       }
@@ -429,7 +448,9 @@ const pagedRows = computed(() => {
   return displayRows.value.slice(start, start + pageSize.value)
 })
 
-const activeRow = computed<Record<string, string> | null>(() => rows.value.find((item) => item._RowId === activeRowId.value) ?? null)
+const activeRow = computed<Record<string, string> | null>(() => {
+  return rows.value.find((item, index) => resolveMajorDemandRowId(item, index + 1) === activeRowId.value) ?? null
+})
 const activeWorkflow = computed(() => workflowMap.value.get(activeRowId.value) ?? null)
 
 const applyRouteFilters = () => {

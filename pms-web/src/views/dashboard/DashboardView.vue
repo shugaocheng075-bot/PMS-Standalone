@@ -218,6 +218,15 @@ import { fetchAnnualReportSummary } from '../../api/modules/annual-report'
 import { fetchDashboardV2, type DashboardV2TrendItem, type DashboardV2OwnerItem } from '../../api/modules/dashboard'
 import type { AnnualReportSummary } from '../../types/annual-report'
 import { getErrorMessage } from '../../utils/error'
+import {
+  normalizeMajorDemandValue,
+  resolveMajorDemandDueDate,
+  resolveMajorDemandHospital,
+  resolveMajorDemandOwner,
+  resolveMajorDemandRowId,
+  resolveMajorDemandStatus,
+  resolveMajorDemandTitle,
+} from '../../utils/majorDemandFields'
 import { useLinkedRealtimeRefresh } from '../../composables/useLinkedRealtimeRefresh'
 import { useAccessControl } from '../../composables/useAccessControl'
 import PersonalWorkbench from './PersonalWorkbench.vue'
@@ -435,34 +444,24 @@ const demandDrillSource = computed<DemandDrillItem[]>(() => {
     return []
   }
 
-  const rowById = new Map(snapshot.rows.map((row) => [String(row['行ID'] ?? row['rowId'] ?? row['ID'] ?? ''), row]))
-
-  const pickByKeyword = (row: Record<string, string>, keywords: string[]) => {
-    for (const [key, value] of Object.entries(row)) {
-      if (!value) {
-        continue
-      }
-
-      if (keywords.some((keyword) => key.toLowerCase().includes(keyword))) {
-        return value
-      }
-    }
-    return ''
-  }
+  const rowById = new Map(
+    snapshot.rows.map((row, index) => [resolveMajorDemandRowId(row, index + 1), row]),
+  )
 
   return snapshot.workflows.map((workflow) => {
     const row = rowById.get(String(workflow.rowId)) ?? {}
-    const title = pickByKeyword(row, ['需求', '标题', '事项']) || `需求-${workflow.rowId}`
-    const hospital = pickByKeyword(row, ['医院', '客户']) || '--'
-    const owner = workflow.owner || pickByKeyword(row, ['负责人', 'owner']) || '--'
+    const rowId = workflow.rowId
+    const title = resolveMajorDemandTitle(row, rowId)
+    const hospital = resolveMajorDemandHospital(row) || '--'
+    const owner = normalizeMajorDemandValue(workflow.owner) || resolveMajorDemandOwner(row) || '--'
 
     return {
-      rowId: workflow.rowId,
+      rowId,
       title,
       hospital,
       owner,
-      status: workflow.status || pickByKeyword(row, ['状态']) || '未知',
-      dueDate: workflow.dueDate || pickByKeyword(row, ['计划', '截止']) || '--',
+      status: normalizeMajorDemandValue(workflow.status) || resolveMajorDemandStatus(row) || '未知',
+      dueDate: normalizeMajorDemandValue(workflow.dueDate) || resolveMajorDemandDueDate(row) || '--',
     }
   })
 })

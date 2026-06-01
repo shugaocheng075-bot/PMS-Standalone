@@ -4,6 +4,7 @@ import {
   CURRENT_PERSONNEL_STORAGE_KEY,
   getAccessToken,
 } from '../constants/access'
+import { emitDataChanged, inferDataChangeScope } from '../utils/dataSync'
 
 const baseURL = import.meta.env.VITE_API_BASE_URL || '/api'
 
@@ -110,7 +111,14 @@ request.interceptors.request.use((config) => {
 })
 
 request.interceptors.response.use(
-  (response) => response.data,
+  (response) => {
+    const changedScope = inferDataChangeScope(response.config.method, response.config.url)
+    if (changedScope) {
+      emitDataChanged(changedScope, `${response.config.method ?? 'request'} ${response.config.url ?? ''}`)
+    }
+
+    return response.data
+  },
   (error) => {
     const status = error?.response?.status
     if (status === 401) {

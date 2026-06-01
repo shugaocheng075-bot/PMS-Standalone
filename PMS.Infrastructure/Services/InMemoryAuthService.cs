@@ -182,7 +182,7 @@ public class InMemoryAuthService(IPersonnelService personnelService, IAccessCont
                         changed = true;
                     }
 
-                    if (!VerifyPassword(DefaultPassword, existing.PasswordHash, existing.PasswordSalt))
+                    if (!HasPasswordMaterial(existing))
                     {
                         var (migratedHash, migratedSalt) = HashPassword(DefaultPassword);
                         existing.PasswordHash = migratedHash;
@@ -263,7 +263,7 @@ public class InMemoryAuthService(IPersonnelService personnelService, IAccessCont
             changed = true;
         }
 
-        if (!VerifyPassword(DefaultPassword, target.PasswordHash, target.PasswordSalt))
+        if (!HasPasswordMaterial(target))
         {
             var (hash, salt) = HashPassword(DefaultPassword);
             target.PasswordHash = hash;
@@ -390,6 +390,12 @@ public class InMemoryAuthService(IPersonnelService personnelService, IAccessCont
             32);
 
         return CryptographicOperations.FixedTimeEquals(actualHash, expectedHash);
+    }
+
+    private static bool HasPasswordMaterial(AuthAccountState account)
+    {
+        return !string.IsNullOrWhiteSpace(account.PasswordHash)
+            && !string.IsNullOrWhiteSpace(account.PasswordSalt);
     }
 
     private class AuthAccountState

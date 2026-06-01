@@ -24,6 +24,28 @@ export function uploadProjectLedger(file: File, sheetName?: string) {
   return request.post<any, ApiResponse<{ fileName: string; sheetName: string; importedRowCount: number; message: string }>>('/admin/import/upload/project-ledger', formData)
 }
 
+export function syncProjectLedger(file: File, sheetName?: string, includeGroupName?: string) {
+  const formData = new FormData()
+  formData.append('file', file)
+  if (sheetName) formData.append('sheetName', sheetName)
+  if (includeGroupName) formData.append('includeGroupName', includeGroupName)
+  return request.post<any, ApiResponse<{
+    fileName: string
+    sheetName: string
+    includeGroupName: string
+    sourceRowCount: number
+    existingProjectCount: number
+    matchedProjectCount: number
+    updatedProjectCount: number
+    unchangedMatchedProjectCount: number
+    addedProjectCount: number
+    preservedUnmatchedProjectCount: number
+    skippedSourceRowCount: number
+    finalProjectCount: number
+    message: string
+  }>>('/admin/import/upload/sync-project-ledger', formData)
+}
+
 export function uploadMajorDemand(file: File, sheetName?: string) {
   const formData = new FormData()
   formData.append('file', file)
