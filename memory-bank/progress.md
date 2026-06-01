@@ -1,5 +1,7 @@
 # Progress
 
+2026-06-01: 已完成当前 PMS 工作区有效改动的 Git 提交与远端对齐。基于 `main` 分支确认本地与 `origin/main` 起始一致后，排除了 `.tmp/` 截图与 `backups/` 本地备份，仅提交源码、数据库与 `memory-bank` 记录；已创建提交 `19c4e29`（`feat: sync project ledger and streamline PMS workflows`）并成功推送到 `origin/main`，当前本地 `main` 与远端已对齐。说明：本次提交使用当前机器默认 Git 身份 `Administrator@liutingDELL13.bjgoodwill.com`；未纳入仓库的仍是本地运行与备份产物。
+
 2026-06-01: 修复 PMS 本地预览登录超时问题。根因是 `InMemoryAuthService.EnsureAccountSeedsAsync` 在每次登录前对所有已有账号执行 `VerifyPassword(DefaultPassword, ...)`，每个账号触发 100000 次 PBKDF2，导致 `admin/123456` 登录接口耗时约 28 秒，超过前端 authClient 10 秒超时。已将已有账号和受保护 admin 账号的种子逻辑改为仅在密码 hash/salt 缺失时初始化默认密码，不再在登录热路径反复校验并重置默认密码，保持 `/api/auth/login` 契约不变。验证：`dotnet build PMS.sln` 通过（保留既有 26 个 nullable warning）；`dotnet build PMS.slnx` 仍因当前 SDK 不识别 `<Solution>` 失败；`cd pms-web && npm run build` 通过（保留既有 593KB chunk warning）；修复后 `POST /api/auth/login` 使用 `admin/123456` 首次耗时 2.43 秒、再次耗时 1.00 秒并返回 token；Chrome 页面登录从 `http://localhost:5173/login` 成功进入 `http://localhost:5173/dashboard`；端口 `5111` 与 `5173` 均保持监听。
 
 2026-06-01: 已启动 PMS 本地前后端预览服务，未修改业务代码、API 契约或配置默认值，未执行数据导入、同步、备份恢复等会主动改变业务数据的操作。后端通过 `dotnet run --project PMS.API.csproj --launch-profile http` 运行在 `http://localhost:5111`，前端通过 `npm run dev` 运行在 `http://localhost:5173`，日志输出到 `.tmp/pms-api-20260601-100430.*.log` 与 `.tmp/pms-web-20260601-100430.*.log`。验证：`http://127.0.0.1:5173/` 返回 200，`http://127.0.0.1:5111/swagger/index.html` 返回 200，`http://127.0.0.1:5173/api/health` 返回 401 Unauthorized（鉴权拦截，确认前端代理和后端链路可达），端口 `5111` 与 `5173` 均处于监听状态；已打开浏览器预览页与 Swagger 页。
