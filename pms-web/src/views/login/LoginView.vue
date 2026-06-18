@@ -447,4 +447,150 @@ onBeforeUnmount(() => {
 .apple-link:hover {
   text-decoration: none;
 }
+
+/* 2026-06-02: align login with the restrained PMS business UI. */
+.login-page {
+  padding: 32px 20px;
+  background:
+    linear-gradient(180deg, #f8fafc 0%, #eef2f7 100%);
+  font-family: var(--pms-font-family, "Inter", "PingFang SC", "Microsoft YaHei", Arial, sans-serif);
+}
+
+.login-shell {
+  max-width: 420px;
+  border: 1px solid #e3e8ef;
+  border-radius: 8px;
+  box-shadow: 0 18px 44px rgba(16, 24, 40, 0.08);
+  padding: 36px;
+}
+
+.login-box {
+  width: 100%;
+}
+
+.login-header {
+  margin-bottom: 28px;
+}
+
+.login-logo-circle {
+  width: 56px;
+  height: 56px;
+  border-radius: 8px;
+  background: #1f5eff;
+  box-shadow: none;
+  font-size: 20px;
+  letter-spacing: 0;
+}
+
+.login-title {
+  font-size: 24px;
+  line-height: 1.25;
+  font-weight: 700;
+  color: #101828;
+}
+
+.login-subtitle {
+  font-size: 14px;
+  color: #667085;
+}
+
+.apple-form {
+  gap: 14px;
+}
+
+.apple-form :deep(.el-input__wrapper) {
+  height: 44px;
+  border: 1px solid #e3e8ef !important;
+  border-radius: 8px !important;
+  background: #ffffff !important;
+  padding: 0 14px;
+}
+
+.apple-form :deep(.el-input__wrapper:hover) {
+  border-color: #cfd8e3 !important;
+}
+
+.apple-form :deep(.el-input__wrapper.is-focus) {
+  border-color: #1f5eff !important;
+  box-shadow: 0 0 0 3px rgba(31, 94, 255, 0.12) !important;
+}
+
+.apple-form :deep(.el-input__inner) {
+  font-size: 15px;
+  color: #101828;
+}
+
+.login-actions {
+  margin-top: 14px;
+}
+
+.apple-btn-primary,
+.apple-btn-secondary {
+  height: 44px;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 650;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.apple-btn-primary {
+  background: #1f5eff;
+}
+
+.apple-btn-primary:hover:not(:disabled) {
+  background: #164bd6;
+}
+
+.apple-btn-primary:active:not(:disabled) {
+  transform: none;
+}
+
+.apple-btn-secondary {
+  border: 1px solid #e3e8ef;
+  background: #ffffff;
+  color: #344054;
+}
+
+.apple-btn-secondary:hover {
+  border-color: #cfd8e3;
+  background: #f8fafc;
+}
+
+.qr-frame {
+  border: 1px solid #e3e8ef;
+  border-radius: 8px;
+  box-shadow: none;
+}
+
+.qr-center-badge {
+  border-radius: 8px;
+  color: #1f5eff;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.08);
+}
+
+.login-footer {
+  margin-top: 28px;
+  padding-top: 22px;
+  border-top-color: #e3e8ef;
+}
+
+.apple-link {
+  color: #1f5eff;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.apple-link:hover {
+  color: #164bd6;
+}
+
+@media (max-width: 576px) {
+  .login-page {
+    padding: 16px;
+  }
+
+  .login-shell {
+    padding: 28px 22px;
+  }
+}
 </style>

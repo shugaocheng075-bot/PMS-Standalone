@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="page-shell">
     <div class="page-head">
       <div>
@@ -6,6 +6,25 @@
         <div class="page-subtitle">导入、清洗、归属审计与手工调整</div>
       </div>
     </div>
+
+    <el-alert
+      v-if="hasTaskFocus"
+      type="warning"
+      :closable="false"
+      show-icon
+      class="task-focus-alert"
+    >
+      <template #title>
+        来自运维任务的定位：{{ taskFocusLabel }}
+      </template>
+      <template #default>
+        审计列表已经按当前任务自动聚焦，可以直接核对归属并发起调整。
+        <el-space wrap style="margin-left: 12px;">
+          <el-button size="small" @click="applyTaskFocus">重新定位</el-button>
+          <el-button size="small" text @click="clearTaskFocus">清除定位</el-button>
+        </el-space>
+      </template>
+    </el-alert>
 
     <el-card shadow="never" style="margin-bottom: 16px;">
       <el-space wrap>
@@ -118,27 +137,66 @@
           <el-button type="primary" :loading="loading.reassign" @click="onReassign">调整归属</el-button>
         </el-form-item>
       </el-form>
+      <div v-if="hasTaskFocus" class="focus-hint">
+        已按任务定位预填医院和产品，补充归属人/组别后即可完成调整。
+      </div>
     </el-card>
 
     <el-card shadow="never" class="table-card">
-      <el-table :data="auditRows" v-loading="loading.audit" stripe max-height="520" scrollbar-always-on empty-text="暂无可审计数据">
+      <div class="audit-toolbar">
+        <el-form :model="auditFilters" inline class="filter-form" @submit.prevent>
+          <el-form-item label="医院筛选">
+            <el-input v-model="auditFilters.hospitalName" clearable style="width: 220px" placeholder="按医院关键字过滤" />
+          </el-form-item>
+          <el-form-item label="产品筛选">
+            <el-input v-model="auditFilters.productName" clearable style="width: 220px" placeholder="按产品关键字过滤" />
+          </el-form-item>
+          <el-form-item label="归属筛选">
+            <el-input v-model="auditFilters.groupName" clearable style="width: 180px" placeholder="按归属人/组别过滤" />
+          </el-form-item>
+          <el-form-item>
+            <el-button @click="resetAuditFilters">重置筛选</el-button>
+          </el-form-item>
+        </el-form>
+        <div class="audit-toolbar-meta">
+          <span v-if="hasActiveAuditFilters">当前显示 {{ filteredAuditRows.length }} / {{ auditRows.length }} 条</span>
+          <span v-else>共 {{ auditRows.length }} 条医院+产品归属记录</span>
+        </div>
+      </div>
+
+      <el-table
+        :data="filteredAuditRows"
+        v-loading="loading.audit"
+        stripe
+        max-height="520"
+        scrollbar-always-on
+        empty-text="暂无可审计数据"
+        @row-click="onAuditRowClick"
+      >
         <el-table-column prop="hospitalName" label="医院" min-width="220" show-overflow-tooltip sortable />
         <el-table-column prop="productName" label="产品" min-width="180" show-overflow-tooltip sortable />
         <el-table-column prop="groupName" label="归属人/组别" width="130" show-overflow-tooltip sortable />
         <el-table-column prop="hospitalLevel" label="级别" width="90" sortable />
         <el-table-column prop="province" label="省份" width="100" sortable />
         <el-table-column prop="amount" label="金额" width="110" align="right" sortable />
+        <el-table-column label="操作" width="120" fixed="right">
+          <template #default="{ row }">
+            <el-button text type="primary" @click.stop="applyAuditRow(row)">填入调整</el-button>
+          </template>
+        </el-table-column>
       </el-table>
 
       <div class="pager" style="margin-top: 12px; color: var(--el-text-color-secondary)">
-        共 {{ auditRows.length }} 条医院+产品归属记录
+        <span v-if="hasActiveAuditFilters">已聚焦 {{ filteredAuditRows.length }} 条记录，点击行可快速填入归属调整。</span>
+        <span v-else>点击任一行可将医院、产品、当前归属带入上方调整表单。</span>
       </div>
     </el-card>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Upload } from '@element-plus/icons-vue'
 import { fetchOwnershipAudit, reassignOwnership, runAutoImport, runCleanup, uploadProjectLedger, syncProjectLedger, uploadMajorDemand, downloadImportTemplate, validateProjectLedger } from '../../api/modules/maintenance'
@@ -147,7 +205,19 @@ import { useLinkedRealtimeRefresh } from '../../composables/useLinkedRealtimeRef
 import { useAccessControl } from '../../composables/useAccessControl'
 import type { UploadFile } from 'element-plus'
 
-const auditRows = ref<Array<{ hospitalName: string; productName: string; groupName: string; hospitalLevel: string; province: string; amount: number }>>([])
+type OwnershipAuditRow = {
+  hospitalName: string
+  productName: string
+  groupName: string
+  hospitalLevel: string
+  province: string
+  amount: number
+}
+
+const route = useRoute()
+const router = useRouter()
+
+const auditRows = ref<OwnershipAuditRow[]>([])
 const lastResult = ref('')
 const loading = reactive({
   importing: false,
@@ -160,7 +230,6 @@ const loading = reactive({
   validateProject: false,
 })
 
-// Upload state
 const projectFile = ref<File | null>(null)
 const projectFileList = ref<UploadFile[]>([])
 const projectSheetName = ref('')
@@ -173,6 +242,118 @@ const demandFile = ref<File | null>(null)
 const demandFileList = ref<UploadFile[]>([])
 const demandSheetName = ref('')
 const uploadDemandResult = ref('')
+
+const form = reactive({
+  hospitalName: '',
+  productName: '',
+  groupName: '',
+})
+
+const auditFilters = reactive({
+  hospitalName: '',
+  productName: '',
+  groupName: '',
+})
+
+const readQueryText = (value: unknown) => {
+  if (Array.isArray(value)) {
+    return (value[0] ?? '').trim()
+  }
+
+  return typeof value === 'string'
+    ? value.trim()
+    : ''
+}
+
+const taskFocus = computed(() => ({
+  hospitalName: readQueryText(route.query.hospitalName),
+  productName: readQueryText(route.query.productName),
+}))
+
+const hasTaskFocus = computed(() => Boolean(taskFocus.value.hospitalName || taskFocus.value.productName))
+
+const taskFocusLabel = computed(() => {
+  const parts = [taskFocus.value.hospitalName, taskFocus.value.productName].filter(Boolean)
+  return parts.join(' / ')
+})
+
+const normalizeKeyword = (value: string) => value.trim().toLowerCase()
+
+const filteredAuditRows = computed(() => {
+  const hospitalKeyword = normalizeKeyword(auditFilters.hospitalName)
+  const productKeyword = normalizeKeyword(auditFilters.productName)
+  const groupKeyword = normalizeKeyword(auditFilters.groupName)
+
+  return auditRows.value.filter((row) => {
+    if (hospitalKeyword && !row.hospitalName.toLowerCase().includes(hospitalKeyword)) {
+      return false
+    }
+
+    if (productKeyword && !row.productName.toLowerCase().includes(productKeyword)) {
+      return false
+    }
+
+    if (groupKeyword && !row.groupName.toLowerCase().includes(groupKeyword)) {
+      return false
+    }
+
+    return true
+  })
+})
+
+const hasActiveAuditFilters = computed(() => Boolean(
+  auditFilters.hospitalName.trim()
+  || auditFilters.productName.trim()
+  || auditFilters.groupName.trim(),
+))
+
+const access = useAccessControl()
+const canManageMaintenance = computed(() => access.canPermission('maintenance.manage'))
+
+const { notifyDataChanged } = useLinkedRealtimeRefresh({
+  refresh: async () => {
+    await loadAudit()
+  },
+  scope: 'maintenance',
+  intervalMs: 60000,
+})
+
+const applyTaskFocus = () => {
+  auditFilters.hospitalName = taskFocus.value.hospitalName
+  auditFilters.productName = taskFocus.value.productName
+
+  if (taskFocus.value.hospitalName) {
+    form.hospitalName = taskFocus.value.hospitalName
+  }
+
+  if (taskFocus.value.productName) {
+    form.productName = taskFocus.value.productName
+  }
+}
+
+const resetAuditFilters = () => {
+  auditFilters.hospitalName = ''
+  auditFilters.productName = ''
+  auditFilters.groupName = ''
+}
+
+const clearTaskFocus = async () => {
+  resetAuditFilters()
+  await router.replace({ path: route.path })
+}
+
+const applyAuditRow = (row: OwnershipAuditRow) => {
+  form.hospitalName = row.hospitalName
+  form.productName = row.productName
+  form.groupName = row.groupName
+  auditFilters.hospitalName = row.hospitalName
+  auditFilters.productName = row.productName
+  ElMessage.success('已将当前记录带入归属调整表单')
+}
+
+const onAuditRowClick = (row: OwnershipAuditRow) => {
+  applyAuditRow(row)
+}
 
 const onProjectFileChange = (uploadFile: UploadFile) => {
   projectFile.value = uploadFile.raw ?? null
@@ -253,7 +434,7 @@ const onDownloadTemplate = async (type: 'project-ledger' | 'major-demand' | 'wor
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    const nameMap = { 'project-ledger': '维护项目明细_导入模板', 'major-demand': '重大需求明细_导入模板', 'workhours': '工时报表_导入模板' }
+    const nameMap = { 'project-ledger': '维护项目明细_导入模板', 'major-demand': '重大需求明细_导入模板', workhours: '工时报表_导入模板' }
     a.download = `${nameMap[type]}.xlsx`
     a.click()
     URL.revokeObjectURL(url)
@@ -275,23 +456,6 @@ const onValidateProject = async () => {
     loading.validateProject = false
   }
 }
-
-const form = reactive({
-  hospitalName: '',
-  productName: '',
-  groupName: '',
-})
-
-const access = useAccessControl()
-const canManageMaintenance = computed(() => access.canPermission('maintenance.manage'))
-
-const { notifyDataChanged } = useLinkedRealtimeRefresh({
-  refresh: async () => {
-    await loadAudit()
-  },
-  scope: 'maintenance',
-  intervalMs: 60000,
-})
 
 const loadAudit = async () => {
   loading.audit = true
@@ -415,13 +579,49 @@ const onReassign = async () => {
   }
 }
 
+watch(
+  () => [route.query.hospitalName, route.query.productName],
+  () => {
+    if (!hasTaskFocus.value) {
+      return
+    }
+
+    applyTaskFocus()
+  },
+)
+
 onMounted(async () => {
   await access.ensureAccessProfileLoaded()
+  if (hasTaskFocus.value) {
+    applyTaskFocus()
+  }
   await loadAudit()
 })
 </script>
 
 <style scoped>
+.task-focus-alert {
+  margin-bottom: 16px;
+}
+
+.focus-hint {
+  margin-top: 8px;
+  color: var(--el-text-color-secondary);
+  font-size: 13px;
+}
+
+.audit-toolbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.audit-toolbar-meta {
+  color: var(--el-text-color-secondary);
+  font-size: 13px;
+  padding-top: 6px;
+}
 </style>
-
-

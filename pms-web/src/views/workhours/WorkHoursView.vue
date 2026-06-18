@@ -1,17 +1,135 @@
 ﻿<template>
   <div class="page-shell">
-    <div class="page-head">
-      <div>
-        <h2 class="page-title">工时管理</h2>
-        <div class="page-subtitle">项目工时登记、统计与查询</div>
+    <div class="workhours-hero">
+      <div class="workhours-hero-main">
+        <div class="workhours-hero-kicker-row">
+          <span class="workhours-hero-kicker">Work Hours Desk</span>
+          <span class="workhours-hero-badge">{{ activeWorkHoursFilterLabel }}</span>
+        </div>
+        <h2 class="workhours-hero-title">工时管理</h2>
+        <div class="workhours-hero-subtitle">
+          统一查看当前筛选范围内的工时登记、审批状态、人员投入和医院覆盖，直接从第一屏完成录入、核查和审批推进。
+        </div>
+        <div class="workhours-hero-signals">
+          <div v-for="item in heroSignals" :key="item.label" class="workhours-signal-card">
+            <span class="workhours-signal-label">{{ item.label }}</span>
+            <strong class="workhours-signal-value">{{ item.value }}</strong>
+            <span class="workhours-signal-note">{{ item.note }}</span>
+          </div>
+        </div>
       </div>
-
-
+      <div class="workhours-hero-side">
+        <div class="workhours-control-card">
+          <div class="workhours-control-copy">
+            <span class="workhours-control-title">工时台动作</span>
+            <span class="workhours-control-note">先锁定人员、医院或工时类型，再从待确认清单进入详情处理。</span>
+          </div>
+          <div class="workhours-control-actions">
+            <el-button size="small" :loading="loading || overviewLoading" @click="refreshDesk" icon="Refresh">刷新</el-button>
+            <el-button v-if="canManage" size="small" type="primary" @click="onOpenCreate" icon="Plus">登记工时</el-button>
+            <el-button size="small" :loading="exporting" @click="onExport" icon="Download">导出</el-button>
+          </div>
+        </div>
+        <div class="workhours-quick-grid">
+          <button
+            v-for="action in quickActions"
+            :key="action.title"
+            type="button"
+            class="workhours-quick-action"
+            @click="action.onClick()"
+          >
+            <span class="workhours-quick-title">{{ action.title }}</span>
+            <span class="workhours-quick-note">{{ action.note }}</span>
+          </button>
+        </div>
+      </div>
     </div>
 
-    <SummaryMetrics :items="summaryCards" :columns="5" @select="onSummaryCardSelect" />
+    <div class="workhours-insight-grid">
+      <section ref="approvalQueueRef" class="workhours-insight-card">
+        <div class="workhours-insight-head">
+          <div>
+            <div class="workhours-insight-title">待确认与退回清单</div>
+            <div class="workhours-insight-note">优先处理待确认和已退回记录，避免月底集中补审或重复修改。</div>
+          </div>
+          <el-tag size="small" type="warning" effect="light">{{ reviewQueue.length }} 项</el-tag>
+        </div>
+        <div v-if="reviewQueue.length" class="workhours-queue-list">
+          <button
+            v-for="item in reviewQueue"
+            :key="item.id"
+            type="button"
+            class="workhours-queue-item"
+            @click="onOpenDetail(item.id)"
+          >
+            <div class="workhours-queue-main">
+              <strong>{{ item.personnelName || '未填写人员' }}</strong>
+              <span>{{ item.hospitalName || '未填写医院' }} · {{ item.workType || '未填写类型' }}</span>
+            </div>
+            <div class="workhours-queue-meta">
+              <el-tag size="small" :type="statusTag(item.status)">{{ statusLabel(item.status) }}</el-tag>
+              <span>{{ item.hours }} h</span>
+            </div>
+          </button>
+        </div>
+        <el-empty v-else description="当前筛选下没有待确认或退回记录" :image-size="72" />
+      </section>
 
-    
+      <section class="workhours-insight-card">
+        <div class="workhours-insight-head">
+          <div>
+            <div class="workhours-insight-title">人员投入排行</div>
+            <div class="workhours-insight-note">按工时总量统计当前筛选范围内的主要投入人，方便看负载是否均衡。</div>
+          </div>
+          <span class="workhours-insight-meta">{{ overviewScopeLabel }}</span>
+        </div>
+        <div v-if="topPersonnelBuckets.length" class="workhours-chip-list">
+          <div v-for="item in topPersonnelBuckets" :key="item.label" class="workhours-chip">
+            <strong>{{ item.label }}</strong>
+            <span>{{ item.value.toFixed(1) }} h</span>
+          </div>
+        </div>
+        <el-empty v-else description="暂无人员投入分布" :image-size="72" />
+      </section>
+
+      <section class="workhours-insight-card">
+        <div class="workhours-insight-head">
+          <div>
+            <div class="workhours-insight-title">医院投入排行</div>
+            <div class="workhours-insight-note">看哪些医院当前消耗工时最多，便于复盘支持强度和服务方式。</div>
+          </div>
+          <span class="workhours-insight-meta">{{ activePersonnelCount }} 人参与</span>
+        </div>
+        <div v-if="topHospitalBuckets.length" class="workhours-chip-list">
+          <div v-for="item in topHospitalBuckets" :key="item.label" class="workhours-chip">
+            <strong>{{ item.label }}</strong>
+            <span>{{ item.value.toFixed(1) }} h</span>
+          </div>
+        </div>
+        <el-empty v-else description="暂无医院投入分布" :image-size="72" />
+      </section>
+
+      <section class="workhours-insight-card">
+        <div class="workhours-insight-head">
+          <div>
+            <div class="workhours-insight-title">工时类型分布</div>
+            <div class="workhours-insight-note">从类型结构判断当前工时主要花在现场、远程还是出差任务上。</div>
+          </div>
+          <span class="workhours-insight-meta" v-if="overviewTruncated">仅统计前 {{ overviewRows.length }} 条</span>
+        </div>
+        <div v-if="topTypeBuckets.length" class="workhours-chip-list">
+          <div v-for="item in topTypeBuckets" :key="item.label" class="workhours-chip">
+            <strong>{{ item.label }}</strong>
+            <span>{{ item.value.toFixed(1) }} h</span>
+          </div>
+        </div>
+        <el-empty v-else description="暂无工时类型分布" :image-size="72" />
+      </section>
+    </div>
+
+    <div class="workhours-summary-wrap">
+      <SummaryMetrics :items="summaryCards" :columns="5" @select="onSummaryCardSelect" />
+    </div>
 
     <ProTable
       title="明细数据"
@@ -73,6 +191,7 @@
         <el-table-column prop="id" label="ID" width="70" />
         <el-table-column prop="personnelName" label="人员" width="100" />
         <el-table-column prop="hospitalName" label="医院名称" min-width="220" show-overflow-tooltip />
+        <el-table-column prop="productName" label="产品名称" min-width="160" show-overflow-tooltip />
         <el-table-column prop="workDate" label="工作日期" width="120" />
         <el-table-column prop="hours" label="工时(h)" width="90" />
         <el-table-column prop="workType" label="类型" width="90">
@@ -187,12 +306,15 @@
       <el-descriptions v-if="detailItem" :column="2" border>
         <el-descriptions-item label="人员">{{ detailItem.personnelName || '-' }}</el-descriptions-item>
         <el-descriptions-item label="医院名称">{{ detailItem.hospitalName || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="产品名称">{{ detailItem.productName || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="机会号">{{ detailItem.opportunityNumber || '-' }}</el-descriptions-item>
         <el-descriptions-item label="工作日期">{{ detailItem.workDate || '-' }}</el-descriptions-item>
         <el-descriptions-item label="工时(h)">{{ detailItem.hours ?? '-' }}</el-descriptions-item>
         <el-descriptions-item label="工作类型">{{ detailItem.workType || '-' }}</el-descriptions-item>
         <el-descriptions-item label="状态">
           <el-tag :type="statusTag(detailItem.status)">{{ statusLabel(detailItem.status) }}</el-tag>
         </el-descriptions-item>
+        <el-descriptions-item label="实施状态">{{ detailItem.implementationStatus || '-' }}</el-descriptions-item>
         <el-descriptions-item label="创建时间">{{ formatTime(detailItem.createdAt) }}</el-descriptions-item>
         <el-descriptions-item label="确认人">{{ detailItem.confirmedBy || '-' }}</el-descriptions-item>
         <el-descriptions-item label="确认时间">{{ formatTime(detailItem.confirmedAt || '') }}</el-descriptions-item>
@@ -260,6 +382,7 @@ const route = useRoute()
 const router = useRouter()
 
 const loading = ref(false)
+const overviewLoading = ref(false)
 const exporting = ref(false)
 const submitLoading = ref(false)
 const workflowLoadingKey = ref('')
@@ -270,12 +393,15 @@ const detailVisible = ref(false)
 const detailLoadingId = ref<number | null>(null)
 const total = ref(0)
 const tableData = ref<WorkHoursItem[]>([])
+const overviewRows = ref<WorkHoursItem[]>([])
+const overviewTotal = ref(0)
 const accessibleHospitals = ref<string[]>([])
 const dateRange = ref<[string, string] | null>(null)
 const detailItem = ref<WorkHoursItem | null>(null)
 const summary = ref<WorkHoursSummary>({ total: 0, totalHours: 0, onsiteCount: 0, remoteCount: 0, travelCount: 0 })
 const workTypeOptions = ['驻场', '远程', '出差', '病假', '事假', '其他特殊'] as const
 const workflowBusy = computed(() => workflowLoadingKey.value.length > 0)
+const approvalQueueRef = ref<HTMLElement | null>(null)
 
 const query = reactive({
   personnelName: '',
@@ -294,6 +420,23 @@ type WorkHoursSummaryCard = {
   color: string
   active?: boolean
   clickable?: boolean
+}
+
+type WorkHoursHeroSignal = {
+  label: string
+  value: string
+  note: string
+}
+
+type WorkHoursBucket = {
+  label: string
+  value: number
+}
+
+type WorkHoursQuickAction = {
+  title: string
+  note: string
+  onClick: () => void | Promise<void>
 }
 
 const summaryCards = computed<WorkHoursSummaryCard[]>(() => [
@@ -342,6 +485,141 @@ const summaryCards = computed<WorkHoursSummaryCard[]>(() => [
     color: '#c58a87',
     active: query.workType === '出差',
   },
+])
+
+const OVERVIEW_PAGE_SIZE = 500
+
+const sumHoursBy = (
+  items: WorkHoursItem[],
+  getLabel: (item: WorkHoursItem) => string,
+  limit = 5,
+) => {
+  const counter = new Map<string, number>()
+  items.forEach((item) => {
+    const label = getLabel(item).trim() || '未填写'
+    const hours = typeof item.hours === 'number' && Number.isFinite(item.hours) ? item.hours : 0
+    counter.set(label, (counter.get(label) ?? 0) + hours)
+  })
+
+  return [...counter.entries()]
+    .map(([label, value]) => ({ label, value }))
+    .sort((left, right) => right.value - left.value || left.label.localeCompare(right.label, 'zh-CN'))
+    .slice(0, limit)
+}
+
+const overviewTruncated = computed(() => overviewTotal.value > overviewRows.value.length)
+
+const totalOverviewHours = computed(() =>
+  overviewRows.value.reduce((totalHours, item) => totalHours + (Number.isFinite(item.hours) ? item.hours : 0), 0))
+
+const submittedRows = computed(() => overviewRows.value.filter((item) => item.status === 'submitted'))
+
+const rejectedRows = computed(() => overviewRows.value.filter((item) => item.status === 'rejected'))
+
+const activePersonnelCount = computed(() => new Set(overviewRows.value.map((item) => item.personnelName).filter(Boolean)).size)
+
+const reviewQueue = computed(() =>
+  [...overviewRows.value]
+    .filter((item) => item.status === 'submitted' || item.status === 'rejected')
+    .sort((left, right) => {
+      const leftPriority = left.status === 'submitted' ? 0 : 1
+      const rightPriority = right.status === 'submitted' ? 0 : 1
+      if (leftPriority !== rightPriority) {
+        return leftPriority - rightPriority
+      }
+
+      const leftTime = new Date(left.workDate || left.createdAt || '').getTime()
+      const rightTime = new Date(right.workDate || right.createdAt || '').getTime()
+      return (Number.isFinite(rightTime) ? rightTime : 0) - (Number.isFinite(leftTime) ? leftTime : 0)
+    })
+    .slice(0, 6))
+
+const activeWorkHoursFilterLabel = computed(() => {
+  const labels = [
+    query.personnelName ? `人员：${query.personnelName}` : '',
+    query.hospitalName ? `医院：${query.hospitalName}` : '',
+    query.workType ? `类型：${query.workType}` : '',
+    dateRange.value?.length ? `${dateRange.value[0]} 至 ${dateRange.value[1]}` : '',
+  ].filter(Boolean)
+
+  return labels.length ? labels.join(' / ') : '全部工时'
+})
+
+const overviewScopeLabel = computed(() => {
+  if (!overviewRows.value.length) {
+    return '当前无数据'
+  }
+
+  return overviewTruncated.value
+    ? `展示 ${overviewRows.value.length} / ${overviewTotal.value}`
+    : `共 ${overviewRows.value.length} 条`
+})
+
+const heroSignals = computed<WorkHoursHeroSignal[]>(() => [
+  {
+    label: '当前工时',
+    value: totalOverviewHours.value.toFixed(1),
+    note: totalOverviewHours.value ? '当前筛选范围内累计登记工时' : '当前筛选下暂无工时登记',
+  },
+  {
+    label: '待确认',
+    value: String(submittedRows.value.length),
+    note: submittedRows.value.length ? '已提交审批、待主管确认的记录' : '当前没有待确认记录',
+  },
+  {
+    label: '已退回',
+    value: String(rejectedRows.value.length),
+    note: rejectedRows.value.length ? '需要补充或修改后重新提交' : '当前没有退回记录',
+  },
+  {
+    label: '参与人员',
+    value: String(activePersonnelCount.value),
+    note: activePersonnelCount.value ? '当前筛选下有工时登记的人员数量' : '当前暂无人员投入',
+  },
+])
+
+const topPersonnelBuckets = computed<WorkHoursBucket[]>(() =>
+  sumHoursBy(overviewRows.value, (item) => item.personnelName || '未填写人员'))
+
+const topHospitalBuckets = computed<WorkHoursBucket[]>(() =>
+  sumHoursBy(overviewRows.value, (item) => item.hospitalName || '未填写医院'))
+
+const topTypeBuckets = computed<WorkHoursBucket[]>(() =>
+  sumHoursBy(overviewRows.value, (item) => item.workType || '未填写类型'))
+
+const quickActions = computed<WorkHoursQuickAction[]>(() => [
+  {
+    title: submittedRows.value.length ? '看待确认清单' : rejectedRows.value.length ? '看退回清单' : '看审批清单',
+    note: submittedRows.value.length
+      ? `${submittedRows.value.length} 条待主管确认`
+      : rejectedRows.value.length
+        ? `${rejectedRows.value.length} 条已退回待修改`
+        : '当前没有待确认或退回记录',
+    onClick: () => {
+      approvalQueueRef.value?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    },
+  },
+  {
+    title: '只看驻场',
+    note: `${summary.value.onsiteCount} 条驻场工时`,
+    onClick: () => onTypeClick('驻场'),
+  },
+  {
+    title: '只看远程',
+    note: `${summary.value.remoteCount} 条远程工时`,
+    onClick: () => onTypeClick('远程'),
+  },
+  canManage.value
+    ? {
+        title: '登记今日工时',
+        note: '直接录入当天工时，减少月底集中补录',
+        onClick: () => onOpenCreate(),
+      }
+    : {
+        title: '回到全部工时',
+        note: '清空筛选后回到完整工时台视图',
+        onClick: () => onTypeClick(''),
+      },
 ])
 
 const readRouteQueryValue = (value: unknown): string => {
@@ -422,7 +700,7 @@ const filterPersist = useFilterStatePersist<WorkHoursFilterState>({
 
 const { notifyDataChanged } = useLinkedRealtimeRefresh({
   refresh: async () => {
-    await Promise.allSettled([loadSummary(), loadData()])
+    await Promise.allSettled([loadSummary(), loadOverview(), loadData()])
   },
   scope: 'workhours',
   intervalMs: 60000,
@@ -517,7 +795,13 @@ const formatTime = (iso: string) => {
 
 const loadSummary = async () => {
   try {
-    const res = await fetchWorkHoursSummary()
+    const res = await fetchWorkHoursSummary({
+      personnelName: query.personnelName || undefined,
+      hospitalName: query.hospitalName || undefined,
+      workType: query.workType || undefined,
+      workDateFrom: dateRange.value?.[0] || undefined,
+      workDateTo: dateRange.value?.[1] || undefined,
+    })
     summary.value = res.data
   } catch (error) {
     summary.value = { total: 0, totalHours: 0, onsiteCount: 0, remoteCount: 0, travelCount: 0 }
@@ -548,6 +832,29 @@ const loadData = async () => {
   }
 }
 
+const loadOverview = async () => {
+  overviewLoading.value = true
+  try {
+    const res = await fetchWorkHours({
+      personnelName: query.personnelName || undefined,
+      hospitalName: query.hospitalName || undefined,
+      workType: query.workType || undefined,
+      workDateFrom: dateRange.value?.[0] || undefined,
+      workDateTo: dateRange.value?.[1] || undefined,
+      page: 1,
+      size: OVERVIEW_PAGE_SIZE,
+    })
+    overviewRows.value = res.data.items
+    overviewTotal.value = res.data.total
+  } catch (error) {
+    overviewRows.value = []
+    overviewTotal.value = 0
+    ElMessage.error(getErrorMessage(error, '加载工时台概览失败，请稍后重试'))
+  } finally {
+    overviewLoading.value = false
+  }
+}
+
 const loadScope = async () => {
   try {
     const res = await fetchDataScope()
@@ -560,12 +867,52 @@ const loadScope = async () => {
   }
 }
 
-const onSearch = () => {
-  query.page = 1
-  loadData()
+let skipNextRouteRefresh = false
+
+const syncFilterRoute = async () => {
+  const nextPersonnelName = query.personnelName || ''
+  const nextHospitalName = query.hospitalName || ''
+  const nextWorkType = query.workType || ''
+  const nextDateFrom = dateRange.value?.[0] || ''
+  const nextDateTo = dateRange.value?.[1] || ''
+  const routeWillChange = readRouteQueryValue(route.query.personnelName) !== nextPersonnelName
+    || readRouteQueryValue(route.query.hospitalName) !== nextHospitalName
+    || readRouteQueryValue(route.query.workType) !== nextWorkType
+    || readRouteQueryValue(route.query.dateFrom) !== nextDateFrom
+    || readRouteQueryValue(route.query.dateTo) !== nextDateTo
+    || Boolean(readRouteQueryValue(route.query.action))
+    || Boolean(readRouteQueryValue(route.query.id))
+
+  if (routeWillChange) {
+    skipNextRouteRefresh = true
+  }
+
+  await updateRouteQuery({
+    personnelName: nextPersonnelName || undefined,
+    hospitalName: nextHospitalName || undefined,
+    workType: nextWorkType || undefined,
+    dateFrom: nextDateFrom || undefined,
+    dateTo: nextDateTo || undefined,
+    action: undefined,
+    id: undefined,
+  })
 }
 
-const onReset = () => {
+const loadDeskData = async () => {
+  await Promise.allSettled([loadSummary(), loadOverview(), loadData()])
+}
+
+const refreshDesk = async () => {
+  await loadDeskData()
+}
+
+const onSearch = async () => {
+  query.page = 1
+  await syncFilterRoute()
+  await loadDeskData()
+}
+
+const onReset = async () => {
   query.personnelName = ''
   query.hospitalName = ''
   query.workType = ''
@@ -573,8 +920,8 @@ const onReset = () => {
   query.page = 1
   query.size = 15
   filterPersist.clear()
-  void updateRouteQuery({ personnelName: undefined, hospitalName: undefined, workType: undefined, action: undefined, id: undefined })
-  loadData()
+  await syncFilterRoute()
+  await loadDeskData()
 }
 
 const onExport = async () => {
@@ -601,11 +948,11 @@ const onExport = async () => {
   }
 }
 
-const onTypeClick = (workType: string) => {
+const onTypeClick = async (workType: string) => {
   query.workType = query.workType === workType ? '' : workType
   query.page = 1
-  void updateRouteQuery({ personnelName: undefined, hospitalName: undefined, workType: undefined, action: undefined, id: undefined })
-  loadData()
+  await syncFilterRoute()
+  await loadDeskData()
 }
 
 const onSummaryCardSelect = (card: { key?: string | number; clickable?: boolean }) => {
@@ -613,31 +960,33 @@ const onSummaryCardSelect = (card: { key?: string | number; clickable?: boolean 
     return
   }
 
-  onTypeClick(card.key)
+  void onTypeClick(card.key)
 }
 
 const applyRouteFilters = () => {
   const personnelName = readRouteQueryValue(route.query.personnelName)
   const hospitalName = readRouteQueryValue(route.query.hospitalName)
   const workType = readRouteQueryValue(route.query.workType)
+  const dateFrom = readRouteQueryValue(route.query.dateFrom)
+  const dateTo = readRouteQueryValue(route.query.dateTo)
+  const nextWorkType = workTypeOptions.includes(workType as (typeof workTypeOptions)[number]) ? workType : ''
+  const nextDateRange = dateFrom && dateTo ? [dateFrom, dateTo] as [string, string] : null
+  const changed = query.personnelName !== personnelName
+    || query.hospitalName !== hospitalName
+    || query.workType !== nextWorkType
+    || (dateRange.value?.[0] ?? '') !== (nextDateRange?.[0] ?? '')
+    || (dateRange.value?.[1] ?? '') !== (nextDateRange?.[1] ?? '')
 
-  if (personnelName) {
-    query.personnelName = personnelName
+  query.personnelName = personnelName
+  query.hospitalName = hospitalName
+  query.workType = nextWorkType
+  dateRange.value = nextDateRange
+
+  if (changed) {
+    query.page = 1
   }
 
-  if (hospitalName) {
-    query.hospitalName = hospitalName
-  }
-
-  if (!workType || !workTypeOptions.includes(workType as (typeof workTypeOptions)[number])) {
-    if (personnelName || hospitalName) {
-      query.page = 1
-    }
-    return
-  }
-
-  query.workType = workType
-  query.page = 1
+  return changed
 }
 
 
@@ -746,6 +1095,12 @@ const syncDialogFromRoute = async () => {
   }
 
   if (action !== 'edit' || !canManage.value) {
+    if (action === 'detail' && !detailVisible.value) {
+      const id = Number(readRouteQueryValue(route.query.id))
+      if (Number.isFinite(id) && id > 0) {
+        await onOpenDetail(id, false)
+      }
+    }
     return
   }
 
@@ -767,12 +1122,15 @@ const syncDialogFromRoute = async () => {
   }
 }
 
-const onOpenDetail = async (id: number) => {
+const onOpenDetail = async (id: number, syncRoute = true) => {
   detailLoadingId.value = id
   try {
     const res = await fetchWorkHoursById(id)
     detailItem.value = res.data
     detailVisible.value = true
+    if (syncRoute) {
+      void updateRouteQuery({ action: 'detail', id: String(id) })
+    }
   } catch (error) {
     ElMessage.error(getErrorMessage(error, '加载工时详情失败，请稍后重试'))
   } finally {
@@ -802,7 +1160,7 @@ const onSubmit = async () => {
     }
     dialogVisible.value = false
     notifyDataChanged('workhours')
-    await Promise.all([loadData(), loadSummary()])
+    await Promise.all([loadData(), loadSummary(), loadOverview()])
   } catch (error) {
     ElMessage.error(getErrorMessage(error, '保存失败，请稍后重试'))
   } finally {
@@ -812,7 +1170,7 @@ const onSubmit = async () => {
 
 const refreshAfterMutation = async () => {
   notifyDataChanged('workhours')
-  await Promise.all([loadData(), loadSummary()])
+  await Promise.all([loadData(), loadSummary(), loadOverview()])
   if (detailItem.value) {
     const matched = tableData.value.find((item) => item.id === detailItem.value?.id)
     if (matched) {
@@ -906,7 +1264,7 @@ const onDelete = async (row: WorkHoursItem) => {
     await deleteWorkHours(row.id)
     ElMessage.success('删除成功')
     notifyDataChanged('workhours')
-    await Promise.all([loadData(), loadSummary()])
+    await Promise.all([loadData(), loadSummary(), loadOverview()])
   } catch (error) {
     ElMessage.error(getErrorMessage(error, '删除失败，请稍后重试'))
   } finally {
@@ -915,13 +1273,30 @@ const onDelete = async (row: WorkHoursItem) => {
 }
 
 watch(dialogVisible, (visible) => {
-  if (!visible) {
+  if (!visible && !detailVisible.value) {
+    void clearRouteActionQuery()
+  }
+})
+
+watch(detailVisible, (visible) => {
+  if (!visible && !dialogVisible.value) {
     void clearRouteActionQuery()
   }
 })
 
 watch(() => route.fullPath, () => {
-  applyRouteFilters()
+  const filtersChanged = applyRouteFilters()
+
+  if (skipNextRouteRefresh) {
+    skipNextRouteRefresh = false
+    void syncDialogFromRoute()
+    return
+  }
+
+  if (filtersChanged) {
+    void loadDeskData()
+  }
+
   void syncDialogFromRoute()
 })
 
@@ -930,7 +1305,7 @@ onMounted(async () => {
   applyRouteFilters()
 
   await runInitialLoad({
-    tasks: [loadScope, loadSummary, loadData],
+    tasks: [loadScope, loadSummary, loadOverview, loadData],
     retryChecks: [
       {
         when: () => restored && query.page > 1 && tableData.value.length === 0 && total.value > 0,
@@ -947,8 +1322,307 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+.workhours-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.85fr) minmax(300px, 0.95fr);
+  gap: 20px;
+  margin-bottom: 20px;
+}
+
+.workhours-hero-main,
+.workhours-hero-side,
+.workhours-insight-card,
+.workhours-summary-wrap {
+  border: 1px solid #e5ebf3;
+  border-radius: 20px;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+  box-shadow: 0 16px 34px rgba(15, 23, 42, 0.05);
+}
+
+.workhours-hero-main {
+  padding: 28px 30px;
+}
+
+.workhours-hero-kicker-row,
+.workhours-insight-head,
+.workhours-control-card {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.workhours-hero-kicker {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #5d6b7a;
+}
+
+.workhours-hero-badge,
+.workhours-insight-meta {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: #edf4ff;
+  color: #335d98;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.workhours-hero-title {
+  margin: 14px 0 8px;
+  font-size: 30px;
+  line-height: 1.1;
+  color: #172233;
+}
+
+.workhours-hero-subtitle {
+  max-width: 760px;
+  font-size: 14px;
+  line-height: 1.7;
+  color: #5d6b7a;
+}
+
+.workhours-hero-signals {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 22px;
+}
+
+.workhours-signal-card {
+  display: flex;
+  min-height: 116px;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 16px 18px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.88);
+  border: 1px solid #e7edf5;
+}
+
+.workhours-signal-label,
+.workhours-control-title,
+.workhours-insight-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #506072;
+}
+
+.workhours-signal-value {
+  font-size: 28px;
+  line-height: 1;
+  color: #172233;
+}
+
+.workhours-signal-note,
+.workhours-control-note,
+.workhours-insight-note,
+.workhours-quick-note,
+.workhours-queue-main span,
+.workhours-chip span,
+.workhours-queue-meta span {
+  font-size: 12px;
+  line-height: 1.6;
+  color: #6f7d8c;
+}
+
+.workhours-hero-side {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 22px;
+}
+
+.workhours-control-card {
+  padding: 18px;
+  border-radius: 16px;
+  background: #f5f8fd;
+  border: 1px solid #e3ebf5;
+}
+
+.workhours-control-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.workhours-control-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.workhours-quick-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.workhours-quick-action {
+  display: flex;
+  min-height: 112px;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid #e6edf6;
+  border-radius: 16px;
+  background: #ffffff;
+  text-align: left;
+  cursor: pointer;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+}
+
+.workhours-quick-action:hover {
+  transform: translateY(-1px);
+  border-color: #cdd9e7;
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.08);
+}
+
+.workhours-quick-title,
+.workhours-queue-main strong,
+.workhours-chip strong {
+  font-size: 14px;
+  font-weight: 600;
+  color: #172233;
+}
+
+.workhours-insight-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.workhours-insight-card {
+  display: flex;
+  min-height: 248px;
+  flex-direction: column;
+  gap: 16px;
+  padding: 20px;
+}
+
+.workhours-queue-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.workhours-queue-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  border: 1px solid #e7edf5;
+  background: #ffffff;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.workhours-queue-item:hover {
+  border-color: #d5e0ed;
+  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.06);
+}
+
+.workhours-queue-main {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.workhours-queue-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.workhours-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.workhours-chip {
+  display: inline-flex;
+  min-width: 132px;
+  flex: 1 1 0;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  border: 1px solid #e7edf5;
+  background: #ffffff;
+}
+
+.workhours-summary-wrap {
+  padding: 16px;
+  margin-bottom: 18px;
+}
+
 .table-action-group {
   flex-wrap: nowrap;
+}
+
+@media (max-width: 1360px) {
+  .workhours-hero {
+    grid-template-columns: 1fr;
+  }
+
+  .workhours-insight-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .workhours-hero-signals {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .workhours-insight-grid,
+  .workhours-hero-signals,
+  .workhours-quick-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .workhours-hero-main,
+  .workhours-hero-side,
+  .workhours-insight-card,
+  .workhours-summary-wrap {
+    border-radius: 16px;
+  }
+
+  .workhours-hero-main {
+    padding: 22px;
+  }
+
+  .workhours-hero-title {
+    font-size: 24px;
+  }
+
+  .workhours-hero-kicker-row,
+  .workhours-insight-head,
+  .workhours-control-card,
+  .workhours-queue-item {
+    flex-direction: column;
+  }
+
+  .workhours-control-actions,
+  .workhours-queue-meta {
+    justify-content: flex-start;
+  }
 }
 </style>
 

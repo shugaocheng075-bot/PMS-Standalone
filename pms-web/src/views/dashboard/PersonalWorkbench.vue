@@ -19,6 +19,22 @@
       </button>
     </div>
 
+    <OperationsTaskPanel
+      title="我的运维任务池"
+      subtitle="把巡检、报修、交接、重大需求、合同风险和台账问题放进同一屏，先处理最急的。"
+      :summary="operationsSummary"
+      :tasks="operationsTasks"
+      :query="operationsQuery"
+      :loading="operationsLoading"
+      @refresh="void loadOperationsTasks()"
+      @query-change="void applyOperationsTaskQuery($event)"
+      @reset-query="void resetOperationsTaskQuery()"
+    >
+      <template #actions>
+        <el-button size="small" :loading="operationsLoading" @click="void loadOperationsTasks()" icon="Refresh">刷新任务</el-button>
+      </template>
+    </OperationsTaskPanel>
+
     <div class="workbench-grid">
       <AppTableCard class="todo-card">
           <template #header>
@@ -56,7 +72,7 @@
             v-for="item in data?.pendingInspections ?? []"
             :key="item.id"
             class="todo-item clickable"
-            @click="router.push('/inspection/list')"
+            @click="router.push('/inspection/plan')"
           >
             <div class="todo-main">
               <span class="todo-label">{{ item.hospitalName }}</span>
@@ -100,7 +116,7 @@
       <div class="quick-actions">
         <el-button @click="router.push('/workhours/list?action=create')">登记工时</el-button>
         <el-button @click="router.push('/repair/list?action=create')">新建报修</el-button>
-        <el-button @click="router.push('/inspection/list')" icon="View">查看巡检</el-button>
+        <el-button @click="router.push('/inspection/plan')" icon="View">查看巡检</el-button>
         <el-button @click="router.push('/project/list')">项目台账</el-button>
         <el-button @click="router.push('/major-demand/list')">重大需求</el-button>
         <el-button @click="router.push('/alert/center')">告警中心</el-button>
@@ -114,25 +130,39 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import AppTableCard from '../../components/AppTableCard.vue'
+import OperationsTaskPanel from '../../components/OperationsTaskPanel.vue'
 import { fetchWorkbench } from '../../api/modules/dashboard'
+import { useOperationsTasks } from '../../composables/useOperationsTasks'
 import type { WorkbenchData } from '../../types/workbench'
 import { getErrorMessage } from '../../utils/error'
 
 const router = useRouter()
 const loading = ref(false)
 const data = ref<WorkbenchData | null>(null)
+const {
+  loading: operationsLoading,
+  summary: operationsSummary,
+  tasks: operationsTasks,
+  query: operationsQuery,
+  loadOperationsTasks,
+  applyQuery: applyOperationsTaskQuery,
+  resetQuery: resetOperationsTaskQuery,
+} = useOperationsTasks(8)
 
 const statCards = computed(() => [
   { title: '我的项目', value: String(data.value?.myProjects ?? 0), context: '项目总览', note: '当前账号数据范围内的项目数量', onClick: () => void router.push('/project/list') },
   { title: '待处理报修', value: String(data.value?.pendingRepairCount ?? 0), context: '维修响应', note: '仍待接单或处理完成的报修记录', onClick: () => void router.push('/repair/list') },
-  { title: '待巡检', value: String(data.value?.pendingInspectionCount ?? 0), context: '计划执行', note: '待安排或待确认的巡检任务', onClick: () => void router.push('/inspection/list') },
+  { title: '待巡检', value: String(data.value?.pendingInspectionCount ?? 0), context: '计划执行', note: '待安排或待确认的巡检任务', onClick: () => void router.push('/inspection/plan') },
   { title: '本月工时(人天)', value: String(data.value?.thisMonthWorkHours ?? 0), context: '投入效率', note: '按当月已登记工时折算的人天投入', onClick: () => void router.push('/workhours/list') },
 ])
 
 async function loadWorkbench() {
   loading.value = true
   try {
-    const res = await fetchWorkbench()
+    const [res] = await Promise.all([
+      fetchWorkbench(),
+      loadOperationsTasks(),
+    ])
     data.value = res.data
   } catch (err) {
     ElMessage.error(getErrorMessage(err, '加载工作台失败'))

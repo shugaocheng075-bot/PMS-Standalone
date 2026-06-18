@@ -42,7 +42,87 @@
 
     <SummaryMetrics :items="summaryCards" :columns="4" @select="onSummaryCardSelect" />
 
-    
+    <div class="contract-insight-grid">
+      <section class="contract-insight-card">
+        <div class="contract-insight-head">
+          <div>
+            <div class="contract-insight-title">优先跟进清单</div>
+            <div class="contract-insight-note">先处理严重、警告和超期天数高的合同风险，直接进入项目继续跟进。</div>
+          </div>
+          <el-tag size="small" type="danger" effect="light">{{ priorityQueue.length }} 项</el-tag>
+        </div>
+        <div v-if="priorityQueue.length" class="contract-queue-list">
+          <button
+            v-for="item in priorityQueue"
+            :key="item.projectId"
+            type="button"
+            class="contract-queue-item"
+            @click="onGotoProject(item)"
+          >
+            <div class="contract-queue-main">
+              <strong>{{ item.hospitalName }}</strong>
+              <span>{{ item.groupName || '未填写服务组' }} · {{ item.salesName || '未填写销售' }}</span>
+            </div>
+            <div class="contract-queue-meta">
+              <el-tag size="small" :type="tagType(item.alertLevel)">{{ item.alertLevel }}</el-tag>
+              <span>超期 {{ item.overdueDays }} 天</span>
+            </div>
+          </button>
+        </div>
+        <el-empty v-else description="当前筛选下没有需要优先处理的合同预警" :image-size="72" />
+      </section>
+
+      <section class="contract-insight-card">
+        <div class="contract-insight-head">
+          <div>
+            <div class="contract-insight-title">医院关注</div>
+            <div class="contract-insight-note">查看预警最集中的医院，便于运维主管按客户维度推进合同维护闭环。</div>
+          </div>
+          <span class="contract-insight-meta">{{ allRows.length }} 条预警</span>
+        </div>
+        <div v-if="topHospitalBuckets.length" class="contract-chip-list">
+          <div v-for="item in topHospitalBuckets" :key="item.label" class="contract-chip">
+            <strong>{{ item.label }}</strong>
+            <span>{{ item.value }} 条</span>
+          </div>
+        </div>
+        <el-empty v-else description="暂无医院分布" :image-size="72" />
+      </section>
+
+      <section class="contract-insight-card">
+        <div class="contract-insight-head">
+          <div>
+            <div class="contract-insight-title">服务组负载</div>
+            <div class="contract-insight-note">按服务组看风险分布，帮助判断哪一组当前合同维护压力更高。</div>
+          </div>
+          <span class="contract-insight-meta">{{ highRiskCount }} 条高风险</span>
+        </div>
+        <div v-if="topGroupBuckets.length" class="contract-chip-list">
+          <div v-for="item in topGroupBuckets" :key="item.label" class="contract-chip">
+            <strong>{{ item.label }}</strong>
+            <span>{{ item.value }} 条</span>
+          </div>
+        </div>
+        <el-empty v-else description="暂无服务组分布" :image-size="72" />
+      </section>
+
+      <section class="contract-insight-card">
+        <div class="contract-insight-head">
+          <div>
+            <div class="contract-insight-title">有效性与等级结构</div>
+            <div class="contract-insight-note">快速判断当前是待续签、已过期还是普通提醒占主导，便于安排处理顺序。</div>
+          </div>
+          <span class="contract-insight-meta">{{ validityRiskAmountText }}</span>
+        </div>
+        <div v-if="validityBuckets.length" class="contract-chip-list">
+          <div v-for="item in validityBuckets" :key="item.label" class="contract-chip contract-chip--soft">
+            <strong>{{ item.label }}</strong>
+            <span>{{ item.value }} 条</span>
+          </div>
+        </div>
+        <el-empty v-else description="暂无有效性结构" :image-size="72" />
+      </section>
+    </div>
 
     <ProTable
       title="明细数据"
@@ -124,7 +204,7 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useRoute, useRouter } from 'vue-router'
-import { fetchContractAlerts, fetchContractAlertSummary, exportContractAlerts } from '../../api/modules/contract'
+import { fetchContractAlerts, exportContractAlerts } from '../../api/modules/contract'
 import type { ContractAlertItem, ContractAlertSummary } from '../../types/contract'
 import { useResilientLoad } from '../../composables/useResilientLoad'
 import { getErrorMessage } from '../../utils/error'
@@ -138,7 +218,7 @@ const loading = ref(false)
 const exporting = ref(false)
 const total = ref(0)
 const tableData = ref<ContractAlertItem[]>([])
-const summary = ref<ContractAlertSummary>({ reminderCount: 0, warningCount: 0, criticalCount: 0, total: 0 })
+const allRows = ref<ContractAlertItem[]>([])
 
 const query = reactive({
   alertLevel: '',
@@ -250,6 +330,69 @@ type ContractSummaryCard = {
   active: boolean
 }
 
+type InsightBucket = {
+  label: string
+  value: number
+}
+
+const buildBuckets = <T>(items: T[], resolveLabel: (item: T) => string, limit = 5): InsightBucket[] => {
+  const counts = new Map<string, number>()
+  items.forEach((item) => {
+    const label = resolveLabel(item).trim() || '未设置'
+    counts.set(label, (counts.get(label) ?? 0) + 1)
+  })
+
+  return Array.from(counts.entries())
+    .map(([label, value]) => ({ label, value }))
+    .sort((a, b) => (b.value - a.value) || a.label.localeCompare(b.label, 'zh-CN'))
+    .slice(0, limit)
+}
+
+const levelPriority = (level: string) => {
+  if (level === '严重') return 3
+  if (level === '警告') return 2
+  return 1
+}
+
+const summary = computed<ContractAlertSummary>(() => ({
+  reminderCount: allRows.value.filter((item) => item.alertLevel === '提醒').length,
+  warningCount: allRows.value.filter((item) => item.alertLevel === '警告').length,
+  criticalCount: allRows.value.filter((item) => item.alertLevel === '严重').length,
+  total: allRows.value.length,
+}))
+
+const highRiskCount = computed(() => summary.value.warningCount + summary.value.criticalCount)
+const coveredProvinceCount = computed(() => new Set(allRows.value.map((item) => item.province).filter(Boolean)).size)
+const coveredGroupCount = computed(() => new Set(allRows.value.map((item) => item.groupName).filter(Boolean)).size)
+const maxOverdueDays = computed(() => allRows.value.reduce((max, item) => Math.max(max, item.overdueDays || 0), 0))
+const totalMaintenanceAmount = computed(() => allRows.value.reduce((sum, item) => sum + (Number(item.maintenanceAmount) || 0), 0))
+
+const priorityQueue = computed(() => allRows.value
+  .slice()
+  .sort((left, right) => {
+    const levelDiff = levelPriority(right.alertLevel) - levelPriority(left.alertLevel)
+    if (levelDiff !== 0) {
+      return levelDiff
+    }
+
+    const overdueDiff = (right.overdueDays || 0) - (left.overdueDays || 0)
+    if (overdueDiff !== 0) {
+      return overdueDiff
+    }
+
+    return (Number(right.maintenanceAmount) || 0) - (Number(left.maintenanceAmount) || 0)
+  })
+  .slice(0, 5))
+
+const topHospitalBuckets = computed(() => buildBuckets(allRows.value, (item) => item.hospitalName || '未填写医院'))
+const topGroupBuckets = computed(() => buildBuckets(allRows.value, (item) => item.groupName || '未填写服务组'))
+const validityBuckets = computed(() => buildBuckets(
+  allRows.value,
+  (item) => `${item.contractValidityStatus || '未设置有效性'} · ${item.alertLevel || '未设置等级'}`,
+  6,
+))
+const validityRiskAmountText = computed(() => `维护金额 ${Math.round(totalMaintenanceAmount.value)} 万`)
+
 const summaryCards = computed<ContractSummaryCard[]>(() => [
   {
     key: '提醒',
@@ -310,10 +453,6 @@ const activeFilterLabel = computed(() => {
 })
 
 const heroSignals = computed(() => {
-  const highRisk = summary.value.criticalCount + summary.value.warningCount
-  const provinceCount = new Set(tableData.value.map((item) => item.province).filter(Boolean)).size
-  const groupCount = new Set(tableData.value.map((item) => item.groupName).filter(Boolean)).size
-
   return [
     {
       label: '风险总量',
@@ -322,18 +461,18 @@ const heroSignals = computed(() => {
     },
     {
       label: '高风险项目',
-      value: String(highRisk),
+      value: String(highRiskCount.value),
       note: '警告与严重级别的合同风险总数',
     },
     {
-      label: '严重风险',
-      value: String(summary.value.criticalCount),
-      note: '优先推进签约或维护处理的条目',
+      label: '最长超期',
+      value: `${maxOverdueDays.value}天`,
+      note: '当前范围内超期天数最高的合同风险',
     },
     {
       label: '覆盖范围',
-      value: `${provinceCount}/${groupCount}`,
-      note: '当前列表省份数 / 组别数',
+      value: `${coveredProvinceCount.value}/${coveredGroupCount.value}`,
+      note: '当前列表省份数 / 服务组数',
     },
   ]
 })
@@ -428,24 +567,20 @@ const overdueDaysClass = (overdueDays: number) => {
   return 'text-info'
 }
 
-const loadSummary = async () => {
-  try {
-    const res = await fetchContractAlertSummary()
-    summary.value = res.data
-  } catch (error) {
-    ElMessage.error(getErrorMessage(error, '加载合同预警汇总失败，请稍后重试'))
-  }
-}
-
 const loadData = async () => {
   loading.value = true
   try {
-    const res = await fetchContractAlerts(query)
+    const [res, allRes] = await Promise.all([
+      fetchContractAlerts(query),
+      fetchContractAlerts({ ...query, page: 1, size: 100000 }),
+    ])
     tableData.value = res.data.items
     total.value = res.data.total
+    allRows.value = allRes.data.items
   } catch (error) {
     tableData.value = []
     total.value = 0
+    allRows.value = []
     ElMessage.error(getErrorMessage(error, '加载合同预警列表失败，请稍后重试'))
   } finally {
     loading.value = false
@@ -544,7 +679,7 @@ const { restore: restoreFilterState, clear: clearFilterState } = useFilterStateP
 })
 
 const refreshLinkedData = async () => {
-  await Promise.allSettled([loadSummary(), loadFilterOptions(), loadData()])
+  await Promise.allSettled([loadFilterOptions(), loadData()])
 }
 
 useLinkedRealtimeRefresh({
@@ -557,7 +692,7 @@ onMounted(async () => {
   restoreFilterState()
   applyDrillQuery()
   await runInitialLoad({
-    tasks: [loadSummary, loadFilterOptions, loadData],
+    tasks: [loadFilterOptions, loadData],
     retryChecks: [
       {
         when: () => summary.value.total > 0 && total.value === 0,
@@ -755,6 +890,120 @@ watch(() => route.fullPath, () => {
   color: rgba(249, 239, 230, 0.76);
 }
 
+.contract-insight-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 16px;
+  margin-bottom: 16px;
+}
+
+.contract-insight-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+  padding: 18px;
+  border: 1px solid rgba(126, 95, 99, 0.1);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 18px 30px rgba(84, 49, 61, 0.06);
+}
+
+.contract-insight-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.contract-insight-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #2c2430;
+}
+
+.contract-insight-note,
+.contract-insight-meta {
+  font-size: 12px;
+  line-height: 1.7;
+  color: #80727a;
+}
+
+.contract-queue-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.contract-queue-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 14px 16px;
+  border: 1px solid rgba(126, 95, 99, 0.1);
+  border-radius: 16px;
+  background: #fffaf7;
+  text-align: left;
+  cursor: pointer;
+  transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.contract-queue-item:hover {
+  transform: translateY(-1px);
+  border-color: rgba(154, 93, 67, 0.24);
+  box-shadow: 0 12px 20px rgba(84, 49, 61, 0.08);
+}
+
+.contract-queue-main,
+.contract-queue-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.contract-queue-main strong,
+.contract-chip strong {
+  color: #2c2430;
+}
+
+.contract-queue-main span,
+.contract-queue-meta span,
+.contract-chip span {
+  font-size: 12px;
+  line-height: 1.6;
+  color: #7c7077;
+}
+
+.contract-queue-meta {
+  align-items: flex-end;
+  flex-shrink: 0;
+}
+
+.contract-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.contract-chip {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 132px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: #fff8f4;
+  border: 1px solid rgba(126, 95, 99, 0.08);
+}
+
+.contract-chip--soft {
+  background: #f8f5f6;
+}
+
 :deep(.el-table__fixed-right .cell) {
   white-space: nowrap;
 }
@@ -774,6 +1023,7 @@ watch(() => route.fullPath, () => {
     font-size: 28px;
   }
 
+  .contract-insight-grid,
   .contract-hero-signals,
   .contract-quick-grid {
     grid-template-columns: 1fr;
@@ -782,6 +1032,15 @@ watch(() => route.fullPath, () => {
   .contract-control-actions {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .contract-queue-item {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .contract-queue-meta {
+    align-items: flex-start;
   }
 }
 </style>

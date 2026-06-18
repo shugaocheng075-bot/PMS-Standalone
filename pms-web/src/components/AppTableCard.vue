@@ -1,5 +1,8 @@
 <template>
   <el-card shadow="never" class="table-card app-table-card" v-bind="$attrs">
+    <template v-if="$slots.header" #header>
+      <slot name="header" />
+    </template>
     <slot />
   </el-card>
 </template>

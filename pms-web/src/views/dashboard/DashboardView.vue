@@ -60,6 +60,104 @@
       </button>
     </div>
 
+    <div class="dashboard-insight-grid">
+      <section class="dashboard-insight-card">
+        <div class="dashboard-insight-head">
+          <div>
+            <div class="dashboard-insight-title">重点任务队列</div>
+            <div class="dashboard-insight-note">首页先看严重、逾期和高压任务，直接跳到对应模块继续处理。</div>
+          </div>
+          <el-tag size="small" type="danger" effect="light">{{ priorityTaskQueue.length }} 项</el-tag>
+        </div>
+        <div v-if="priorityTaskQueue.length" class="dashboard-queue-list">
+          <button
+            v-for="item in priorityTaskQueue"
+            :key="item.id"
+            type="button"
+            class="dashboard-queue-item"
+            @click="onOperationsTaskGoto(item)"
+          >
+            <div class="dashboard-queue-main">
+              <strong>{{ item.title }}</strong>
+              <span>{{ item.hospitalName || '未填写医院' }} · {{ item.owner || '未分配负责人' }}</span>
+            </div>
+            <div class="dashboard-queue-meta">
+              <el-tag size="small" :type="taskLevelTagType(item.level)">{{ item.level }}</el-tag>
+              <span>逾期 {{ item.overdueDays }} 天</span>
+            </div>
+          </button>
+        </div>
+        <el-empty v-else description="当前没有需要立即升级处理的任务" :image-size="72" />
+      </section>
+
+      <section class="dashboard-insight-card">
+        <div class="dashboard-insight-head">
+          <div>
+            <div class="dashboard-insight-title">风险来源结构</div>
+            <div class="dashboard-insight-note">看风险当前主要来自哪类业务，帮助决定先收口哪条链路。</div>
+          </div>
+          <span class="dashboard-insight-meta">{{ operationsSummary.total }} 条任务口径</span>
+        </div>
+        <div v-if="sourceBuckets.length" class="dashboard-chip-list">
+          <div v-for="item in sourceBuckets" :key="item.label" class="dashboard-chip">
+            <strong>{{ item.label }}</strong>
+            <span>{{ item.value }} 条</span>
+          </div>
+        </div>
+        <el-empty v-else description="暂无风险来源分布" :image-size="72" />
+      </section>
+
+      <section class="dashboard-insight-card">
+        <div class="dashboard-insight-head">
+          <div>
+            <div class="dashboard-insight-title">区域风险关注</div>
+            <div class="dashboard-insight-note">把超期项目和严重预警按省份合并看，先识别需要主管介入的区域。</div>
+          </div>
+          <span class="dashboard-insight-meta">{{ focusProvinceBuckets.length }} 个重点省份</span>
+        </div>
+        <div v-if="focusProvinceBuckets.length" class="dashboard-chip-list">
+          <div v-for="item in focusProvinceBuckets" :key="item.label" class="dashboard-chip">
+            <strong>{{ item.label }}</strong>
+            <span>{{ item.value }} 条</span>
+          </div>
+        </div>
+        <el-empty v-else description="暂无区域风险集中" :image-size="72" />
+      </section>
+
+      <section class="dashboard-insight-card">
+        <div class="dashboard-insight-head">
+          <div>
+            <div class="dashboard-insight-title">闭环压力概览</div>
+            <div class="dashboard-insight-note">同时看项目超期、报告待收口、重大需求和任务逾期，快速判断管理压力面。</div>
+          </div>
+          <span class="dashboard-insight-meta">全局闭环压力</span>
+        </div>
+        <div v-if="closurePressureBuckets.length" class="dashboard-chip-list">
+          <div v-for="item in closurePressureBuckets" :key="item.label" class="dashboard-chip dashboard-chip--soft">
+            <strong>{{ item.label }}</strong>
+            <span>{{ item.value }} 项</span>
+          </div>
+        </div>
+        <el-empty v-else description="暂无闭环压力数据" :image-size="72" />
+      </section>
+    </div>
+
+    <OperationsTaskPanel
+      title="管理视角运维任务池"
+      subtitle="把项目、报修、巡检、交接、重大需求、报告和台账质量压到一个任务入口，先盯严重和逾期。"
+      :summary="operationsSummary"
+      :tasks="operationsTasks"
+      :query="operationsQuery"
+      :loading="operationsLoading"
+      @refresh="void loadOperationsTasks()"
+      @query-change="void applyOperationsTaskQuery($event)"
+      @reset-query="void resetOperationsTaskQuery()"
+    >
+      <template #actions>
+        <el-button size="small" :loading="operationsLoading" @click="void loadOperationsTasks()" icon="Refresh">刷新任务</el-button>
+      </template>
+    </OperationsTaskPanel>
+
     <div class="chart-grid">
       <AppTableCard class="chart-card">
         <template #header>
@@ -132,8 +230,8 @@
         <template #header>
           <div class="panel-head">
             <div class="panel-copy">
-              <span class="panel-title">责任人工作量 TOP12</span>
-              <span class="panel-subtitle">识别忙闲分布与负载集中情况</span>
+              <span class="panel-title">销售风险 TOP12</span>
+              <span class="panel-subtitle">按销售聚合合同告警，识别跟进优先级</span>
             </div>
             <span class="panel-caption">堆叠柱状</span>
           </div>
@@ -215,8 +313,9 @@ import { fetchProjectList } from '../../api/modules/project'
 import { fetchMajorDemands, type MajorDemandSnapshot } from '../../api/modules/majorDemand'
 import { fetchAlertCenter, type AlertCenterItem } from '../../api/modules/alertCenter'
 import { fetchAnnualReportSummary } from '../../api/modules/annual-report'
-import { fetchDashboardV2, type DashboardV2TrendItem, type DashboardV2OwnerItem } from '../../api/modules/dashboard'
+import { fetchDashboardV2, type DashboardV2TrendItem, type DashboardV2OwnerItem, type DashboardV2SourceItem } from '../../api/modules/dashboard'
 import type { AnnualReportSummary } from '../../types/annual-report'
+import type { OperationsTaskItem } from '../../types/operations'
 import { getErrorMessage } from '../../utils/error'
 import {
   normalizeMajorDemandValue,
@@ -233,7 +332,9 @@ import PersonalWorkbench from './PersonalWorkbench.vue'
 import SupervisorWorkbench from './SupervisorWorkbench.vue'
 import RegionalManagerWorkbench from './RegionalManagerWorkbench.vue'
 import AppTableCard from '../../components/AppTableCard.vue'
+import OperationsTaskPanel from '../../components/OperationsTaskPanel.vue'
 import { basicEcharts } from '../../utils/echarts-basic'
+import { useOperationsTasks } from '../../composables/useOperationsTasks'
 
 const access = useAccessControl()
 const dashboardRole = computed(() => {
@@ -245,6 +346,7 @@ const dashboardRole = computed(() => {
 
 type ChartDatum = { name: string; value: number }
 type ChartInstance = any
+type InsightBucket = { label: string; value: number }
 
 type DemandDrillItem = {
   rowId: string
@@ -258,6 +360,15 @@ type DemandDrillItem = {
 const loading = ref(false)
 const demandLoading = ref(false)
 const router = useRouter()
+const {
+  loading: operationsLoading,
+  summary: operationsSummary,
+  tasks: operationsTasks,
+  query: operationsQuery,
+  loadOperationsTasks,
+  applyQuery: applyOperationsTaskQuery,
+  resetQuery: resetOperationsTaskQuery,
+} = useOperationsTasks(12)
 const activeTab = ref<'project' | 'demand' | 'alert'>('project')
 const demandLastLoadedAt = ref(0)
 const DEMAND_REFRESH_INTERVAL = 5 * 60 * 1000
@@ -284,7 +395,8 @@ const annualChart = ref<ChartInstance | null>(null)
 const annualSummary = ref<AnnualReportSummary | null>(null)
 
 const trendData = ref<DashboardV2TrendItem[]>([])
-const ownerWorkloadData = ref<DashboardV2OwnerItem[]>([])
+const salesRiskData = ref<DashboardV2OwnerItem[]>([])
+const sourceDistributionData = ref<DashboardV2SourceItem[]>([])
 
 const trendChartRef = ref<HTMLDivElement | null>(null)
 const workloadChartRef = ref<HTMLDivElement | null>(null)
@@ -299,6 +411,31 @@ const severityColors = {
   severe: '#c58686',
   warning: '#c8a368',
   reminder: '#7f99c2',
+}
+
+const buildBuckets = <T>(items: T[], resolveLabel: (item: T) => string, limit = 5): InsightBucket[] => {
+  const counts = new Map<string, number>()
+  items.forEach((item) => {
+    const label = resolveLabel(item).trim() || '未设置'
+    counts.set(label, (counts.get(label) ?? 0) + 1)
+  })
+
+  return Array.from(counts.entries())
+    .map(([label, value]) => ({ label, value }))
+    .sort((a, b) => (b.value - a.value) || a.label.localeCompare(b.label, 'zh-CN'))
+    .slice(0, limit)
+}
+
+const taskLevelWeight = (level?: string) => {
+  if (level === '严重') return 3
+  if (level === '警告') return 2
+  return 1
+}
+
+const taskLevelTagType = (level?: string) => {
+  if (level === '严重') return 'danger'
+  if (level === '警告') return 'warning'
+  return 'info'
 }
 
 const cards = computed(() => {
@@ -437,6 +574,71 @@ const quickActions = computed(() => {
     },
   ]
 })
+
+const annualPendingCount = computed(() => {
+  const summary = annualSummary.value
+  if (!summary) {
+    return 0
+  }
+
+  return summary.notStartedCount + summary.writingCount + summary.submittedCount
+})
+
+const overdueProjectCount = computed(() =>
+  projectItems.value.filter((item) => Number(item.overdueDays || 0) > 0).length,
+)
+
+const severeAlertCount = computed(() =>
+  alertItems.value.filter((item) => item.level === '严重').length,
+)
+
+const priorityTaskQueue = computed<OperationsTaskItem[]>(() => operationsTasks.value
+  .slice()
+  .sort((left, right) => {
+    const levelDiff = taskLevelWeight(right.level) - taskLevelWeight(left.level)
+    if (levelDiff !== 0) {
+      return levelDiff
+    }
+
+    return (right.overdueDays || 0) - (left.overdueDays || 0)
+  })
+  .slice(0, 5))
+
+const sourceBuckets = computed<InsightBucket[]>(() => sourceDistributionData.value
+  .slice()
+  .sort((left, right) => right.total - left.total)
+  .slice(0, 5)
+  .map((item) => ({
+    label: item.source || '未设置来源',
+    value: item.total,
+  })))
+
+const focusProvinceBuckets = computed(() => {
+  const provinceByHospital = new Map(
+    projectItems.value
+      .filter((item) => item.hospitalName && item.province)
+      .map((item) => [String(item.hospitalName).trim(), String(item.province).trim()]),
+  )
+  const provinces = [
+    ...projectItems.value
+      .filter((item) => Number(item.overdueDays || 0) > 0)
+      .map((item) => String(item.province || '').trim())
+      .filter(Boolean),
+    ...alertItems.value
+      .filter((item) => item.level === '严重')
+      .map((item) => provinceByHospital.get(String(item.hospitalName || '').trim()) || '')
+      .filter(Boolean),
+  ]
+
+  return buildBuckets(provinces, (item) => item, 5)
+})
+
+const closurePressureBuckets = computed<InsightBucket[]>(() => [
+  { label: '超期项目', value: overdueProjectCount.value },
+  { label: '报告待收口', value: annualPendingCount.value },
+  { label: '重大需求', value: demandDrillSource.value.length },
+  { label: '任务逾期', value: operationsSummary.value.overdue ?? 0 },
+].filter((item) => item.value > 0))
 
 const demandDrillSource = computed<DemandDrillItem[]>(() => {
   const snapshot = majorSnapshot.value
@@ -617,8 +819,8 @@ const renderTrendChart = () => {
 }
 
 const renderWorkloadChart = () => {
-  if (!workloadChart.value || !ownerWorkloadData.value.length) return
-  const owners = ownerWorkloadData.value.map(d => d.owner)
+  if (!workloadChart.value || !salesRiskData.value.length) return
+  const salesNames = salesRiskData.value.map(d => d.owner)
   workloadChart.value.setOption({
     color: [severityColors.severe, severityColors.warning, severityColors.reminder],
     tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
@@ -626,7 +828,7 @@ const renderWorkloadChart = () => {
     grid: { left: 80, right: 20, top: 20, bottom: 50 },
     yAxis: {
       type: 'category',
-      data: owners,
+      data: salesNames,
       inverse: true,
       axisLabel: { width: 60, overflow: 'truncate', color: '#64748b' },
       axisTick: { show: false },
@@ -639,9 +841,9 @@ const renderWorkloadChart = () => {
       splitLine: { lineStyle: { color: '#edf2f6' } },
     },
     series: [
-      { name: '严重', type: 'bar', stack: 'total', barMaxWidth: 18, data: ownerWorkloadData.value.map(d => d.severe), itemStyle: { color: severityColors.severe, borderRadius: [0, 6, 6, 0] } },
-      { name: '警告', type: 'bar', stack: 'total', barMaxWidth: 18, data: ownerWorkloadData.value.map(d => d.warning), itemStyle: { color: severityColors.warning, borderRadius: [0, 6, 6, 0] } },
-      { name: '提醒', type: 'bar', stack: 'total', barMaxWidth: 18, data: ownerWorkloadData.value.map(d => d.reminder), itemStyle: { color: severityColors.reminder, borderRadius: [0, 6, 6, 0] } },
+      { name: '严重', type: 'bar', stack: 'total', barMaxWidth: 18, data: salesRiskData.value.map(d => d.severe), itemStyle: { color: severityColors.severe, borderRadius: [0, 6, 6, 0] } },
+      { name: '警告', type: 'bar', stack: 'total', barMaxWidth: 18, data: salesRiskData.value.map(d => d.warning), itemStyle: { color: severityColors.warning, borderRadius: [0, 6, 6, 0] } },
+      { name: '提醒', type: 'bar', stack: 'total', barMaxWidth: 18, data: salesRiskData.value.map(d => d.reminder), itemStyle: { color: severityColors.reminder, borderRadius: [0, 6, 6, 0] } },
     ],
   })
 }
@@ -726,6 +928,13 @@ const onAlertDrillGoto = (row: AlertCenterItem) => {
   })
 }
 
+const onOperationsTaskGoto = (row: OperationsTaskItem) => {
+  void router.push({
+    path: row.relatedPath,
+    query: row.relatedQuery,
+  })
+}
+
 const shouldLoadDemand = (force = false) => {
   if (force) {
     return true
@@ -771,13 +980,15 @@ const loadDashboard = async () => {
       fetchAlertCenter({ page: 1, size: 100000 }),
       fetchAnnualReportSummary(),
       fetchDashboardV2({ months: timeRange.value }),
+      loadOperationsTasks(),
     ])
 
     projectItems.value = projectRes.data.items
     alertItems.value = alertRes.data.items
     annualSummary.value = annualRes.data
     trendData.value = v2Res.data.trend
-    ownerWorkloadData.value = v2Res.data.ownerWorkload
+    salesRiskData.value = v2Res.data.ownerWorkload
+    sourceDistributionData.value = v2Res.data.sourceDistribution
 
     await nextTick()
     updateCharts()
@@ -1046,6 +1257,118 @@ onBeforeUnmount(() => {
   gap: 14px;
 }
 
+.dashboard-insight-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.dashboard-insight-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+  padding: 18px;
+  border: 1px solid rgba(124, 142, 167, 0.12);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 16px 28px rgba(15, 54, 93, 0.06);
+}
+
+.dashboard-insight-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.dashboard-insight-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #253445;
+}
+
+.dashboard-insight-note,
+.dashboard-insight-meta {
+  font-size: 12px;
+  line-height: 1.7;
+  color: #6f7f92;
+}
+
+.dashboard-queue-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.dashboard-queue-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 14px 16px;
+  border: 1px solid rgba(124, 142, 167, 0.12);
+  border-radius: 16px;
+  background: #f7fbff;
+  text-align: left;
+  cursor: pointer;
+  transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.dashboard-queue-item:hover {
+  transform: translateY(-1px);
+  border-color: rgba(11, 95, 153, 0.2);
+  box-shadow: 0 12px 20px rgba(15, 54, 93, 0.08);
+}
+
+.dashboard-queue-main,
+.dashboard-queue-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.dashboard-queue-main strong,
+.dashboard-chip strong {
+  color: #253445;
+}
+
+.dashboard-queue-main span,
+.dashboard-queue-meta span,
+.dashboard-chip span {
+  font-size: 12px;
+  line-height: 1.6;
+  color: #708095;
+}
+
+.dashboard-queue-meta {
+  align-items: flex-end;
+  flex-shrink: 0;
+}
+
+.dashboard-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.dashboard-chip {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 132px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: #f7fbff;
+  border: 1px solid rgba(124, 142, 167, 0.1);
+}
+
+.dashboard-chip--soft {
+  background: #f4f7fb;
+}
+
 .metric-card {
   position: relative;
   overflow: hidden;
@@ -1199,6 +1522,7 @@ onBeforeUnmount(() => {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .dashboard-insight-grid,
   .chart-grid,
   .analysis-grid {
     grid-template-columns: 1fr;
@@ -1220,7 +1544,8 @@ onBeforeUnmount(() => {
 
   .dashboard-hero-signals,
   .hero-quick-grid,
-  .dashboard-metrics {
+  .dashboard-metrics,
+  .dashboard-insight-grid {
     grid-template-columns: 1fr;
   }
 
@@ -1232,6 +1557,15 @@ onBeforeUnmount(() => {
   .hero-control-actions {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .dashboard-queue-item {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .dashboard-queue-meta {
+    align-items: flex-start;
   }
 }
 </style>

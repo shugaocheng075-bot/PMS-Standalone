@@ -1,741 +1,863 @@
+﻿# Implementation Plan
+
+## Goal
+- Rework PMS around operations users as the primary audience and deliver a role-based operations command workflow.
+- Keep sales fields only as background project attributes; new task aggregation, dashboard entry points, and workbench prioritization must be organized around operations ownership and execution.
+
+## Current Slice
+- Add an `Operations` backend aggregation module that exposes a unified task queue over projects, repairs, inspections, handovers, major demands, annual reports, monthly reports, and data hygiene issues.
+- Status: implemented in backend; controller now serves `/api/operations/tasks` and `/api/operations/tasks/summary` with hospital-scope filtering at the API layer.
+
+## Non-goals
+- Do not redesign unrelated CRUD modules or replace existing project/import/report data models in one pass.
+- Do not remove legacy dashboard/contracts/workbench APIs that existing pages already consume.
+- Do not convert this step into a full database schema migration.
+
+## Constraints
+- Reuse existing data sources first: projects, repair records, inspections, handovers, major demands, annual reports, monthly reports, and maintenance audit/import endpoints.
+- Preserve RBAC and hospital-scope filtering; all new operations aggregation must respect the current access-control scope.
+- Keep implementation split into bounded slices so parallel workers can edit disjoint files and merge safely.
+
+## Acceptance criteria
+- Dashboard/workbench entry pages show operations-facing summaries and task queues instead of sales-led grouping.
+- A new operations task aggregation API provides `summary` and paged `tasks` data with operations ownership, severity, overdue state, and deep links.
+- Frontend can render an operations task panel and integrate it into the dashboard/workbench flow for the relevant roles.
+- Known UX breakages in the current workbench shell are fixed, including card headers and incorrect inspection routes.
+- Backend `Operations` module keeps existing contracts intact and reuses hospital-scope filtering at the controller layer.
+
+## Parallel workstreams
+1. Supervisor track: coordinate merge order, verify interface contracts, integrate role-based dashboard/workbench entry pages, and run final build/browser checks.
+2. Worker A: fix `AppTableCard` header slot passthrough and personal workbench inspection route links.
+3. Worker B: add backend `Operations` aggregation contracts, service, controller, and DI registration for `/api/operations/tasks` and `/api/operations/tasks/summary`.
+4. Worker C: add frontend operations types/API client plus a reusable operations task panel for dashboard/workbench integration.
+
+## Status
+- 2026-06-04: Completed this slice. Backend aggregation, frontend consumer layer, dashboard/workbench integration, and the two known shell fixes are all in place and validated with `dotnet build PMS.sln`, `cd pms-web && npm run build`, and authenticated API spot checks.
+- 2026-06-04: Extended the same slice with reusable task-panel filtering. The operations panel now supports level/source/keyword filtering, summary-card quick filtering, filter reset, and refresh across manager, supervisor, regional manager, and personal workbenches without changing backend contracts.
+- 2026-06-04: Continued the same slice with owner and hospital filtering. The shared operations panel now supports narrowing tasks by responsible person and hospital on all dashboard/workbench entry pages, which better matches supervisor and regional-manager triage workflows.
+- 2026-06-04: Continue the same slice by turning `/maintenance/data` into the landing zone for data-quality tasks. Keep the existing maintenance APIs unchanged, but let the page consume `hospitalName`/`productName` route query, focus the audit table, prefill the reassignment form, and support row-to-form actions so operations staff can move directly from task triage into ownership correction.
+- 2026-06-04: Continued the same operations-first rollout by upgrading `pms-web/src/views/repair/RepairRecordView.vue` into a repair service desk. The page now loads a filtered overview dataset alongside the paged table, renders a hero area with service signals, quick actions, hospital/owner/issue insight cards, and keeps route-filter, refresh, and mutation flows in sync with both the overview cards and the detail table.
+- 2026-06-04: Continued the same operations-first rollout by upgrading `pms-web/src/views/annual-report/AnnualReportView.vue` into an annual-report service desk. Keep backend contracts unchanged, derive the first-screen signals and insight cards from the current filtered dataset already loaded on the frontend, and preserve the existing create/edit/workflow/print/deep-link behaviors while reorganizing the page into a role-friendly operations workbench.
+- 2026-06-05: Continue the same operations-first rollout by upgrading `pms-web/src/views/monthly-report/MonthlyReportView.vue` into a monthly-report service desk. Keep backend contracts unchanged, add a frontend-derived overview dataset for first-screen signals and insight cards, and preserve the existing create/edit/submit/approve/reject/delete/deep-link flows while reorganizing the page into a calmer operations workbench.
+- 2026-06-05: Continue the same operations-first rollout by upgrading `pms-web/src/views/hospital/HospitalListView.vue` into a hospital service desk. Keep backend contracts unchanged, derive first-screen signals, summary metrics, a data-quality queue, and province/tier/rating insight cards from the current filtered hospital dataset, and preserve the existing create/edit/rating/detail/delete flows while reorganizing the page into a hospital master-data workbench.
+- 2026-06-05: Continue the same operations-first rollout by upgrading `pms-web/src/views/product/ProductListView.vue` into a product service desk. Keep backend contracts unchanged, derive first-screen signals, deployment ranking, category/status insights, and quick focus actions from the current filtered product dataset, and preserve the existing create/edit/detail/delete/batch-delete/deep-link flows while reorganizing the page into a cleaner product master-data workbench.
+- 2026-06-05: Continue the same operations-first rollout by upgrading `pms-web/src/views/personnel/PersonnelListView.vue` into a personnel service desk. Keep backend contracts unchanged, derive first-screen signals, group/supervisor/on-site insights, and quick focus actions from the current filtered personnel dataset, and preserve the existing create/edit/detail/permission/deep-link/external-sync flows while reorganizing the page into a cleaner permission-and-staff master-data workbench.
+
+## Goal
+- Change the Dashboard workload bar chart from operations owner/personnel grouping to sales-only risk data.
+- Keep the chart useful for sales follow-up by grouping contract alerts by sales name and retaining severe/warning/reminder segments.
+
+## Non-goals
+- Do not change Dashboard trend/source/summary data scope.
+- Do not change Alert Center table contracts or project data.
+- Do not introduce new chart libraries or redesign the full Dashboard page.
+
+## Constraints
+- Keep the existing `/api/dashboard/v2` response shape compatible for the frontend.
+- Only exclude non-sales sources from the TOP workload chart grouping; contract alert data remains the source for sales risk.
+- Preserve existing access-control hospital scope filtering.
+
+## Acceptance criteria
+- Dashboard chart title/subtitle clearly describe sales risk, not responsibility/personnel workload.
+- TOP chart categories are sales names from contract alerts, with missing sales grouped as 鏈垎閰嶉攢鍞?
+- `pms-web` build passes and `/dashboard` browser preview shows the sales-only chart.
+
+## Steps
+1. Update Dashboard v2 workload aggregation to group contract-alert events by sales only.
+2. Rename the frontend chart copy and local variable names toward sales risk while preserving API compatibility.
+3. Build and verify the Dashboard page in the in-app browser.
+4. Record the completed work in progress.
+
+## Goal
+- Redesign the project ledger page around real PMS project data and business operations, not just generic styling.
+- Turn `/project/list` into a project business desk that surfaces filtered portfolio context, renewal/overdue risk, commercial value, service ownership, and row-level detail actions.
+
+## Non-goals
+- Do not change backend project APIs, permissions, data scope rules, or database writes.
+- Do not change other modules in this step.
+- Do not introduce new frontend runtime dependencies.
+
+## Constraints
+- Use existing `GET /api/projects`, export, single update, and batch update contracts.
+- Keep existing filters, pagination, export, batch edit, and edit behavior available.
+- Scope implementation to `pms-web/src/views/project/ProjectListView.vue` plus small final CSS refinements if needed.
+
+## Acceptance criteria
+- Project list page shows a business overview based on the current filtered dataset: hospital/product coverage, overdue/due-soon status, signed/onsite counts, sales/maintenance/annual value, and key owner/product distributions.
+- Current filtered row can open a detail drawer showing opportunity number, hospital/product/location, service owner, commercial figures, contract/service dates, onsite information, and remarks.
+- Table columns prioritize business scan fields and include a visible detail action.
+- Frontend build passes and `/project/list` is checked in the in-app browser with the current hospital/product filter.
+
+## Steps
+1. Load a lightweight overview dataset for the current project filters through the existing list API.
+2. Add computed business metrics, top risk/project cards, distribution chips, and selected project detail state.
+3. Update the project page template/table/actions/drawer to expose the business design.
+4. Build and verify in browser, then record progress.
+
+## Goal
+- Refine the PMS frontend into a quieter, premium operational UI across the app shell, login entry, global buttons, forms, tables, cards, dialogs, and drawers.
+
+## Non-goals
+- Do not change backend APIs, permission logic, routing contracts, or business data behavior.
+- Do not rewrite individual business page data flows or introduce new runtime dependencies.
+- Do not add marketing-style art, decorative imagery, or large page-specific redesigns.
+
+## Constraints
+- Keep the change scoped to `pms-web/src` UI styles and existing Vue components.
+- Preserve Element Plus compatibility and existing page actions.
+- Prefer restrained surfaces, crisp typography, 8px-oriented radii, low shadows, and clear scan density.
+
+## Acceptance criteria
+- App shell, login page, cards, tables, filters, buttons, pagination, dialogs, drawers, and popovers read as one consistent minimalist business UI.
+- Existing global gradients, large-radius cards, hover lift, and heavy shadows are reduced by the final CSS layer.
+- Frontend build passes and at least one logged-in page plus login page are visually checked.
+
+## Steps
+1. Extend the final `clean-ui.css` layer with a design-token refresh and component overrides.
+2. Tune `AppLayout.vue` scoped styles for a compact white header, sidebar, content topbar, and notification panel.
+3. Tune `LoginView.vue` scoped styles so the first screen feels aligned with the business app.
+4. Build and verify with local browser preview, then record progress.
+
+## Goal
+- 灏嗗綋鍓?PMS 宸ヤ綔鍖虹殑鏈夋晥椤圭洰鏀瑰姩鎻愪氦鍒?Git 浠撳簱锛屽苟涓?`origin/main` 瀵归綈鍚庢帹閫併€?## Non-goals
+- 涓嶅洖婊氱幇鏈夊伐浣滃尯鏀瑰姩锛屼笉娓呯悊鐢ㄦ埛鏈湴澶囦唤銆佹埅鍥炬垨杩愯鏃ュ織銆?- 涓嶉澶栭噸鏋勪笟鍔′唬鐮佹垨鎵╁ぇ鏈鎻愪氦鑼冨洿銆?## Constraints
+- 浠呮彁浜ゅ簲杩涗粨搴撶殑婧愮爜銆佹暟鎹簱鍜?`memory-bank` 璁板綍锛屼笉绾冲叆 `.tmp/`銆乣backups/`銆乣*.db-wal`銆乣*.db-shm` 绛夋湰鍦颁骇鐗┿€?- 浠ュ綋鍓?`main` 鍒嗘敮涓哄熀纭€锛屽厛纭涓?`origin/main` 鐨勫樊寮傦紝鍐嶆墽琛屾彁浜や笌鎺ㄩ€併€?- 淇濈暀浠撳簱閲屾棦鏈?`.slnx` 鏋勫缓闂璁板綍锛屽瀹炶鏄庨獙璇佺粨鏋溿€?## Acceptance criteria
+- 褰撳墠鏈夋晥鏀瑰姩瀹屾垚涓€娆℃槑纭?commit锛屽苟鎴愬姛鎺ㄩ€佸埌 `origin/main`銆?- 鎺ㄩ€佸墠鍚庢湰鍦板垎鏀笌杩滅鍒嗘敮淇濇寔瀵归綈銆?- 鏈鎻愪氦涓庢帹閫佺粨鏋滆褰曞埌 `progress.md`銆?## Steps
+1. 妫€鏌ュ垎鏀€佽繙绔拰宸ヤ綔鍖虹姸鎬侊紝鍖哄垎婧愮爜鏀瑰姩涓庢湰鍦颁骇鐗┿€?2. 鏆傚瓨鏈夋晥鏂囦欢骞跺垱寤烘彁浜ゃ€?3. 鎺ㄩ€佸埌杩滅骞剁‘璁?`main` 涓?`origin/main` 瀵归綈銆?
+## Goal
+- 淇鏈湴 PMS 棰勮绔欑偣鏃犳硶浣跨敤绠＄悊鍛樿处鍙风櫥褰曠殑闂銆?## Non-goals
+- 涓嶉噸鍋氱櫥褰曢〉 UI锛屼笉鏀瑰姩鏉冮檺妯″瀷鎴栦笟鍔℃ā鍧?API銆?- 涓嶆墽琛屾暟鎹鍏ャ€侀」鐩悓姝ャ€佸浠芥仮澶嶇瓑鏃犲叧鎿嶄綔銆?## Constraints
+- 淇濇寔鐜版湁 `/api/auth/login` 濂戠害鍏煎锛屽墠绔粛鎻愪氦 `account/password`銆?- 浼樺厛澶嶇幇鐧诲綍鎺ュ彛杩斿洖锛屽啀鎸夎璇佹湇鍔℃渶灏忚寖鍥翠慨澶嶃€?- 淇鍚庡繀椤婚獙璇?API 鐧诲綍鍜屽墠绔〉闈㈢櫥褰曢摼璺€?## Acceptance criteria
+- `admin/123456` 鑳芥垚鍔熻皟鐢ㄧ櫥褰曟帴鍙ｅ苟杩斿洖 token銆?- 鍓嶇 `http://localhost:5173/` 鍙畬鎴愮櫥褰曞苟杩涘叆涓氬姟椤甸潰銆?- 鐧诲綍淇鍜岄獙璇佺粨鏋滆褰曞埌 `progress.md`銆?## Steps
+1. 澶嶇幇褰撳墠鐧诲綍澶辫触锛岀‘璁ゅけ璐ョ偣鍦ㄥ墠绔€佷唬鐞嗚繕鏄悗绔璇併€?2. 妫€鏌?`AuthController`銆佸墠绔櫥褰?API 涓?`InMemoryAuthService` 鐨勮处鍙风瀛愰€昏緫銆?3. 鍋氭渶灏忎慨澶嶆垨杩愯绾т慨姝ｏ紝骞堕噸鍚?楠岃瘉鍓嶅悗绔櫥褰曢摼璺€?
+## Goal
+- 鍚姩 PMS 鏈湴鍓嶅悗绔紑鍙戞湇鍔★紝鎻愪緵鍙搷浣滅殑缃戠珯棰勮鍏ュ彛銆?## Non-goals
+- 涓嶄慨鏀逛笟鍔′唬鐮併€丄PI 濂戠害銆侀厤缃粯璁ゅ€兼垨鏁版嵁搴撳唴瀹广€?- 涓嶆墽琛屾暟鎹鍏ャ€佸悓姝ャ€佸浠芥仮澶嶇瓑浼氭敼鍙樹笟鍔℃暟鎹殑鎿嶄綔銆?## Constraints
+- 鍚庣浣跨敤鐜版湁 Development/http 閰嶇疆鐩戝惉 `http://localhost:5111`銆?- 鍓嶇浣跨敤鐜版湁 Vite 閰嶇疆鐩戝惉 `http://localhost:5173`锛屽苟閫氳繃 `/api` 浠ｇ悊鍒?`http://127.0.0.1:5111`銆?- 鑻ョ鍙ｅ凡鍗犵敤锛屽厛纭鍗犵敤鏉ユ簮锛屼笉闈欓粯鏀归粯璁ょ鍙ｃ€?## Acceptance criteria
+- `5111` 鍚庣绔彛鍜?`5173` 鍓嶇绔彛鍧囧浜庣洃鍚姸鎬併€?- 鍓嶇棣栭〉鍙€氳繃娴忚鍣ㄨ闂紝鍚庣 API 鍙€氳繃鍋ュ悍鎴栬璇佸彈淇濇姢鎺ュ彛纭鏈嶅姟瀛樻椿銆?- 鏈鍚姩鍜岄獙璇佺粨鏋滆褰曞埌 `progress.md`銆?## Steps
+1. 妫€鏌ラ粯璁ょ鍙ｅ崰鐢ㄥ拰鏈湴鍚姩鑴氭湰銆?2. 浠ュ悗鍙拌繘绋嬪惎鍔?PMS.API 涓?pms-web銆?3. 楠岃瘉鍓嶇椤甸潰鍜屽悗绔帴鍙ｅ彲杈撅紝骞舵墦寮€娴忚鍣ㄩ瑙堝叆鍙ｃ€?
+## Goal
+- 浠庨噾灞卞叡浜枃妗ｅ悓姝ラ」鐩彴璐︼細PMS 涓凡瀛樺湪鐨勯」鐩粎鏇存柊浜у搧銆佺淮鎶ゆ棩鏈熴€侀攢鍞瓑瀛楁锛汸MS 涓笉瀛樺湪浣嗗叡浜枃妗ｇ粍鍒负鈥滆垝楂樻垚鈥濈殑椤圭洰鏂板鍒?PMS锛涘悓姝ュ悗鍒锋柊鍏宠仈妯″潡鏁版嵁銆?
+## Non-goals
+- 涓嶆敼鍔ㄩ」鐩尮閰嶄富瑙勫垯锛屼笉閲嶅仛鍚庣椤圭洰瀵煎叆绠楁硶銆?- 涓嶆墿鏁ｅ埌閲嶅ぇ闇€姹傘€佸伐鏃舵姤琛ㄧ瓑鏃犲叧瀵煎叆娴佺▼銆?- 涓嶆妸鏈鍚屾鏀规垚鍏ㄩ噺瑕嗙洊瀵煎叆銆?
+## Constraints
+- 浼樺厛澶嶇敤鐜版湁鍚庣澧為噺鍚屾鎺ュ彛 `/api/admin/import/upload/sync-project-ledger`銆?- 鍓嶇鏀瑰姩浠呴檺 `pms-web/src/api/modules/maintenance.ts` 涓?`pms-web/src/views/maintenance/DataMaintenanceView.vue`锛屼互鍙?memory-bank 璁板綍銆?- 鍚屾瀹屾垚鍚庡繀椤昏Е鍙戝叏灞€鏁版嵁鍒锋柊淇″彿锛屽苟瀹屾垚鍓嶇鏋勫缓楠岃瘉涓庝竴娆″疄闄呭悓姝ラ獙璇併€?
+## Acceptance criteria
+- 鏁版嵁缁存姢涓績鍙洿鎺ユ墽琛屸€滃閲忓悓姝ラ」鐩彴璐︹€濓紝骞跺睍绀?matched/updated/added 绛夌粨鏋溿€?- 鍏变韩鏂囨。鍚屾鍚庯細宸叉湁 PMS 椤圭洰瀛楁琚洿鏂帮紝缂哄け浣嗙粍鍒负鈥滆垝楂樻垚鈥濈殑椤圭洰琚柊澧烇紝鍏朵綑鏈尮閰?PMS 椤圭洰淇濈暀涓嶅垹銆?- 瀹為檯瀹屾垚涓€娆″叡浜枃妗ｅ悓姝ワ紝骞舵娊鏍锋牳瀵归」鐩彴璐﹀強鑷冲皯涓€涓叧鑱旀ā鍧楁暟鎹凡鏇存柊銆?
+## Steps
+1. 鍦ㄧ淮鎶や腑蹇冩帴鍏ョ幇鏈?`sync-project-ledger` API锛岃ˉ榻愪笂浼犳寜閽笌缁撴灉灞曠ず銆?2. 鏋勫缓鍓嶇骞剁‘璁ょ淮鎶や腑蹇冨叆鍙ｅ彲鐢ㄣ€?3. 浠庨噾灞卞叡浜枃妗ｅ鍑虹洰鏍囧伐浣滆〃锛屾墽琛屼竴娆″閲忓悓姝ャ€?4. 鎶芥牱鏍稿椤圭洰鍙拌处涓庡叧鑱旀ā鍧楁暟鎹紝骞惰褰曠粨鏋滃埌 `progress.md`銆?
 # Implementation Plan
 
 ## Goal
-- 将当前 PMS 工作区的有效项目改动提交到 Git 仓库，并与 `origin/main` 对齐后推送。
+- 灏嗛」鐩彴璐︽寜鍏变韩鏂囨。鈥滅淮鎶ゆ儏鍐电粺璁¤〃20260527 / 椤圭洰鏄庣粏.xlsx鈥濈殑 `缁存姢椤圭洰鏄庣粏` 宸ヤ綔琛ㄥ悓姝ュ埌 PMS锛氬彧鏇存柊 PMS 椤圭洰鍙拌处涓凡瀛樺湪鐨勯」鐩紝鎴栨柊澧炲叡浜枃妗ｄ腑 `鏈嶅姟缁勫埆=鑸掗珮鎴恅 鐨勯」鐩€?- 鍚屾鏃朵繚鐣欑幇鏈夐」鐩?`Id`锛岄伩鍏嶅勾搴︽姤鍛娿€佸贰妫€銆佷氦鎺ャ€佸憡璀︺€佸伐鏃剁瓑渚濊禆椤圭洰 ID 鐨勬ā鍧楄鍏ㄩ噺閲嶆帓鎵撴柇銆?
 ## Non-goals
-- 不回滚现有工作区改动，不清理用户本地备份、截图或运行日志。
-- 不额外重构业务代码或扩大本次提交范围。
+- 涓嶅仛鍏ㄩ噺鏇挎崲銆佷笉鍒犻櫎 PMS 閲屽綋鍓嶅瓨鍦ㄤ絾鍏变韩鏂囨。鏈懡涓殑椤圭洰銆?- 涓嶆敼鍙樺墠绔」鐩彴璐﹀垪琛?API 濂戠害锛屼笉璋冩暣椤甸潰鏍峰紡鍜屼笟鍔℃祦绋嬨€?- 涓嶆妸 KDocs 鐧诲綍鎬併€丆ookie 鎴栧閮ㄥ鍑鸿兘鍔涘浐鍖栧埌浠ｇ爜涓紝鏈浠ュ凡鍚屾鍒版湰鏈虹殑 Excel 鏂囦欢浣滀负鍏变韩鏂囨。鍙婧愩€?
 ## Constraints
-- 仅提交应进仓库的源码、数据库和 `memory-bank` 记录，不纳入 `.tmp/`、`backups/`、`*.db-wal`、`*.db-shm` 等本地产物。
-- 以当前 `main` 分支为基础，先确认与 `origin/main` 的差异，再执行提交与推送。
-- 保留仓库里既有 `.slnx` 构建问题记录，如实说明验证结果。
+- 鍚庣浠嶉伒瀹堢幇鏈夊垎灞傦紝瀵煎叆瑙ｆ瀽鐣欏湪 `PMS.API`锛岄」鐩暟鎹悎骞剁暀鍦?`PMS.Infrastructure`銆?- 鍚堝苟蹇呴』鎸変笟鍔￠敭鍖归厤骞朵繚鐣?`Id`锛氫紭鍏?`鏈轰細鍙?鍖婚櫌+浜у搧`锛屽叾娆￠潪姝т箟鐨?`鍖婚櫌+浜у搧`銆?- 鍐欏簱鍓嶅繀椤讳繚鐣欐暟鎹簱澶囦唤锛涘啓搴撳悗蹇呴』閲嶅缓鍖婚櫌妯″潡娲剧敓鏁版嵁銆?
 ## Acceptance criteria
-- 当前有效改动完成一次明确 commit，并成功推送到 `origin/main`。
-- 推送前后本地分支与远端分支保持对齐。
-- 本次提交与推送结果记录到 `progress.md`。
+- 鏂板涓€涓閲忓悓姝ュ叆鍙ｏ紝鑳藉涓婁紶椤圭洰鏄庣粏 Excel 骞舵寜涓婅堪瑙勫垯鍚堝苟銆?- 鍚屾鍚庨」鐩彴璐︺€佸尰闄㈡淳鐢熸暟鎹€佸悎鍚岄璀︺€丏ashboard銆佸勾搴︽姤鍛娿€佸贰妫€銆佷氦鎺ョ瓑鍩轰簬椤圭洰搴撶殑妯″潡璇诲彇鍒版渶鏂伴」鐩瓧娈点€?- `dotnet build PMS.sln` 閫氳繃锛屽苟瀹屾垚涓€娆＄湡瀹炴簮鏂囦欢鍚屾楠岃瘉銆?
 ## Steps
-1. 检查分支、远端和工作区状态，区分源码改动与本地产物。
-2. 暂存有效文件并创建提交。
-3. 推送到远端并确认 `main` 与 `origin/main` 对齐。
-
+1. 澧炲姞椤圭洰鍙拌处澧為噺鍚堝苟鏂规硶锛屼繚鐣欑幇鏈?`Id` 骞惰繑鍥炲尮閰嶃€佹洿鏂般€佹柊澧炪€佽烦杩囩粺璁°€?2. 澧炲姞 `upload/sync-project-ledger` 鍚庣鍏ュ彛锛屽鐢ㄧ幇鏈?Excel 瑙ｆ瀽骞惰Е鍙戝尰闄㈡淳鐢熸暟鎹噸寤恒€?3. 澶囦唤鏁版嵁搴撳悗锛岀敤鏈満 WPS/KDocs 鍚屾鏂囦欢鎵ц鐪熷疄鍚屾銆?4. 鏋勫缓骞堕€氳繃 API/椤甸潰鎶芥牱楠岃瘉鍏宠仈妯″潡鏁版嵁銆?
+## Status
+- 2026-05-27: 宸插畬鎴愩€傛柊澧炰笂浼犲紡椤圭洰鍙拌处澧為噺鍚屾鍏ュ彛 `POST /api/admin/import/upload/sync-project-ledger`锛屾寜 `鏈轰細鍙?鍖婚櫌+浜у搧` / 闈炴涔?`鍖婚櫌+浜у搧` 鍖归厤骞朵繚鐣欓」鐩?`Id`锛涘凡鐢ㄦ湰鏈?WPS/KDocs 鍚屾鏂囦欢 `椤圭洰鏄庣粏.xlsx` 鎵ц鐪熷疄鍚屾锛氭簮琛?222 琛岋紝鍖归厤 215 涓」鐩紝鏇存柊 122 涓紝鏂板 7 涓紝淇濈暀鏈懡涓幇鏈夐」鐩?5 涓紝鏈€缁堥」鐩暟 227锛涘悓姝ュ悗閲嶅缓鍖婚櫌娲剧敓鏁版嵁銆?
 ## Goal
-- 修复本地 PMS 预览站点无法使用管理员账号登录的问题。
-## Non-goals
-- 不重做登录页 UI，不改动权限模型或业务模块 API。
-- 不执行数据导入、项目同步、备份恢复等无关操作。
-## Constraints
-- 保持现有 `/api/auth/login` 契约兼容，前端仍提交 `account/password`。
-- 优先复现登录接口返回，再按认证服务最小范围修复。
-- 修复后必须验证 API 登录和前端页面登录链路。
-## Acceptance criteria
-- `admin/123456` 能成功调用登录接口并返回 token。
-- 前端 `http://localhost:5173/` 可完成登录并进入业务页面。
-- 登录修复和验证结果记录到 `progress.md`。
-## Steps
-1. 复现当前登录失败，确认失败点在前端、代理还是后端认证。
-2. 检查 `AuthController`、前端登录 API 与 `InMemoryAuthService` 的账号种子逻辑。
-3. 做最小修复或运行级修正，并重启/验证前后端登录链路。
-
-## Goal
-- 启动 PMS 本地前后端开发服务，提供可操作的网站预览入口。
-## Non-goals
-- 不修改业务代码、API 契约、配置默认值或数据库内容。
-- 不执行数据导入、同步、备份恢复等会改变业务数据的操作。
-## Constraints
-- 后端使用现有 Development/http 配置监听 `http://localhost:5111`。
-- 前端使用现有 Vite 配置监听 `http://localhost:5173`，并通过 `/api` 代理到 `http://127.0.0.1:5111`。
-- 若端口已占用，先确认占用来源，不静默改默认端口。
-## Acceptance criteria
-- `5111` 后端端口和 `5173` 前端端口均处于监听状态。
-- 前端首页可通过浏览器访问，后端 API 可通过健康或认证受保护接口确认服务存活。
-- 本次启动和验证结果记录到 `progress.md`。
-## Steps
-1. 检查默认端口占用和本地启动脚本。
-2. 以后台进程启动 PMS.API 与 pms-web。
-3. 验证前端页面和后端接口可达，并打开浏览器预览入口。
-
-## Goal
-- 从金山共享文档同步项目台账：PMS 中已存在的项目仅更新产品、维护日期、销售等字段；PMS 中不存在但共享文档组别为“舒高成”的项目新增到 PMS；同步后刷新关联模块数据。
+- 缁х画瀹炴柦鐧诲綍鍚庝富骞蹭笟鍔￠〉闂ㄦ埛鍖栨敹鍙ｏ細鍦ㄤ笂涓€杞?KPI銆佺粺涓€棰勮銆佸伐鏃舵姤琛ㄣ€侀」鐩彴璐﹀熀纭€涓婏紝缁х画鎺ㄨ繘鍚堝悓棰勮涓庡贰妫€绠＄悊鐨勯灞忓崌绾э紝褰㈡垚杩炵画鐨勪竴灞忓喅绛栧叆鍙ｃ€?
 
 ## Non-goals
-- 不改动项目匹配主规则，不重做后端项目导入算法。
-- 不扩散到重大需求、工时报表等无关导入流程。
-- 不把本次同步改成全量覆盖导入。
+- 涓嶆敼鍔ㄥ悗绔帴鍙ｃ€佺粺璁″彛寰勪笌鏃㈡湁璁″垝/缁撴灉涓氬姟鍔ㄤ綔銆?
+- 涓嶉噸鍐欏贰妫€绠＄悊缁撴灉椤佃鎯呯粨鏋勶紝浠呰皟鏁撮灞忓叆鍙ｅ眰绾т笌蹇嵎鍔ㄤ綔缁勭粐銆?
+- 涓嶆墿鏁ｅ埌寰呭姙鍒楄〃涓夋爮鍦板浘椤电殑缁撴瀯閲嶆瀯銆?
 
 ## Constraints
-- 优先复用现有后端增量同步接口 `/api/admin/import/upload/sync-project-ledger`。
-- 前端改动仅限 `pms-web/src/api/modules/maintenance.ts` 与 `pms-web/src/views/maintenance/DataMaintenanceView.vue`，以及 memory-bank 记录。
-- 同步完成后必须触发全局数据刷新信号，并完成前端构建验证与一次实际同步验证。
-
-## Acceptance criteria
-- 数据维护中心可直接执行“增量同步项目台账”，并展示 matched/updated/added 等结果。
-- 共享文档同步后：已有 PMS 项目字段被更新，缺失但组别为“舒高成”的项目被新增，其余未匹配 PMS 项目保留不删。
-- 实际完成一次共享文档同步，并抽样核对项目台账及至少一个关联模块数据已更新。
+- 鍙敼 `pms-web/src/views/contract/ContractAlertView.vue` 涓?`pms-web/src/views/inspection/InspectionPlanView.vue`銆?
+- 蹇呴』淇濈暀鐜版湁 SummaryMetrics銆佺瓫閫夈€佸鍑恒€佽鍒掑姩浣滄祦銆佺粨鏋滄煡璇笌璇︽儏鑳藉姏銆?
+- 蹇呴』瀹屾垚鐧诲綍鎬佹埅鍥鹃獙璇佷笌 `PMS: Build Frontend` 鏋勫缓楠岃瘉銆?
 
 ## Steps
-1. 在维护中心接入现有 `sync-project-ledger` API，补齐上传按钮与结果展示。
-2. 构建前端并确认维护中心入口可用。
-3. 从金山共享文档导出目标工作表，执行一次增量同步。
-4. 抽样核对项目台账与关联模块数据，并记录结果到 `progress.md`。
-
-# Implementation Plan
-
-## Goal
-- 将项目台账按共享文档“维护情况统计表20260527 / 项目明细.xlsx”的 `维护项目明细` 工作表同步到 PMS：只更新 PMS 项目台账中已存在的项目，或新增共享文档中 `服务组别=舒高成` 的项目。
-- 同步时保留现有项目 `Id`，避免年度报告、巡检、交接、告警、工时等依赖项目 ID 的模块被全量重排打断。
-
-## Non-goals
-- 不做全量替换、不删除 PMS 里当前存在但共享文档未命中的项目。
-- 不改变前端项目台账列表 API 契约，不调整页面样式和业务流程。
-- 不把 KDocs 登录态、Cookie 或外部导出能力固化到代码中，本次以已同步到本机的 Excel 文件作为共享文档可读源。
-
-## Constraints
-- 后端仍遵守现有分层，导入解析留在 `PMS.API`，项目数据合并留在 `PMS.Infrastructure`。
-- 合并必须按业务键匹配并保留 `Id`：优先 `机会号+医院+产品`，其次非歧义的 `医院+产品`。
-- 写库前必须保留数据库备份；写库后必须重建医院模块派生数据。
-
-## Acceptance criteria
-- 新增一个增量同步入口，能够上传项目明细 Excel 并按上述规则合并。
-- 同步后项目台账、医院派生数据、合同预警、Dashboard、年度报告、巡检、交接等基于项目库的模块读取到最新项目字段。
-- `dotnet build PMS.sln` 通过，并完成一次真实源文件同步验证。
-
-## Steps
-1. 增加项目台账增量合并方法，保留现有 `Id` 并返回匹配、更新、新增、跳过统计。
-2. 增加 `upload/sync-project-ledger` 后端入口，复用现有 Excel 解析并触发医院派生数据重建。
-3. 备份数据库后，用本机 WPS/KDocs 同步文件执行真实同步。
-4. 构建并通过 API/页面抽样验证关联模块数据。
+1. 灏?`ContractAlertView.vue` 鐢辨棫 `page-head` 鍗囩骇涓哄悎鍚岄闄╅棬鎴?hero锛屽苟琛ラ綈椋庨櫓鎽樿涓庡揩鎹风瓫閫夊姩浣溿€?
+2. 灏?`InspectionPlanView.vue` 鍗囩骇涓哄贰妫€闂ㄦ埛 hero锛屾帴鍏ヨ鍒?缁撴灉鍙岃鍥惧紩瀵间笌楂橀鍔ㄤ綔鍏ュ彛銆?
+3. 鎴浘楠岃瘉 `contract/alerts` 涓?`inspection/plan`锛屽啀鎵ц鍓嶇鏋勫缓鍥炲綊銆?
 
 ## Status
-- 2026-05-27: 已完成。新增上传式项目台账增量同步入口 `POST /api/admin/import/upload/sync-project-ledger`，按 `机会号+医院+产品` / 非歧义 `医院+产品` 匹配并保留项目 `Id`；已用本机 WPS/KDocs 同步文件 `项目明细.xlsx` 执行真实同步：源表 222 行，匹配 215 个项目，更新 122 个，新增 7 个，保留未命中现有项目 5 个，最终项目数 227；同步后重建医院派生数据。
+- 2026-04-24: 宸插畬鎴愩€俙pms-web/src/views/contract/ContractAlertView.vue` 宸插崌绾т负鍚堝悓椋庨櫓闂ㄦ埛棣栧睆锛岃ˉ榻愰闄╂€婚噺銆侀珮椋庨櫓椤圭洰銆佷弗閲嶉闄╀笌瑕嗙洊鑼冨洿淇″彿鎽樿鍙婂揩鎹风瓫閫夊姩浣滐紱`pms-web/src/views/inspection/InspectionPlanView.vue` 宸插崌绾т负宸℃闂ㄦ埛棣栧睆锛岃ˉ榻愯鍒?缁撴灉鍙岃鍥惧紩瀵笺€佸贰妫€淇″彿鎽樿涓庡揩鎹峰姩浣滃叆鍙ｏ紝骞朵繚鐣欐棦鏈夎鍒?缁撴灉鍔ㄤ綔閾捐矾銆傞獙璇侊細鐧诲綍鎬佹埅鍥惧鏌?`http://localhost:5173/contract/alerts` 涓?`http://localhost:5173/inspection/plan` 鍧囨甯告覆鏌擄紱`PMS: Build Frontend` 閫氳繃锛宍vue-tsc -b && vite build` 鎴愬姛瀹屾垚銆?
 
 ## Goal
-- 继续实施登录后主干业务页门户化收口：在上一轮 KPI、统一预警、工时报表、项目台账基础上，继续推进合同预警与巡检管理的首屏升级，形成连续的一屏决策入口。
+- 缁х画瀹炴柦鐧诲綍鍚庨珮棰戝叆鍙ｉ〉闂ㄦ埛鍖栨敹鍙ｏ細鎶?KPI銆佺粺涓€棰勮涓績銆佸伐鏃舵姤琛ㄣ€侀」鐩彴璐︽帴鍒伴椤靛拰搴旂敤澹崇殑鍚屼竴濂楄摑缁夸紒涓氶棬鎴疯瑷€涓婏紝璁╃櫥褰曞悗涓诲共椤甸潰褰㈡垚杩炵画鐨勯灞忎綋楠屻€?
 
 ## Non-goals
-- 不改动后端接口、统计口径与既有计划/结果业务动作。
-- 不重写巡检管理结果页详情结构，仅调整首屏入口层级与快捷动作组织。
-- 不扩散到待办列表三栏地图页的结构重构。
+- 涓嶆敼鍔ㄥ悗绔帴鍙ｃ€佹暟鎹粺璁″彛寰勬垨鐜版湁 CRUD / 瀵煎叆瀵煎嚭 / 缂栬緫鍔ㄤ綔閾捐矾銆?
+- 涓嶅湪鏈疆鎵╂暎鍒板叏閮ㄤ笟鍔￠〉锛屽彧鍏堣鐩栭珮棰戝叆鍙ｉ〉涓庢姤琛ㄩ〉銆?
+- 涓嶅紩鍏ユ柊鐨勮繍琛屾椂渚濊禆锛屼篃涓嶉噸鍐?ProTable / AppTableCard 缁勪欢鏈韩銆?
 
 ## Constraints
-- 只改 `pms-web/src/views/contract/ContractAlertView.vue` 与 `pms-web/src/views/inspection/InspectionPlanView.vue`。
-- 必须保留现有 SummaryMetrics、筛选、导出、计划动作流、结果查询与详情能力。
-- 必须完成登录态截图验证与 `PMS: Build Frontend` 构建验证。
+- 浼樺厛鍙敼 `pms-web/src/views/dashboard/KpiDashboardView.vue`銆乣pms-web/src/views/alert/AlertCenterView.vue`銆乣pms-web/src/views/report/WorkHoursReportView.vue`銆乣pms-web/src/views/project/ProjectListView.vue`銆?
+- 姣忛〉蹇呴』淇濇寔鍘熸湁鍥捐〃銆佺瓫閫夈€佸鍑恒€佺紪杈戙€佹壒閲忕淮鎶ょ瓑涓氬姟鍔ㄤ綔鍙敤锛屽彧璋冩暣棣栧睆缁勭粐鍜岃瑙夊眰绾с€?
+- 蹇呴』瀹屾垚鐧诲綍鎬佹埅鍥鹃獙璇佷笌 `PMS: Build Frontend` 鏋勫缓楠岃瘉銆?
 
 ## Steps
-1. 将 `ContractAlertView.vue` 由旧 `page-head` 升级为合同风险门户 hero，并补齐风险摘要与快捷筛选动作。
-2. 将 `InspectionPlanView.vue` 升级为巡检门户 hero，接入计划/结果双视图引导与高频动作入口。
-3. 截图验证 `contract/alerts` 与 `inspection/plan`，再执行前端构建回归。
+1. 灏?`KpiDashboardView.vue` 浠庢棫 `page-head` 鏀跺彛涓虹哗鏁堥棬鎴?hero锛屼繚鐣欏師鍥捐〃涓庢寚鏍囧崱閫昏緫銆?
+2. 灏?`AlertCenterView.vue` 鏀逛负椋庨櫓闂ㄦ埛棣栧睆锛岀獊鍑洪闄╂€婚噺銆佹潵婧愬垎甯冧笌楂橀绛涢€夊姩浣溿€?
+3. 灏?`WorkHoursReportView.vue` 涓?`ProjectListView.vue` 浠庘€滆〃鏍?宸ュ叿鏍忕洿鍑衡€濇彁鍗囦负甯︽湀搴︽憳瑕佹垨椤圭洰鎽樿鐨勫叆鍙ｅ伐浣滃彴銆?
+4. 閫愰〉鍋氱櫥褰曟€佹埅鍥惧洖褰掞紝鍐嶆墽琛?`PMS: Build Frontend` 瀹屾垚缁熶竴楠岃瘉銆?
 
 ## Status
-- 2026-04-24: 已完成。`pms-web/src/views/contract/ContractAlertView.vue` 已升级为合同风险门户首屏，补齐风险总量、高风险项目、严重风险与覆盖范围信号摘要及快捷筛选动作；`pms-web/src/views/inspection/InspectionPlanView.vue` 已升级为巡检门户首屏，补齐计划/结果双视图引导、巡检信号摘要与快捷动作入口，并保留既有计划/结果动作链路。验证：登录态截图复查 `http://localhost:5173/contract/alerts` 与 `http://localhost:5173/inspection/plan` 均正常渲染；`PMS: Build Frontend` 通过，`vue-tsc -b && vite build` 成功完成。
+- 2026-04-23: 宸插畬鎴愩€俙pms-web/src/views/dashboard/KpiDashboardView.vue` 宸插崌绾т负缁╂晥闂ㄦ埛 hero锛岃ˉ榻?KPI 淇″彿鎽樿涓庡揩鎹峰叆鍙ｏ紱`pms-web/src/views/alert/AlertCenterView.vue` 宸插崌绾т负椋庨櫓闂ㄦ埛棣栧睆锛岃ˉ榻愰闄╂€婚噺銆佷弗閲嶉闄┿€佹潵婧愬垎甯冧笌蹇嵎绛涢€夛紱`pms-web/src/views/report/WorkHoursReportView.vue` 宸茶ˉ榻愭湀搴﹀伐鏃舵姤琛?hero銆佹湀搴︽帶鍒跺崱涓庨珮棰戝姩浣滃尯锛沗pms-web/src/views/project/ProjectListView.vue` 宸茶ˉ榻愰」鐩彴璐?hero銆侀」鐩闄╂憳瑕佸拰蹇嵎绛涢€夊叆鍙ｏ紝鍚屾椂淇濈暀鍘熸湁鍥捐〃銆佺瓫閫夈€佸鍑恒€佺紪杈戝拰鎵归噺缁存姢閾捐矾銆傞獙璇侊細鐧诲綍鎬佹埅鍥惧鏌?`http://localhost:5173/dashboard/kpi`銆乣http://localhost:5173/alert/center`銆乣http://localhost:5173/report/workhours`銆乣http://localhost:5173/project/list` 鍧囨甯告覆鏌擄紱`PMS: Build Frontend` 閫氳繃锛宍vue-tsc -b && vite build` 鎴愬姛瀹屾垚銆?
 
 ## Goal
-- 继续实施登录后高频入口页门户化收口：把 KPI、统一预警中心、工时报表、项目台账接到首页和应用壳的同一套蓝绿企业门户语言上，让登录后主干页面形成连续的首屏体验。
+- 缁х画瀹炴柦鐧诲綍鍚庨椤垫敹鍙ｏ細浠庡簲鐢ㄥ３涓?Dashboard 棣栭〉寮€濮嬶紝娌跨敤鐧诲綍椤电殑钃濈豢浼佷笟闂ㄦ埛璇█锛屾彁鍗囩櫥褰曞悗绗竴灞忕殑鑱氱劍鎰熴€佸揩鎹峰叆鍙ｅ拰宸ヤ綔鍙板眰绾с€?
 
 ## Non-goals
-- 不改动后端接口、数据统计口径或现有 CRUD / 导入导出 / 编辑动作链路。
-- 不在本轮扩散到全部业务页，只先覆盖高频入口页与报表页。
-- 不引入新的运行时依赖，也不重写 ProTable / AppTableCard 组件本身。
+- 涓嶆敼鍔ㄥ悗绔帴鍙ｃ€佹潈闄愭ā鍨嬫垨鏁版嵁鑱氬悎鍙ｅ緞銆?
+- 涓嶅湪鏈疆鍚屾椂閲嶅仛 KPI銆丠ospital360 鎴栧叾瀹冧笟鍔¤鎯呴〉銆?
+- 涓嶅紩鍏ユ柊鐨勮繍琛屾椂渚濊禆鎴栧鏉傛嫋鎷?涓€у寲甯冨眬鑳藉姏銆?
 
 ## Constraints
-- 优先只改 `pms-web/src/views/dashboard/KpiDashboardView.vue`、`pms-web/src/views/alert/AlertCenterView.vue`、`pms-web/src/views/report/WorkHoursReportView.vue`、`pms-web/src/views/project/ProjectListView.vue`。
-- 每页必须保持原有图表、筛选、导出、编辑、批量维护等业务动作可用，只调整首屏组织和视觉层级。
-- 必须完成登录态截图验证与 `PMS: Build Frontend` 构建验证。
+- 鍙敼 `pms-web/src/layout/AppLayout.vue` 涓?`pms-web/src/views/dashboard/DashboardView.vue`锛屼繚鎸佺幇鏈夊鑸笌鍥捐〃鏁版嵁閫昏緫鍏煎銆?
+- 棣栭〉蹇呴』缁х画鏀寔鐜版湁鍥捐〃涓嬮捇涓庡揩鎹疯烦杞紝涓嶈兘鐗虹壊宸叉湁绠＄悊鍔ㄤ綔鍏ュ彛銆?
+- 蹇呴』瀹屾垚鎴浘楠岃瘉涓庡墠绔瀯寤洪獙璇併€?
 
 ## Steps
-1. 将 `KpiDashboardView.vue` 从旧 `page-head` 收口为绩效门户 hero，保留原图表与指标卡逻辑。
-2. 将 `AlertCenterView.vue` 改为风险门户首屏，突出风险总量、来源分布与高频筛选动作。
-3. 将 `WorkHoursReportView.vue` 与 `ProjectListView.vue` 从“表格/工具栏直出”提升为带月度摘要或项目摘要的入口工作台。
-4. 逐页做登录态截图回归，再执行 `PMS: Build Frontend` 完成统一验证。
+1. 鏀剁揣 `AppLayout.vue` 鐨勯《鏍忋€佸唴瀹归《鍖轰笌渚ф爮瑙嗚灞傜骇锛岃搴旂敤澹虫洿鎺ヨ繎浼佷笟闂ㄦ埛鍏ュ彛銆?
+2. 閲嶅仛 `DashboardView.vue` 鐨勯椤甸灞忥紝鏂板娆㈣繋 hero銆佸揩鎹峰叆鍙ｅ拰鏇存槑纭殑鎸囨爣鍒嗙粍銆?
+3. 鎴浘楠岃瘉鐧诲綍鍚庨椤垫晥鏋滐紝鍐嶆墽琛?`PMS: Build Frontend` 纭缂栬瘧閫氳繃銆?
 
 ## Status
-- 2026-04-23: 已完成。`pms-web/src/views/dashboard/KpiDashboardView.vue` 已升级为绩效门户 hero，补齐 KPI 信号摘要与快捷入口；`pms-web/src/views/alert/AlertCenterView.vue` 已升级为风险门户首屏，补齐风险总量、严重风险、来源分布与快捷筛选；`pms-web/src/views/report/WorkHoursReportView.vue` 已补齐月度工时报表 hero、月度控制卡与高频动作区；`pms-web/src/views/project/ProjectListView.vue` 已补齐项目台账 hero、项目风险摘要和快捷筛选入口，同时保留原有图表、筛选、导出、编辑和批量维护链路。验证：登录态截图复查 `http://localhost:5173/dashboard/kpi`、`http://localhost:5173/alert/center`、`http://localhost:5173/report/workhours`、`http://localhost:5173/project/list` 均正常渲染；`PMS: Build Frontend` 通过，`vue-tsc -b && vite build` 成功完成。
+- 2026-04-23: 宸插畬鎴愩€俙pms-web/src/layout/AppLayout.vue` 宸蹭负鐧诲綍鍚庡簲鐢ㄥ３琛ラ綈浼佷笟闂ㄦ埛寮忎晶鏍忔瑙堛€佸唴瀹归《鍖烘爣棰?瑙掕壊/璇存槑鏂囨锛宍pms-web/src/views/dashboard/DashboardView.vue` 宸插皢棣栭〉棣栧睆閲嶅仛涓烘杩?hero銆佺姸鎬佷俊鍙蜂笌蹇嵎鍏ュ彛宸ヤ綔鍙帮紝鍚屾椂淇濈暀鐜版湁鍥捐〃銆佸崱鐗囦笌涓嬮捇閫昏緫銆傞獙璇侊細鐧诲綍鎬佹埅鍥惧鏌?`http://localhost:5173/dashboard` 涓?`http://localhost:5173/dashboard/kpi` 鍧囨甯告覆鏌擄紱`PMS: Build Frontend` 閫氳繃锛宍vue-tsc -b && vite build` 鎴愬姛瀹屾垚銆?
 
 ## Goal
-- 继续实施登录后首页收口：从应用壳与 Dashboard 首页开始，沿用登录页的蓝绿企业门户语言，提升登录后第一屏的聚焦感、快捷入口和工作台层级。
+- 鍙傜収 `https://pms.bjgoodwill.com/welcome` 鐨?welcome/login 缁撴瀯锛屽鏈」鐩櫥褰曞叆鍙ｅ仛鍚岄鏍奸噸鏋勶紝鍦ㄤ笉鏀瑰悗绔璇佹帴鍙ｇ殑鍓嶆彁涓嬭ˉ榻愭満鏋勪唬鐮併€侀獙璇佺爜銆佹壂鐮佸垏鎹㈠拰鍙屾爮鍝佺墝灞曠ず銆?
 
 ## Non-goals
-- 不改动后端接口、权限模型或数据聚合口径。
-- 不在本轮同时重做 KPI、Hospital360 或其它业务详情页。
-- 不引入新的运行时依赖或复杂拖拽/个性化布局能力。
+- 涓嶆帴鍏ョ湡瀹炴壂鐮佺櫥褰曞悗绔紝涓嶆敼鍔ㄧ幇鏈?`/api/auth/login` 濂戠害銆?
+- 涓嶅皾璇曠櫥褰曠洰鏍囩珯鐐规姄鍙栧彈闄愰〉闈紝涔熶笉鎵╂暎鍒扮櫥褰曞悗鐨勪笟鍔￠〉鏀归€犮€?
 
 ## Constraints
-- 只改 `pms-web/src/layout/AppLayout.vue` 与 `pms-web/src/views/dashboard/DashboardView.vue`，保持现有导航与图表数据逻辑兼容。
-- 首页必须继续支持现有图表下钻与快捷跳转，不能牺牲已有管理动作入口。
-- 必须完成截图验证与前端构建验证。
+- 淇濇寔鐜版湁璐﹀彿瀵嗙爜鐧诲綍鍙敤锛屾渶缁堜粛鍙悜鍚庣鎻愪氦 `account/password`銆?
+- 鏈烘瀯浠ｇ爜涓庨獙璇佺爜浜や簰鍦ㄥ墠绔畬鏁撮棴鐜紝涓嶅紩鍏ユ柊鐨勮繍琛屾椂渚濊禆銆?
+- 蹇呴』瀹屾垚鍓嶇鏋勫缓楠岃瘉銆?
 
 ## Steps
-1. 收紧 `AppLayout.vue` 的顶栏、内容顶区与侧栏视觉层级，让应用壳更接近企业门户入口。
-2. 重做 `DashboardView.vue` 的首页首屏，新增欢迎 hero、快捷入口和更明确的指标分组。
-3. 截图验证登录后首页效果，再执行 `PMS: Build Frontend` 确认编译通过。
+1. 閲嶆瀯 `pms-web/src/views/login/LoginView.vue` 鐨勫弻鏍忚瑙変笌琛ㄥ崟缁撴瀯锛屽榻愮洰鏍囬〉鐨勫搧鐗屽尯銆佹満鏋勪唬鐮併€侀獙璇佺爜涓庢壂鐮佸垏鎹綋楠屻€?
+2. 鍦ㄥ墠绔疄鐜版湰鍦伴獙璇佺爜鐢熸垚銆佸埛鏂板拰鏍￠獙锛屽苟淇濈暀鐜版湁鐧诲綍 API 璋冪敤閾俱€?
+3. 鎵ц `PMS: Build Frontend` 楠岃瘉缂栬瘧閫氳繃銆?
 
 ## Status
-- 2026-04-23: 已完成。`pms-web/src/layout/AppLayout.vue` 已为登录后应用壳补齐企业门户式侧栏概览、内容顶区标题/角色/说明文案，`pms-web/src/views/dashboard/DashboardView.vue` 已将首页首屏重做为欢迎 hero、状态信号与快捷入口工作台，同时保留现有图表、卡片与下钻逻辑。验证：登录态截图复查 `http://localhost:5173/dashboard` 与 `http://localhost:5173/dashboard/kpi` 均正常渲染；`PMS: Build Frontend` 通过，`vue-tsc -b && vite build` 成功完成。
+- 2026-04-23: 宸插畬鎴愩€傚凡纭褰撳墠宸ュ叿鏃犳硶鐩存帴鎵ц鐩爣绔欑偣鐧诲綍鍔ㄤ綔锛屽洜姝ゆ湰杞熀浜庡叕寮€ welcome 椤靛畬鎴?`pms-web/src/views/login/LoginView.vue` 閲嶆瀯锛氱櫥褰曢〉宸插垏鎹负鍙屾爮浼佷笟闂ㄦ埛缁撴瀯锛岃ˉ榻愭満鏋勪唬鐮併€佹湰鍦伴獙璇佺爜銆佹壂鐮佸垏鎹笌浜岀淮鐮佸€掕鏃跺埛鏂颁氦浜掞紝鍚屾椂淇濇寔鍚庣璁よ瘉浠嶅彧鎻愪氦 `account/password`銆傞獙璇侊細`PMS: Build Frontend` 閫氳繃锛宍vue-tsc -b && vite build` 鎴愬姛瀹屾垚銆?
 
 ## Goal
-- 参照 `https://pms.bjgoodwill.com/welcome` 的 welcome/login 结构，对本项目登录入口做同风格重构，在不改后端认证接口的前提下补齐机构代码、验证码、扫码切换和双栏品牌展示。
+- 瀹炴柦 Phase 2 鐨勭鍏釜鍙氦浠樺垏鐗囷細鎶?AnnualReport 浠庘€滃墠绔笌 upsert 鐩存帴鏀圭姸鎬?鎻愪氦鏃ユ湡/璇勫浜衡€濇敹鍙ｄ负 start / submit / complete / reopen 鏄惧紡鍔ㄤ綔娴侊紝骞惰ˉ榻?annual-report.manage 鏉冮檺鏄犲皠涓庡崟鏉″尰闄㈣寖鍥存牎楠屻€?
 
 ## Non-goals
-- 不接入真实扫码登录后端，不改动现有 `/api/auth/login` 契约。
-- 不尝试登录目标站点抓取受限页面，也不扩散到登录后的业务页改造。
+- 涓嶉噸鍋氬勾搴︽姤鍛婂鍑烘牸寮忋€佽嚜鍔ㄧ敓鎴愰€昏緫鎴栫粺璁℃憳瑕佸彛寰勩€?
+- 涓嶆墿鏁ｅ埌 Dashboard銆丆ontractAlert 绛夊叾瀹冩ā鍧椼€?
+- 涓嶅紩鍏ユ柊鐨勬秷鎭€氱煡銆佹壒閲忓鎵规垨澶嶆潅瑙勫垯寮曟搸銆?
 
 ## Constraints
-- 保持现有账号密码登录可用，最终仍只向后端提交 `account/password`。
-- 机构代码与验证码交互在前端完整闭环，不引入新的运行时依赖。
-- 必须完成前端构建验证。
+- 淇濇寔骞村害鎶ュ憡鏌ヨ銆佸鍑烘帴鍙ｅ吋瀹癸紝灏介噺鍙湪鐜版湁 Service / Controller / 椤甸潰鍐呭閲忔敹鍙ｃ€?
+- 鍓嶅悗绔繀椤诲悓鏃惰惤鍦帮紝涓嶈兘鍙慨鍚庣鐘舵€佹満鑰屼繚鐣欏墠绔洿鏀瑰叆鍙ｃ€?
+- 蹇呴』瀹屾垚鍚庣鏋勫缓銆佸墠绔瀯寤哄拰鑷冲皯涓€鏉＄湡瀹?API AnnualReport workflow 鍥炲綊銆?
 
 ## Steps
-1. 重构 `pms-web/src/views/login/LoginView.vue` 的双栏视觉与表单结构，对齐目标页的品牌区、机构代码、验证码与扫码切换体验。
-2. 在前端实现本地验证码生成、刷新和校验，并保留现有登录 API 调用链。
-3. 执行 `PMS: Build Frontend` 验证编译通过。
+1. 鍦?`IAnnualReportService` / `InMemoryAnnualReportService` 涓鍔?`GetByIdAsync`銆乣StartAsync`銆乣SubmitAsync`銆乣CompleteAsync`銆乣ReopenAsync`锛屽苟闄愬埗 create/update/delete 浠呭厑璁稿伐浣滄祦杈圭晫鍐呮搷浣溿€?
+2. 鍦?`AnnualReportsController` 涓柊澧?workflow PATCH 绔偣銆侀潪娉曠姸鎬?400 杩斿洖銆佸垱寤?鍗曟潯鍔ㄤ綔鍖婚櫌鑼冨洿鏍￠獙锛屽苟灏?`/api/annual-reports` 鏉冮檺鏄犲皠淇涓?GET=`annual-report.view`銆侀潪 GET=`annual-report.manage`銆?
+3. 鍦?`pms-web/src/api/modules/annual-report.ts` 涓?`pms-web/src/views/annual-report/AnnualReportView.vue` 鎺ュ叆鏄惧紡 workflow 鎸夐挳锛岀Щ闄?`status/submitDate/reviewer/reviewDate` 鐨勫唴鑱旂紪杈戜笌鍒涘缓鏃剁洿鎺ラ€夌姸鎬併€?
+4. 鏂板 AnnualReport workflow 鍥炲綊鑴氭湰锛岃鐩?create -> start -> submit -> complete -> reopen -> delete 閾捐矾銆?
+5. 鎵ц `dotnet build PMS.sln`銆乣PMS: Build Frontend` 涓?annual-report workflow 鑴氭湰鍥炲綊銆?
 
 ## Status
-- 2026-04-23: 已完成。已确认当前工具无法直接执行目标站点登录动作，因此本轮基于公开 welcome 页完成 `pms-web/src/views/login/LoginView.vue` 重构：登录页已切换为双栏企业门户结构，补齐机构代码、本地验证码、扫码切换与二维码倒计时刷新交互，同时保持后端认证仍只提交 `account/password`。验证：`PMS: Build Frontend` 通过，`vue-tsc -b && vite build` 成功完成。
+- 2026-04-23: 宸插畬鎴愩€俙PMS.Application/Contracts/AnnualReport/IAnnualReportService.cs`銆乣PMS.Infrastructure/Services/InMemoryAnnualReportService.cs` 宸茶ˉ榻?`GetByIdAsync`銆乣StartAsync`銆乣SubmitAsync`銆乣CompleteAsync`銆乣ReopenAsync`锛屽苟灏?create 鍥哄畾涓?`鏈紑濮媊銆乽pdate/delete 闄愬埗鍒?`鏈紑濮?缂栧啓涓璥锛岄樆鏂€氳繃 upsert 鐩存帴鏀?`Status/SubmitDate/Reviewer/ReviewDate`锛沗PMS.API/Controllers/AnnualReport/AnnualReportsController.cs` 宸叉柊澧?workflow PATCH 绔偣銆侀潪娉曠姸鎬?400 杩斿洖浠ュ強鍒涘缓/鍗曟潯鍔ㄤ綔鐨勫尰闄㈣寖鍥存牎楠岋紱`PMS.Infrastructure/Services/InMemoryAccessControlService.cs` 宸插皢 `/api/annual-reports` 鏉冮檺鏄犲皠淇涓?GET=`annual-report.view`銆侀潪 GET=`annual-report.manage`銆傚墠绔?`pms-web/src/api/modules/annual-report.ts`銆乣pms-web/src/views/annual-report/AnnualReportView.vue` 宸插垏鎹㈠埌鈥滃紑濮嬬紪鍐?/ 鎻愪氦璇勫 / 瀹屾垚璇勫 / 閲嶅紑鈥濇樉寮忓姩浣滄祦锛岀Щ闄ょ姸鎬併€佹彁浜ゆ棩鏈熴€佽瘎瀹′汉銆佽瘎瀹℃棩鏈熺殑鍐呰仈缂栬緫浠ュ強鏂板鏃剁洿鎺ラ€夌姸鎬佸叆鍙ｃ€傞獙璇侊細`dotnet build PMS.sln` 閫氳繃锛? error锛屼繚鐣欐棦鏈?CS8625 warnings锛夛紱`PMS: Build Frontend` 閫氳繃锛沗powershell -ExecutionPolicy Bypass -File scripts/verify-annual-report-workflow.ps1` 瀹炴祴 create -> start -> submit -> complete -> reopen -> delete 鍏ㄩ摼璺垚鍔燂紝杈撳嚭 `createdId=221`銆乣reopenStatus=缂栧啓涓璥銆乣cleanup=deleted`銆?
 
 ## Goal
-- 实施 Phase 2 的第六个可交付切片：把 AnnualReport 从“前端与 upsert 直接改状态/提交日期/评审人”收口为 start / submit / complete / reopen 显式动作流，并补齐 annual-report.manage 权限映射与单条医院范围校验。
+- 瀹炴柦 Phase 2 鐨勭浜斾釜鍙氦浠樺垏鐗囷細鎶?Handover 浠庘€滃墠绔洿鎺ユ寜 nextStage 绾挎€ф帹杩涖€佸悗绔€氱敤 targetStage 鏇存柊鈥濇敹鍙ｄ负 send-email / start / complete / rollback 鏄惧紡鍔ㄤ綔娴侊紝骞惰ˉ榻愬叧閿椂闂磋妭鐐逛笌璇︽儏璐ｄ换淇℃伅銆?
 
 ## Non-goals
-- 不重做年度报告导出格式、自动生成逻辑或统计摘要口径。
-- 不扩散到 Dashboard、ContractAlert 等其它模块。
-- 不引入新的消息通知、批量审批或复杂规则引擎。
+- 涓嶉噸鍋氫氦鎺ユ暟鎹潵婧愭垨鏂板鐙珛 handover 瀹炰綋銆?
+- 涓嶆墿鏁ｅ埌 AnnualReport銆丏ashboard 绛夊叾瀹冩ā鍧椼€?
+- 涓嶅紩鍏ユ柊鐨勯€氱煡浠诲姟銆佹壒閲忚皟搴︽垨澶嶆潅瀹℃壒瑙勫垯銆?
 
 ## Constraints
-- 保持年度报告查询、导出接口兼容，尽量只在现有 Service / Controller / 页面内增量收口。
-- 前后端必须同时落地，不能只修后端状态机而保留前端直改入口。
-- 必须完成后端构建、前端构建和至少一条真实 API AnnualReport workflow 回归。
+- 淇濇寔鐜版湁 `/api/handovers/{id}/stage` 鍏煎锛屼笉鐮村潖宸叉湁璋冪敤鏂广€?
+- 浠呭湪鐜版湁鍒嗗眰鍐呭閲忔墿灞曪細Application / Infrastructure / API / 瀵瑰簲鍓嶇椤甸潰涓?API client銆?
+- 蹇呴』瀹屾垚鍚庣鏋勫缓銆佸墠绔瀯寤哄拰鑷冲皯涓€鏉＄湡瀹?API handover workflow 鍥炲綊銆?
 
 ## Steps
-1. 在 `IAnnualReportService` / `InMemoryAnnualReportService` 中增加 `GetByIdAsync`、`StartAsync`、`SubmitAsync`、`CompleteAsync`、`ReopenAsync`，并限制 create/update/delete 仅允许工作流边界内操作。
-2. 在 `AnnualReportsController` 中新增 workflow PATCH 端点、非法状态 400 返回、创建/单条动作医院范围校验，并将 `/api/annual-reports` 权限映射修正为 GET=`annual-report.view`、非 GET=`annual-report.manage`。
-3. 在 `pms-web/src/api/modules/annual-report.ts` 与 `pms-web/src/views/annual-report/AnnualReportView.vue` 接入显式 workflow 按钮，移除 `status/submitDate/reviewer/reviewDate` 的内联编辑与创建时直接选状态。
-4. 新增 AnnualReport workflow 回归脚本，覆盖 create -> start -> submit -> complete -> reopen -> delete 链路。
-5. 执行 `dotnet build PMS.sln`、`PMS: Build Frontend` 与 annual-report workflow 脚本回归。
+1. 鍦?`IHandoverService` / `InMemoryHandoverService` 涓ˉ榻?`send-email`銆乣start`銆乣complete`銆乣rollback` 鏄惧紡鍔ㄤ綔锛屽苟涓轰氦鎺ヨ褰曡ˉ榻?`StartedAt`銆乣CompletedAt`銆?
+2. 鍦?`HandoversController` 涓柊澧炴樉寮忓姩浣滅鐐广€佽鎯呯鐐广€佸尰闄㈣寖鍥存牎楠屽拰瀹¤鏃ュ織锛屽苟鎶?`/api/handovers` 鐨勬潈闄愭槧灏勪粠鈥滀粎 PUT 闇€瑕?manage鈥濅慨姝ｄ负鈥滈潪 GET 閮介渶瑕?manage鈥濄€?
+3. 鍦?`pms-web/src/api/modules/handover.ts`銆乣pms-web/src/types/handover.ts`銆乣pms-web/src/views/handover/HandoverListView.vue` 鎺ュ叆鏄惧紡鍔ㄤ綔鎸夐挳銆佽鎯呮椂闂村瓧娈典笌璐ｄ换鑺傜偣灞曠ず锛岀Щ闄ゅ墠绔?`nextStage` 绾挎€ф帹杩涜涔夈€?
+4. 鏂板 handover workflow 鍥炲綊鑴氭湰锛屽熀浜庣幇鏈変氦鎺ヨ褰曟墽琛屽姩浣滃苟鎭㈠鍘熷闃舵銆?
+5. 鎵ц `dotnet build PMS.sln`銆乣PMS: Build Frontend` 涓?handover workflow 鑴氭湰鍥炲綊銆?
 
 ## Status
-- 2026-04-23: 已完成。`PMS.Application/Contracts/AnnualReport/IAnnualReportService.cs`、`PMS.Infrastructure/Services/InMemoryAnnualReportService.cs` 已补齐 `GetByIdAsync`、`StartAsync`、`SubmitAsync`、`CompleteAsync`、`ReopenAsync`，并将 create 固定为 `未开始`、update/delete 限制到 `未开始/编写中`，阻断通过 upsert 直接改 `Status/SubmitDate/Reviewer/ReviewDate`；`PMS.API/Controllers/AnnualReport/AnnualReportsController.cs` 已新增 workflow PATCH 端点、非法状态 400 返回以及创建/单条动作的医院范围校验；`PMS.Infrastructure/Services/InMemoryAccessControlService.cs` 已将 `/api/annual-reports` 权限映射修正为 GET=`annual-report.view`、非 GET=`annual-report.manage`。前端 `pms-web/src/api/modules/annual-report.ts`、`pms-web/src/views/annual-report/AnnualReportView.vue` 已切换到“开始编写 / 提交评审 / 完成评审 / 重开”显式动作流，移除状态、提交日期、评审人、评审日期的内联编辑以及新增时直接选状态入口。验证：`dotnet build PMS.sln` 通过（0 error，保留既有 CS8625 warnings）；`PMS: Build Frontend` 通过；`powershell -ExecutionPolicy Bypass -File scripts/verify-annual-report-workflow.ps1` 实测 create -> start -> submit -> complete -> reopen -> delete 全链路成功，输出 `createdId=221`、`reopenStatus=编写中`、`cleanup=deleted`。
+- 2026-04-23: 宸插畬鎴愩€俙PMS.Application/Models/Handover/HandoverItemDto.cs`銆乣PMS.Application/Contracts/Handover/IHandoverService.cs`銆乣PMS.Infrastructure/Services/InMemoryHandoverService.cs` 宸蹭负浜ゆ帴璁板綍琛ラ綈 `StartedAt`銆乣CompletedAt` 浠ュ強 `send-email`銆乣start`銆乣complete`銆乣rollback` 鏄惧紡鍔ㄤ綔锛屼笖淇浜嗗凡浜ゆ帴璁板綍琚湇鍔″眰鐩存帴绉婚櫎銆佹棤娉曞湪鍒楄〃鍜屾眹鎬讳腑淇濈暀鐨勯棶棰橈紱`PMS.API/Controllers/Handover/HandoversController.cs` 宸茶ˉ榻?`GET /api/handovers/{id}`銆亀orkflow PATCH 绔偣銆佸尰闄㈣寖鍥存牎楠屽拰瀹¤鏃ュ織锛沗PMS.Infrastructure/Services/InMemoryAccessControlService.cs` 宸插皢 `/api/handovers` 鏉冮檺鏄犲皠鏀跺彛涓?GET=`handover.view`銆侀潪 GET=`handover.manage`銆傚墠绔?`pms-web/src/api/modules/handover.ts`銆乣pms-web/src/types/handover.ts`銆乣pms-web/src/views/handover/HandoverListView.vue` 宸插垏鍒版樉寮忓姩浣滄寜閽紝骞惰ˉ榻愯矗浠昏妭鐐广€侀偖浠跺彂閫佹椂闂淬€佸紑濮嬩氦鎺ユ椂闂淬€佸畬鎴愭椂闂村睍绀恒€傞獙璇侊細`dotnet build PMS.sln` 閫氳繃锛堝仠鎺?dev 鏈嶅姟鍚?0 warning 0 error锛夛紱`PMS: Build Frontend` 閫氳繃锛沗powershell -ExecutionPolicy Bypass -File scripts/verify-handover-workflow.ps1` 宸插湪鐜版湁 `宸蹭氦鎺 璁板綍涓婂疄娴?rollback -> complete -> restore 鍘熷闃舵鎴愬姛銆?
 
 ## Goal
-- 实施 Phase 2 的第五个可交付切片：把 Handover 从“前端直接按 nextStage 线性推进、后端通用 targetStage 更新”收口为 send-email / start / complete / rollback 显式动作流，并补齐关键时间节点与详情责任信息。
+- 瀹炴柦 Phase 2 鐨勭鍥涗釜鍙氦浠樺垏鐗囷細鎶?WorkHours 浠庘€滃彧鏈夌紪杈?鍒犻櫎锛屾病鏈?submit / confirm / reject 闂幆鈥濊ˉ榻愪负鍙彁浜ゃ€佸彲纭銆佸彲閫€鍥炵殑鍔ㄤ綔娴侊紝骞惰ˉ榻愮姸鎬佸睍绀轰笌璇︽儏瀹℃壒淇℃伅銆?
 
 ## Non-goals
-- 不重做交接数据来源或新增独立 handover 实体。
-- 不扩散到 AnnualReport、Dashboard 等其它模块。
-- 不引入新的通知任务、批量调度或复杂审批规则。
+- 涓嶉噸鍋氬伐鏃舵姤琛ㄣ€佺粺璁″彛寰勬垨瀵煎嚭妯℃澘銆?
+- 涓嶆墿鏁ｅ埌 AnnualReport銆丠andover 绛夊叾瀹冩ā鍧椼€?
+- 涓嶅紩鍏ユ柊鐨勬秷鎭€氱煡銆佽嚜鍔ㄥ偓鍔炴垨澶嶆潅瀹℃壒瑙勫垯銆?
 
 ## Constraints
-- 保持现有 `/api/handovers/{id}/stage` 兼容，不破坏已有调用方。
-- 仅在现有分层内增量扩展：Application / Infrastructure / API / 对应前端页面与 API client。
-- 必须完成后端构建、前端构建和至少一条真实 API handover workflow 回归。
+- 淇濇寔鐜版湁宸ユ椂鏌ヨ銆佸垱寤恒€佺紪杈戞帴鍙ｅ吋瀹癸紝涓嶉噸鏋勬暟鎹ā鍨嬩富缁撴瀯銆?
+- 浠呭湪鐜版湁鍒嗗眰鍐呭閲忔墿灞曪細Infrastructure / API / 瀵瑰簲鍓嶇椤甸潰涓?API client銆?
+- 蹇呴』瀹屾垚鍚庣鏋勫缓銆佸墠绔瀯寤哄拰鑷冲皯涓€鏉＄湡瀹?API 宸ユ椂 workflow 鍥炲綊銆?
 
 ## Steps
-1. 在 `IHandoverService` / `InMemoryHandoverService` 中补齐 `send-email`、`start`、`complete`、`rollback` 显式动作，并为交接记录补齐 `StartedAt`、`CompletedAt`。
-2. 在 `HandoversController` 中新增显式动作端点、详情端点、医院范围校验和审计日志，并把 `/api/handovers` 的权限映射从“仅 PUT 需要 manage”修正为“非 GET 都需要 manage”。
-3. 在 `pms-web/src/api/modules/handover.ts`、`pms-web/src/types/handover.ts`、`pms-web/src/views/handover/HandoverListView.vue` 接入显式动作按钮、详情时间字段与责任节点展示，移除前端 `nextStage` 线性推进语义。
-4. 新增 handover workflow 回归脚本，基于现有交接记录执行动作并恢复原始阶段。
-5. 执行 `dotnet build PMS.sln`、`PMS: Build Frontend` 与 handover workflow 脚本回归。
+1. 鍦?`InMemoryWorkHoursService` 涓负 update/delete 澧炲姞鐘舵€佽竟鐣岋紝绂佹宸叉彁浜よ褰曡鐩存帴鍒犻櫎锛屽苟鍏佽 `rejected -> submitted` 閲嶆柊鎻愪氦娴佽浆銆?
+2. 鍦?`WorkHoursController` 涓负 `GET /{id}`銆乣PATCH /submit|confirm|reject` 琛ラ綈鍖婚櫌鑼冨洿鏍￠獙锛屽苟璁?workflow 绔偣杩斿洖鏇存柊鍚庣殑 `WorkHoursItemDto`銆?
+3. 鍦?`pms-web/src/api/modules/workhours.ts`銆乣pms-web/src/types/workhours.ts`銆乣pms-web/src/views/workhours/WorkHoursView.vue` 鎺ュ叆鐘舵€佸瓧娈点€佹彁浜?纭/閫€鍥炲姩浣滄寜閽笌璇︽儏瀹℃壒淇℃伅灞曠ず銆?
+4. 鏂板宸ユ椂 workflow 鍥炲綊鑴氭湰锛岃鐩?create -> submit -> reject -> update -> submit -> confirm -> delete 閾捐矾銆?
+5. 鎵ц `dotnet build PMS.sln`銆乣PMS: Build Frontend` 涓庡伐鏃?workflow 鑴氭湰鍥炲綊銆?
 
 ## Status
-- 2026-04-23: 已完成。`PMS.Application/Models/Handover/HandoverItemDto.cs`、`PMS.Application/Contracts/Handover/IHandoverService.cs`、`PMS.Infrastructure/Services/InMemoryHandoverService.cs` 已为交接记录补齐 `StartedAt`、`CompletedAt` 以及 `send-email`、`start`、`complete`、`rollback` 显式动作，且修正了已交接记录被服务层直接移除、无法在列表和汇总中保留的问题；`PMS.API/Controllers/Handover/HandoversController.cs` 已补齐 `GET /api/handovers/{id}`、workflow PATCH 端点、医院范围校验和审计日志；`PMS.Infrastructure/Services/InMemoryAccessControlService.cs` 已将 `/api/handovers` 权限映射收口为 GET=`handover.view`、非 GET=`handover.manage`。前端 `pms-web/src/api/modules/handover.ts`、`pms-web/src/types/handover.ts`、`pms-web/src/views/handover/HandoverListView.vue` 已切到显式动作按钮，并补齐责任节点、邮件发送时间、开始交接时间、完成时间展示。验证：`dotnet build PMS.sln` 通过（停掉 dev 服务后 0 warning 0 error）；`PMS: Build Frontend` 通过；`powershell -ExecutionPolicy Bypass -File scripts/verify-handover-workflow.ps1` 已在现有 `已交接` 记录上实测 rollback -> complete -> restore 原始阶段成功。
+- 2026-04-23: 宸插畬鎴愩€俙PMS.Infrastructure/Services/InMemoryWorkHoursService.cs` 宸插皢缂栬緫绾︽潫鏀跺彛鍒?`draft/rejected`锛岄樆姝?`submitted` 璁板綍琚垹闄わ紝骞跺厑璁?`rejected` 璁板綍閲嶆柊 `submit`锛沗PMS.API/Controllers/WorkHours/WorkHoursController.cs` 宸蹭负 `GET /api/workhours/{id}` 涓?workflow 绔偣琛ラ綈鍖婚櫌鑼冨洿鏍￠獙锛屽苟鍦?submit/confirm/reject 鍚庣洿鎺ヨ繑鍥炴渶鏂?`WorkHoursItemDto`銆傚墠绔?`pms-web/src/api/modules/workhours.ts`銆乣pms-web/src/types/workhours.ts`銆乣pms-web/src/views/workhours/WorkHoursView.vue` 宸叉帴鍏?`status/confirmedBy/confirmedAt` 瀛楁銆佺姸鎬佸垪銆佹彁浜?纭/閫€鍥炴寜閽互鍙婅鎯呮娊灞変腑鐨勫鎵瑰姩浣溿€傞獙璇侊細`dotnet build PMS.sln` 閫氳繃锛? warning 0 error锛屽仠鎺?dev 鏈嶅姟鍚庢墽琛岋級锛沗PMS: Build Frontend` 閫氳繃锛沗powershell -ExecutionPolicy Bypass -File scripts/verify-workhours-workflow.ps1` 瀹炴祴 create -> submit -> reject -> update -> submit -> confirm -> delete 鍏ㄩ摼璺垚鍔熴€?
 
 ## Goal
-- 实施 Phase 2 的第四个可交付切片：把 WorkHours 从“只有编辑/删除，没有 submit / confirm / reject 闭环”补齐为可提交、可确认、可退回的动作流，并补齐状态展示与详情审批信息。
+- 瀹炴柦 Phase 2 鐨勭涓変釜鍙氦浠樺垏鐗囷細鎶?MonthlyReport 浠庘€滄柊澧?缂栬緫琛ㄥ崟鐩存帴鏀圭姸鎬佲€濇敹鍙ｄ负 submit / approve / reject 鍔ㄤ綔娴侊紝骞惰ˉ榻愬鎵逛俊鎭睍绀轰笌鏉冮檺鏄犲皠銆?
 
 ## Non-goals
-- 不重做工时报表、统计口径或导出模板。
-- 不扩散到 AnnualReport、Handover 等其它模块。
-- 不引入新的消息通知、自动催办或复杂审批规则。
+- 涓嶉噸鍋氭湀鎶ヨ嚜鍔ㄧ敓鎴愩€佺粨鏋勫寲鍐呭鍖哄潡鎴栧鍑鸿兘鍔涖€?
+- 涓嶆墿鏁ｅ埌 WorkHours銆丄nnualReport 绛夊叾瀹冨鎵规ā鍧椼€?
+- 涓嶅紩鍏ユ柊鐨勫悗鍙板鎵逛换鍔°€佹秷鎭槦鍒楁垨澶嶆潅瑙勫垯寮曟搸銆?
 
 ## Constraints
-- 保持现有工时查询、创建、编辑接口兼容，不重构数据模型主结构。
-- 仅在现有分层内增量扩展：Infrastructure / API / 对应前端页面与 API client。
-- 必须完成后端构建、前端构建和至少一条真实 API 工时 workflow 回归。
+- 淇濇寔鐜版湁鏈堟姤鏌ヨ銆佸垱寤恒€佺紪杈戞帴鍙ｅ吋瀹癸紝`MonthlyReportUpsertDto.Status` 鍙户缁繚鐣欎絾涓嶅啀椹卞姩鐘舵€佹祦杞€?
+- 浠呭湪鐜版湁鍒嗗眰鍐呭閲忔墿灞曪細Infrastructure / API / 瀵瑰簲鍓嶇椤甸潰涓?API client銆?
+- 蹇呴』瀹屾垚鍚庣鏋勫缓銆佸墠绔瀯寤哄拰鑷冲皯涓€鏉＄湡瀹?API 鏈堟姤鍔ㄤ綔娴佸洖褰掋€?
 
 ## Steps
-1. 在 `InMemoryWorkHoursService` 中为 update/delete 增加状态边界，禁止已提交记录被直接删除，并允许 `rejected -> submitted` 重新提交流转。
-2. 在 `WorkHoursController` 中为 `GET /{id}`、`PATCH /submit|confirm|reject` 补齐医院范围校验，并让 workflow 端点返回更新后的 `WorkHoursItemDto`。
-3. 在 `pms-web/src/api/modules/workhours.ts`、`pms-web/src/types/workhours.ts`、`pms-web/src/views/workhours/WorkHoursView.vue` 接入状态字段、提交/确认/退回动作按钮与详情审批信息展示。
-4. 新增工时 workflow 回归脚本，覆盖 create -> submit -> reject -> update -> submit -> confirm -> delete 链路。
-5. 执行 `dotnet build PMS.sln`、`PMS: Build Frontend` 与工时 workflow 脚本回归。
+1. 涓?`/api/monthly-reports` 琛ラ綈鏉冮檺鏄犲皠锛岀‘淇?GET 浣跨敤 `monthly-report.view`锛岄潪 GET 浣跨敤 `monthly-report.manage`銆?
+2. 鍦?`InMemoryMonthlyReportService` 涓姝㈤€氳繃 create/update 鐩存帴鏀?`Status`锛屾敼涓轰粎鍏佽 `submit` / `approve` / `reject` 涓撶敤鍔ㄤ綔鏀瑰彉鐘舵€併€?
+3. 鍦?`monthly-report.ts`銆乣monthly-report.ts` 绫诲瀷瀹氫箟涓?`MonthlyReportView.vue` 鎺ュ叆鎻愪氦/閫氳繃/椹冲洖鍔ㄤ綔锛岀Щ闄よ〃鍗曚腑鐨勭洿鎺ョ姸鎬侀€夋嫨锛屽苟灞曠ず瀹℃牳浜?瀹℃牳鏃堕棿/椹冲洖鍘熷洜銆?
+4. 鏂板鏈堟姤 workflow 鍥炲綊鑴氭湰锛岃鐩?create -> submit -> reject -> update -> submit -> approve -> delete 閾捐矾銆?
+5. 鎵ц `dotnet build PMS.sln`銆乣PMS: Build Frontend` 涓庢湀鎶?workflow 鑴氭湰鍥炲綊銆?
 
 ## Status
-- 2026-04-23: 已完成。`PMS.Infrastructure/Services/InMemoryWorkHoursService.cs` 已将编辑约束收口到 `draft/rejected`，阻止 `submitted` 记录被删除，并允许 `rejected` 记录重新 `submit`；`PMS.API/Controllers/WorkHours/WorkHoursController.cs` 已为 `GET /api/workhours/{id}` 与 workflow 端点补齐医院范围校验，并在 submit/confirm/reject 后直接返回最新 `WorkHoursItemDto`。前端 `pms-web/src/api/modules/workhours.ts`、`pms-web/src/types/workhours.ts`、`pms-web/src/views/workhours/WorkHoursView.vue` 已接入 `status/confirmedBy/confirmedAt` 字段、状态列、提交/确认/退回按钮以及详情抽屉中的审批动作。验证：`dotnet build PMS.sln` 通过（0 warning 0 error，停掉 dev 服务后执行）；`PMS: Build Frontend` 通过；`powershell -ExecutionPolicy Bypass -File scripts/verify-workhours-workflow.ps1` 实测 create -> submit -> reject -> update -> submit -> confirm -> delete 全链路成功。
+- 2026-04-23: 宸插畬鎴愩€俙PMS.Infrastructure/Services/InMemoryAccessControlService.cs` 宸蹭负 `/api/monthly-reports` 琛ラ綈 GET=`monthly-report.view`銆侀潪 GET=`monthly-report.manage` 鏉冮檺鏄犲皠锛沗PMS.Infrastructure/Services/InMemoryMonthlyReportService.cs` 宸茬姝㈤€氳繃 create/update 鐩存帴鍐欏叆 `Status`锛屼粎鍏佽 `submit` / `approve` / `reject` 涓撶敤鍔ㄤ綔鏀瑰彉鐘舵€侊紝骞跺缂栬緫鎬佺害鏉熶负 `draft/rejected`锛沗PMS.API/Controllers/MonthlyReport/MonthlyReportsController.cs` 宸插皢闈炴硶缂栬緫鎬佽浆鎹负 400 杩斿洖銆傚墠绔?`pms-web/src/api/modules/monthly-report.ts`銆乣pms-web/src/types/monthly-report.ts`銆乣pms-web/src/views/monthly-report/MonthlyReportView.vue` 宸叉帴鍏ユ彁浜?閫氳繃/椹冲洖鍔ㄤ綔锛岀Щ闄よ〃鍗曚腑鐨勭洿鎺ョ姸鎬侀€夋嫨锛屽苟琛ラ綈瀹℃牳浜恒€佸鏍告椂闂淬€侀┏鍥炲師鍥犲睍绀恒€傞獙璇侊細`dotnet build PMS.sln` 閫氳繃锛? error锛屼繚鐣欐棦鏈?nullable warnings锛夛紱`PMS: Build Frontend` 閫氳繃锛沗powershell -ExecutionPolicy Bypass -File scripts/verify-monthly-report-workflow.ps1` 瀹炴祴 create -> submit -> reject -> update -> submit -> approve -> delete 鍏ㄩ摼璺垚鍔熴€?
 
 ## Goal
-- 实施 Phase 2 的第三个可交付切片：把 MonthlyReport 从“新增/编辑表单直接改状态”收口为 submit / approve / reject 动作流，并补齐审批信息展示与权限映射。
+- 瀹炴柦 Phase 2 鐨勭浜屼釜鍙氦浠樺垏鐗囷細鎶?MajorDemand 涓?Inspection 浠庘€滃垪琛?琛ㄥ崟鐩存帴鏀圭姸鎬佲€濊ˉ榻愪负鍙彈鐞?寮€濮嬨€佸彲瀹屾垚銆佸彲閲嶅紑鐨勫姩浣滃寲娴佺▼锛屽苟鍦ㄥ墠绔ˉ榻?SLA/鎴鏃堕棿鎻愮ず涓庤鎯呮椂闂村瓧娈点€?
 
 ## Non-goals
-- 不重做月报自动生成、结构化内容区块或导出能力。
-- 不扩散到 WorkHours、AnnualReport 等其它审批模块。
-- 不引入新的后台审批任务、消息队列或复杂规则引擎。
+- 涓嶉噸鍋?MajorDemand / Inspection 鐨勬暣浣?CRUD 缁撴瀯銆?
+- 涓嶅紩鍏ユ柊鐨勫悗鍙颁换鍔¤皟搴︺€佹秷鎭€氱煡鎴栧鏉傝鍒欏紩鎿庛€?
+- 涓嶆敼鍔ㄥ叾瀹冧笟鍔℃ā鍧楃殑鐘舵€佹祦杞柟寮忋€?
 
 ## Constraints
-- 保持现有月报查询、创建、编辑接口兼容，`MonthlyReportUpsertDto.Status` 可继续保留但不再驱动状态流转。
-- 仅在现有分层内增量扩展：Infrastructure / API / 对应前端页面与 API client。
-- 必须完成后端构建、前端构建和至少一条真实 API 月报动作流回归。
+- 淇濇寔鐜版湁鎺ュ彛涓庡墠绔垪琛ㄧ瓫閫夈€佸鍑鸿兘鍔涘吋瀹广€?
+- 浠呭湪鐜版湁鍒嗗眰鍐呭閲忔墿灞曪細Application / Infrastructure / API / 瀵瑰簲鍓嶇椤甸潰銆?
+- 蹇呴』瀹屾垚鍚庣鏋勫缓銆佸墠绔瀯寤哄拰鑷冲皯涓€鏉＄湡瀹?API 鍔ㄤ綔娴佸洖褰掋€?
 
 ## Steps
-1. 为 `/api/monthly-reports` 补齐权限映射，确保 GET 使用 `monthly-report.view`，非 GET 使用 `monthly-report.manage`。
-2. 在 `InMemoryMonthlyReportService` 中禁止通过 create/update 直接改 `Status`，改为仅允许 `submit` / `approve` / `reject` 专用动作改变状态。
-3. 在 `monthly-report.ts`、`monthly-report.ts` 类型定义与 `MonthlyReportView.vue` 接入提交/通过/驳回动作，移除表单中的直接状态选择，并展示审核人/审核时间/驳回原因。
-4. 新增月报 workflow 回归脚本，覆盖 create -> submit -> reject -> update -> submit -> approve -> delete 链路。
-5. 执行 `dotnet build PMS.sln`、`PMS: Build Frontend` 与月报 workflow 脚本回归。
+1. 淇 `/api/inspections` 鏉冮檺鏄犲皠锛屾敼涓?GET 浣跨敤 `inspection.view`锛岄潪 GET 浣跨敤 `inspection.manage`銆?
+2. 涓?Inspection 璁″垝琛ラ綈 `StartedAt`銆乣CompletedAt`銆乣SlaDueAt` 涓?`start` / `complete` / `reopen` 鍔ㄤ綔绔偣锛屽苟鍐欏叆瀹¤鏃ュ織銆?
+3. 涓?MajorDemand workflow 琛ラ綈 `AcceptedAt`銆乣CompletedAt` 涓?`accept` / `complete` / `reopen` 鍗曟潯鍔ㄤ綔銆?
+4. 鍦?`MajorDemandView` 涓?`InspectionPlanView` 澧炲姞鍔ㄤ綔鎸夐挳銆丼LA/鎴鎻愮ず銆佽鎯呮椂闂村瓧娈碉紝骞朵慨姝ｅ墠绔寜閽潈闄愬垽鏂€?
+5. 鎵ц `dotnet build PMS.sln`銆乣PMS: Build Frontend` 涓?`scripts/verify-major-demand-inspection-workflows.ps1` 杩愯鎬佸洖褰掋€?
 
 ## Status
-- 2026-04-23: 已完成。`PMS.Infrastructure/Services/InMemoryAccessControlService.cs` 已为 `/api/monthly-reports` 补齐 GET=`monthly-report.view`、非 GET=`monthly-report.manage` 权限映射；`PMS.Infrastructure/Services/InMemoryMonthlyReportService.cs` 已禁止通过 create/update 直接写入 `Status`，仅允许 `submit` / `approve` / `reject` 专用动作改变状态，并对编辑态约束为 `draft/rejected`；`PMS.API/Controllers/MonthlyReport/MonthlyReportsController.cs` 已将非法编辑态转换为 400 返回。前端 `pms-web/src/api/modules/monthly-report.ts`、`pms-web/src/types/monthly-report.ts`、`pms-web/src/views/monthly-report/MonthlyReportView.vue` 已接入提交/通过/驳回动作，移除表单中的直接状态选择，并补齐审核人、审核时间、驳回原因展示。验证：`dotnet build PMS.sln` 通过（0 error，保留既有 nullable warnings）；`PMS: Build Frontend` 通过；`powershell -ExecutionPolicy Bypass -File scripts/verify-monthly-report-workflow.ps1` 实测 create -> submit -> reject -> update -> submit -> approve -> delete 全链路成功。
+- 2026-04-23: 宸插畬鎴愩€傚悗绔凡涓?`PMS.API/Controllers/MajorDemand/MajorDemandsController.cs` 鏂板 `accept` / `complete` / `reopen` 鍔ㄤ綔绔偣锛屽苟鍦?`PMS.Infrastructure/Services/InMemoryMajorDemandStore.cs` 涓ˉ榻?`AcceptedAt`銆乣CompletedAt` 涓庡姩浣滄棩蹇楋紱`PMS.API/Controllers/Inspection/InspectionsController.cs` 宸叉柊澧?`start` / `complete` / `reopen` 鍔ㄤ綔绔偣涓?`IAuditLogService` 璁板綍锛宍PMS.Infrastructure/Services/InMemoryInspectionService.cs` 琛ラ綈 `StartedAt`銆乣CompletedAt`銆乣SlaDueAt`銆佸姩浣滄祦鏂规硶浠ュ強 custom row 鍙鎬т慨澶嶏紝閬垮厤鏂板缓宸℃璁″垝鈥滆兘鍒犱笉鑳芥煡鈥濄€傚墠绔?`pms-web/src/views/major-demand/MajorDemandView.vue` 宸茶ˉ榻愬彈鐞?瀹屾垚/閲嶅紑鎸夐挳涓庢埅姝㈠€掕鏃讹紝`pms-web/src/views/inspection/InspectionPlanView.vue` 宸茶ˉ榻愬紑濮嬫墽琛?瀹屾垚宸℃/閲嶅紑璁″垝鎸夐挳銆丼LA 鎻愮ず鍜岃鎯呮椂闂村瓧娈碉紝骞朵慨姝ｆ寜閽潈闄愪粠 `inspection.view` 鏀逛负 `inspection.manage`銆傞獙璇侊細`dotnet build PMS.sln` 閫氳繃锛? error 0 warning锛夛紱`PMS: Build Frontend` 閫氳繃锛沗scripts/verify-major-demand-inspection-workflows.ps1` 瀹炴祴閲嶅ぇ闇€姹備笌宸℃璁″垝涓ゆ潯鍔ㄤ綔娴佸潎瀹屾垚 create/add -> action -> reopen -> cleanup 鍏ㄩ摼璺洖褰掞紝鍏朵腑 inspection 瀹¤鏃ュ織鍛戒腑 3 鏉″姩浣滆褰曘€?
 
 ## Goal
-- 实施 Phase 2 的第二个可交付切片：把 MajorDemand 与 Inspection 从“列表/表单直接改状态”补齐为可受理/开始、可完成、可重开的动作化流程，并在前端补齐 SLA/截止时间提示与详情时间字段。
+- 瀹炴柦 Phase 2 鐨勯涓彲浜や粯鍒囩墖锛氭妸 Repair 浠庘€滅洿鎺ユ敼鐘舵€佲€濆崌绾т负鈥滃彲绛炬敹 / 鍙畬鎴?/ 鍙噸寮€鈥濈殑鍔ㄤ綔鍖栧伐鍗曟祦锛屽苟琛ラ綈澶勭悊 SLA 鎴鏃堕棿涓庡熀纭€鏃堕棿绾裤€?
 
 ## Non-goals
-- 不重做 MajorDemand / Inspection 的整体 CRUD 结构。
-- 不引入新的后台任务调度、消息通知或复杂规则引擎。
-- 不改动其它业务模块的状态流转方式。
+- 鏈疆涓嶆墿鏁ｅ埌 MajorDemand / Inspection銆?
+- 涓嶅紩鍏?HostedService銆佹秷鎭槦鍒楁垨澶嶆潅 SLA 绛栫暐閰嶇疆涓績銆?
+- 涓嶉噸鍋?AuditLog 椤甸潰锛屽彧淇濊瘉鍔ㄤ綔琚褰曘€?
 
 ## Constraints
-- 保持现有接口与前端列表筛选、导出能力兼容。
-- 仅在现有分层内增量扩展：Application / Infrastructure / API / 对应前端页面。
-- 必须完成后端构建、前端构建和至少一条真实 API 动作流回归。
+- 淇濇寔鐜版湁 Repair CRUD 涓庡鍑烘帴鍙ｅ吋瀹广€?
+- 浠呭湪鐜版湁鍒嗗眰鍐呭閲忔敼閫狅細Entity / DTO / Service / Controller / RepairRecordView銆?
+- 蹇呴』瀹屾垚鍚庣鏋勫缓銆佸墠绔瀯寤哄拰鑷冲皯涓€鏉＄湡瀹?API 宸ヤ綔娴佸洖褰掋€?
 
 ## Steps
-1. 修正 `/api/inspections` 权限映射，改为 GET 使用 `inspection.view`，非 GET 使用 `inspection.manage`。
-2. 为 Inspection 计划补齐 `StartedAt`、`CompletedAt`、`SlaDueAt` 与 `start` / `complete` / `reopen` 动作端点，并写入审计日志。
-3. 为 MajorDemand workflow 补齐 `AcceptedAt`、`CompletedAt` 与 `accept` / `complete` / `reopen` 单条动作。
-4. 在 `MajorDemandView` 与 `InspectionPlanView` 增加动作按钮、SLA/截止提示、详情时间字段，并修正前端按钮权限判断。
-5. 执行 `dotnet build PMS.sln`、`PMS: Build Frontend` 与 `scripts/verify-major-demand-inspection-workflows.ps1` 运行态回归。
+1. 涓?`RepairRecordEntity` / DTO 澧炲姞 `AcceptedAt`銆乣SlaDueAt`锛屽苟鍦?`InMemoryRepairRecordService` 涓疄鐜拌交閲?SLA 璁＄畻銆?
+2. 鏂板 `accept` / `resolve` / `reopen` 鍔ㄤ綔绔偣锛屽苟鎶婂姩浣滃啓鍏?`IAuditLogService`銆?
+3. 灏?`RepairRecordView` 浠庤〃鍗曠洿鎺ユ敼鐘舵€佸垏鎹负鍔ㄤ綔鎸夐挳娴佽浆锛屽垪琛ㄥ鍔?SLA 鍒楋紝璇︽儏琛ユ椂闂寸嚎銆?
+4. 鎵ц `dotnet build PMS.sln`銆乣PMS: Build Frontend` 涓庝复鏃跺伐鍗曞叏閾捐矾鍥炲綊鑴氭湰楠岃瘉銆?
 
 ## Status
-- 2026-04-23: 已完成。后端已为 `PMS.API/Controllers/MajorDemand/MajorDemandsController.cs` 新增 `accept` / `complete` / `reopen` 动作端点，并在 `PMS.Infrastructure/Services/InMemoryMajorDemandStore.cs` 中补齐 `AcceptedAt`、`CompletedAt` 与动作日志；`PMS.API/Controllers/Inspection/InspectionsController.cs` 已新增 `start` / `complete` / `reopen` 动作端点与 `IAuditLogService` 记录，`PMS.Infrastructure/Services/InMemoryInspectionService.cs` 补齐 `StartedAt`、`CompletedAt`、`SlaDueAt`、动作流方法以及 custom row 可见性修复，避免新建巡检计划“能删不能查”。前端 `pms-web/src/views/major-demand/MajorDemandView.vue` 已补齐受理/完成/重开按钮与截止倒计时，`pms-web/src/views/inspection/InspectionPlanView.vue` 已补齐开始执行/完成巡检/重开计划按钮、SLA 提示和详情时间字段，并修正按钮权限从 `inspection.view` 改为 `inspection.manage`。验证：`dotnet build PMS.sln` 通过（0 error 0 warning）；`PMS: Build Frontend` 通过；`scripts/verify-major-demand-inspection-workflows.ps1` 实测重大需求与巡检计划两条动作流均完成 create/add -> action -> reopen -> cleanup 全链路回归，其中 inspection 审计日志命中 3 条动作记录。
+- 2026-04-23: 宸插畬鎴愩€俁epair 鐜板凡鏀寔鍔ㄤ綔鍖栨祦杞細`/accept` 绛炬敹浼氬啓鍏?`AcceptedAt` 骞惰浆涓衡€滃鐞嗕腑鈥濓紱`/resolve` 浼氬己鍒跺～鍐欏鐞嗙粨鏋滃苟鍐欏叆 `CompletedAt`锛沗/reopen` 浼氬洖鍒扳€滃緟澶勭悊鈥濆苟閲嶇疆澶勭悊鑺傜偣锛屽悓鏃朵笁绫诲姩浣滃叏閮ㄥ啓鍏ュ璁℃棩蹇椼€傚墠绔?`RepairRecordView` 宸叉柊澧?SLA 鍒椼€佺鏀?瀹屾垚/閲嶅紑鎸夐挳锛岀Щ闄よ〃鍗曠洿鎺ユ敼鐘舵€佸叆鍙ｏ紝骞跺湪璇︽儏鎶藉眽琛ラ綈澶勭悊鑺傜偣鏃堕棿绾裤€傞獙璇侊細`dotnet build PMS.sln` 閫氳繃锛? error锛屼繚鐣欐棦鏈?nullable warnings锛夛紱`PMS: Build Frontend` 閫氳繃锛沗scripts/verify-repair-workflow.ps1` 瀹炴祴鍒涘缓涓存椂鎶ヤ慨 鈫?绛炬敹 鈫?瀹屾垚 鈫?閲嶅紑 鈫?鍒犻櫎鍏ㄩ摼璺垚鍔燂紝涓斿璁℃棩蹇楀懡涓?3 鏉?repair 鍔ㄤ綔璁板綍銆?
 
 ## Goal
-- 实施 Phase 2 的首个可交付切片：把 Repair 从“直接改状态”升级为“可签收 / 可完成 / 可重开”的动作化工单流，并补齐处理 SLA 截止时间与基础时间线。
+- 鍩轰簬鍏ㄧ洏瀹℃煡缁撴灉锛屽疄鏂介珮浼樺厛绾у悗绔畨鍏ㄥ姞鍥猴細澶囦唤绔偣閴存潈銆佹暟鎹鍏ヨ矾寰勭櫧鍚嶅崟銆佽璇佷腑闂翠欢鍏紑鍓嶇紑绮剧‘鍖归厤銆?
 
 ## Non-goals
-- 本轮不扩散到 MajorDemand / Inspection。
-- 不引入 HostedService、消息队列或复杂 SLA 策略配置中心。
-- 不重做 AuditLog 页面，只保证动作被记录。
+- 涓嶆敼鍔ㄥ墠绔笟鍔℃祦绋嬪拰鍚庣鏈嶅姟鍒嗗眰缁撴瀯銆?
+- 涓嶅湪鏈疆澶勭悊 P1/P2 鐨勫叾浠栭」锛堝 InMemory*Store 涓?IoC 鐢熷懡鍛ㄦ湡銆丠ospital360 缂哄け闈㈡澘銆佸叏閲?`size:100000` 鎷夊彇绛夛級銆?
 
 ## Constraints
-- 保持现有 Repair CRUD 与导出接口兼容。
-- 仅在现有分层内增量改造：Entity / DTO / Service / Controller / RepairRecordView。
-- 必须完成后端构建、前端构建和至少一条真实 API 工作流回归。
+- 鏀瑰姩浠呴檺閴存潈/鏉冮檺/鏁版嵁瀵煎叆閾捐矾銆?
+- 涓嶇牬鍧忔棦鏈?admin 鑳藉姏锛堝浠戒笅杞姐€丏ata 鐩綍榛樿璺緞瀵煎叆锛夈€?
 
 ## Steps
-1. 为 `RepairRecordEntity` / DTO 增加 `AcceptedAt`、`SlaDueAt`，并在 `InMemoryRepairRecordService` 中实现轻量 SLA 计算。
-2. 新增 `accept` / `resolve` / `reopen` 动作端点，并把动作写入 `IAuditLogService`。
-3. 将 `RepairRecordView` 从表单直接改状态切换为动作按钮流转，列表增加 SLA 列，详情补时间线。
-4. 执行 `dotnet build PMS.sln`、`PMS: Build Frontend` 与临时工单全链路回归脚本验证。
+1. `InMemoryAccessControlService.ResolveRequiredPermission` 鎶?`/api/system` 閫氶厤鏀捐鏀逛负浠呮斁琛?`/api/system/info`锛屽苟涓?`/api/system/backup` 瑕佹眰 `maintenance.manage`銆?
+2. `DataImportController` 鏂板 `TryResolveAllowedFilePath` 鐧藉悕鍗曟牎楠岋紝闄愬畾 `text-file`銆乣major-demand`銆乣project-ledger` 绔偣鐨?`FilePath` 蹇呴』鍦?`AppContext.BaseDirectory/Data` 鍐呫€?
+3. `AuthMiddleware.IsPublicPath` / `PermissionMiddleware` 鐨?`/api/auth/login` 涓?`/api/health` 鏀逛负绮剧‘鍖归厤锛岄伩鍏?`*/api/healthxxx` 鍨嬪墠缂€缁曡繃銆?
+4. 鏈湴鏋勫缓 + API 琛屼负鍥炲綊锛歛dmin 澶囦唤涓嬭浇 200锛岃秺鏉冩枃浠惰矾寰?400锛岀簿纭尮閰嶄粛鍏佽 admin 鐧诲綍銆?
 
 ## Status
-- 2026-04-23: 已完成。Repair 现已支持动作化流转：`/accept` 签收会写入 `AcceptedAt` 并转为“处理中”；`/resolve` 会强制填写处理结果并写入 `CompletedAt`；`/reopen` 会回到“待处理”并重置处理节点，同时三类动作全部写入审计日志。前端 `RepairRecordView` 已新增 SLA 列、签收/完成/重开按钮，移除表单直接改状态入口，并在详情抽屉补齐处理节点时间线。验证：`dotnet build PMS.sln` 通过（0 error，保留既有 nullable warnings）；`PMS: Build Frontend` 通过；`scripts/verify-repair-workflow.ps1` 实测创建临时报修 → 签收 → 完成 → 重开 → 删除全链路成功，且审计日志命中 3 条 repair 动作记录。
+- 2026-04-23: 宸插畬鎴愩€傚悗绔瀯寤?0 error 0 warning锛堟湰杞敼鍔ㄨ寖鍥村唴锛夛紱`/api/system/backup/download` 瀵?admin 杩斿洖 200 涓斾笅杞?1.6MB 蹇収锛沗/api/admin/import/text-file` 浼犲叆 `C:/Windows/win.ini` 杩斿洖 400 涓旀秷鎭负鈥滀粎鍏佽璇诲彇搴旂敤 Data 鐩綍涓嬬殑鏂囦欢鈥濓紱`major-demand` 绔偣浼犲叆 `../../../../etc/hosts` 鍚屾牱杩斿洖 400銆傚叕寮€鍓嶇紑浠?`StartsWith` 鏀逛负绮剧‘ HashSet 鍖归厤锛屼笖榛樿瑙掕壊锛坥perator/supervisor/regional_manager锛夊潎涓嶅惈 `maintenance.manage` 鏉冮檺閿紝闈?admin 鐢ㄦ埛浼氳 403 鎷︽埅锛堟寜浠ｇ爜璺緞楠岃瘉锛夈€?
 
 ## Goal
-- 基于全盘审查结果，实施高优先级后端安全加固：备份端点鉴权、数据导入路径白名单、认证中间件公开前缀精确匹配。
+- 涓?Hospital360 澧炲姞鍒伴」鐩€佸憡璀︺€佸伐鏃躲€佹姤淇〉闈㈢殑鑱斿姩鍏ュ彛锛岃椤甸潰鏇村儚鍙搷浣滅殑璇︽儏宸ヤ綔鍙帮紝鑰屼笉鍙槸鑱氬悎鐪嬫澘銆?
 
 ## Non-goals
-- 不改动前端业务流程和后端服务分层结构。
-- 不在本轮处理 P1/P2 的其他项（如 InMemory*Store 与 IoC 生命周期、Hospital360 缺失面板、全量 `size:100000` 拉取等）。
+- 涓嶆敼鍔ㄥ悗绔帴鍙ｅ拰鐩爣椤甸潰鐨勬暟鎹粨鏋勩€?
+- 涓嶆柊澧炵嫭绔嬭鎯呴〉璺敱銆?
 
 ## Constraints
-- 改动仅限鉴权/权限/数据导入链路。
-- 不破坏既有 admin 能力（备份下载、Data 目录默认路径导入）。
+- 鍙樻洿浼樺厛闄愬埗鍦?`pms-web/src/views/hospital/Hospital360View.vue`銆?
+- 澶嶇敤鐩爣椤甸潰鐜版湁鐨?`route.query` 杩囨护鍜屽脊绐?璇︽儏鎵撳紑鑳藉姏銆?
 
 ## Steps
-1. `InMemoryAccessControlService.ResolveRequiredPermission` 把 `/api/system` 通配放行改为仅放行 `/api/system/info`，并为 `/api/system/backup` 要求 `maintenance.manage`。
-2. `DataImportController` 新增 `TryResolveAllowedFilePath` 白名单校验，限定 `text-file`、`major-demand`、`project-ledger` 端点的 `FilePath` 必须在 `AppContext.BaseDirectory/Data` 内。
-3. `AuthMiddleware.IsPublicPath` / `PermissionMiddleware` 的 `/api/auth/login` 与 `/api/health` 改为精确匹配，避免 `*/api/healthxxx` 型前缀绕过。
-4. 本地构建 + API 行为回归：admin 备份下载 200，越权文件路径 400，精确匹配仍允许 admin 登录。
+1. 涓哄綋鍓嶆縺娲婚潰鏉垮鍔犫€滆繘鍏ュ搴旈〉闈⑩€濈殑鎬诲叆鍙ｃ€?
+2. 涓哄悇琛ㄦ牸澧炲姞琛岀骇鑱斿姩鎸夐挳锛屾惡甯﹀尰闄€佷骇鍝併€佺姸鎬佺瓑鏌ヨ鍙傛暟璺宠浆銆?
+3. 鎵ц鍓嶇鏋勫缓涓庨〉闈㈠洖褰掗獙璇併€?
 
 ## Status
-- 2026-04-23: 已完成。后端构建 0 error 0 warning（本轮改动范围内）；`/api/system/backup/download` 对 admin 返回 200 且下载 1.6MB 快照；`/api/admin/import/text-file` 传入 `C:/Windows/win.ini` 返回 400 且消息为“仅允许读取应用 Data 目录下的文件”；`major-demand` 端点传入 `../../../../etc/hosts` 同样返回 400。公开前缀从 `StartsWith` 改为精确 HashSet 匹配，且默认角色（operator/supervisor/regional_manager）均不含 `maintenance.manage` 权限键，非 admin 用户会被 403 拦截（按代码路径验证）。
+- 2026-04-23: 宸插畬鎴愩€侶ospital360 宸茶ˉ榻愰潰鏉跨骇鈥滆繘鍏ュ搴旈〉闈⑩€濆拰琛岀骇鑱斿姩鍏ュ彛锛屽彲璺宠浆鍒伴」鐩€佸憡璀︺€佸伐鏃躲€佹姤淇〉闈㈠苟鑷姩甯︿笂鍖婚櫌/浜у搧/鐘舵€佺瓑绛涢€夊弬鏁般€傞獙璇侊細`PMS: Build Frontend` 閫氳繃锛汸laywright 鐧诲綍鎬佸洖褰?`hospital/360`锛岃繍琛屾椂 `ISSUES=0`锛屽苟纭鎸夐挳鐐瑰嚮鍚庢垚鍔熻烦杞埌瀵瑰簲鍒楄〃椤点€?
 
 ## Goal
-- 为 Hospital360 增加到项目、告警、工时、报修页面的联动入口，让页面更像可操作的详情工作台，而不只是聚合看板。
+- 缁х画缁嗗寲 Hospital360 瑙嗗浘锛屽湪涓嶆敼鎺ュ彛鐨勫墠鎻愪笅琛ラ綈椤靛ご缁忚惀鎽樿銆侀潰鏉垮唴鍏抽敭鎸囨爣鍜屾洿閫傚悎鍖婚櫌绾у贰妫€鐨勫睍绀洪『搴忋€?
 
 ## Non-goals
-- 不改动后端接口和目标页面的数据结构。
-- 不新增独立详情页路由。
+- 涓嶆柊澧炲悗绔帴鍙ｃ€佸瓧娈垫垨璺ㄦā鍧楄仈鍔ㄩ€昏緫銆?
+- 涓嶆敼鍔ㄥ尰闄㈠垪琛ㄩ〉鎴栧叾瀹冭鎯呴〉銆?
 
 ## Constraints
-- 变更优先限制在 `pms-web/src/views/hospital/Hospital360View.vue`。
-- 复用目标页面现有的 `route.query` 过滤和弹窗/详情打开能力。
+- 鍙樻洿闄愬埗鍦?`pms-web/src/views/hospital/Hospital360View.vue` 涓?memory-bank 璁板綍銆?
+- 瀹屾垚鍚庡繀椤绘墽琛屽墠绔瀯寤洪獙璇併€?
 
 ## Steps
-1. 为当前激活面板增加“进入对应页面”的总入口。
-2. 为各表格增加行级联动按钮，携带医院、产品、状态等查询参数跳转。
-3. 执行前端构建与页面回归验证。
+1. 涓洪〉澶村鍔犲尰闄㈢骇鍏抽敭鎽樿锛岃椤圭洰銆侀闄┿€佸伐鏃躲€佸紑鏀惧伐鍗曚竴鐪煎彲瑙併€?
+2. 涓烘瘡涓?tab 澧炲姞涓氬姟鎽樿鎻愮ず锛屽苟鎸夋洿鍒╀簬鍒ゆ柇鐨勯『搴忓睍绀烘暟鎹€?
+3. 鎵ц鍓嶇鏋勫缓楠岃瘉骞跺洖鍐欒繘搴︺€?
 
 ## Status
-- 2026-04-23: 已完成。Hospital360 已补齐面板级“进入对应页面”和行级联动入口，可跳转到项目、告警、工时、报修页面并自动带上医院/产品/状态等筛选参数。验证：`PMS: Build Frontend` 通过；Playwright 登录态回归 `hospital/360`，运行时 `ISSUES=0`，并确认按钮点击后成功跳转到对应列表页。
+- 2026-04-23: 宸插畬鎴愩€侶ospital360 瑙嗗浘宸茶ˉ榻愬尰闄㈢骇缁忚惀鎽樿銆佸悇 tab 鍏抽敭鎸囨爣鍗″拰鏇村埄浜庢帓鏌ョ殑榛樿鎺掑簭銆傞獙璇侊細`PMS: Build Frontend` 閫氳繃锛汸laywright 鐧诲綍鎬佸洖褰?`hospital/360`锛岃繍琛屾椂 `ISSUES=0`锛屾埅鍥?`regression-hospital360-premium.png` 宸插埛鏂般€?
 
 ## Goal
-- 继续细化 Hospital360 视图，在不改接口的前提下补齐页头经营摘要、面板内关键指标和更适合医院级巡检的展示顺序。
+- 灏?Hospital360 瑙嗗浘涓讳綋浠庘€滄憳瑕佸崱 + 瑁?tabs/table鈥濇敹鍙ｅ埌缁熶竴鐨勫晢鍔″寲璇︽儏椤电粨鏋勶紝琛ラ綈鏁版嵁闈㈡澘灞傜骇銆乼ab 鎽樿涓庢爣绛惧寲淇℃伅琛ㄨ揪銆?
 
 ## Non-goals
-- 不新增后端接口、字段或跨模块联动逻辑。
-- 不改动医院列表页或其它详情页。
+- 涓嶆敼鍔ㄥ尰闄?360 鐨勬帴鍙ｈ皟鐢ㄣ€佽矾鐢卞弬鏁板拰鑱氬悎閫昏緫銆?
+- 涓嶆墿鏁ｅ埌鍏跺畠鍖婚櫌绠＄悊椤甸潰銆?
 
 ## Constraints
-- 变更限制在 `pms-web/src/views/hospital/Hospital360View.vue` 与 memory-bank 记录。
-- 完成后必须执行前端构建验证。
+- 涓昏鏀瑰姩闄愬埗鍦?`pms-web/src/views/hospital/Hospital360View.vue`锛屼紭鍏堝鐢ㄧ幇鏈?`SummaryMetrics`銆乣AppTableCard` 涓庡叏灞€璁捐绯荤粺銆?
+- 鏀瑰畬鍚庡繀椤绘墽琛屽墠绔瀯寤洪獙璇併€?
 
 ## Steps
-1. 为页头增加医院级关键摘要，让项目、风险、工时、开放工单一眼可见。
-2. 为每个 tab 增加业务摘要提示，并按更利于判断的顺序展示数据。
-3. 执行前端构建验证并回写进度。
+1. 灏嗘憳瑕佸崱鏀逛负涓?tab 鑱斿姩锛屾槑纭綋鍓嶆縺娲绘暟鎹潰鏉裤€?
+2. 涓轰富鍐呭鍖哄鍔犵粺涓€澶撮儴璇存槑銆佽褰曡鏁颁笌鍐呭鍗＄墖瀹瑰櫒銆?
+3. 鐢ㄦ爣绛惧拰璇存槑鏉℃彁鍗囬」鐩?鍛婅/鎶ヤ慨琛ㄦ牸鐨勫彲鎵鎬с€?
+4. 鎵ц鍓嶇鏋勫缓楠岃瘉骞跺洖鍐欒繘搴︺€?
 
 ## Status
-- 2026-04-23: 已完成。Hospital360 视图已补齐医院级经营摘要、各 tab 关键指标卡和更利于排查的默认排序。验证：`PMS: Build Frontend` 通过；Playwright 登录态回归 `hospital/360`，运行时 `ISSUES=0`，截图 `regression-hospital360-premium.png` 已刷新。
+- 2026-04-23: 宸插畬鎴愩€侶ospital360 瑙嗗浘宸插垏鎹㈠埌鈥滈〉澶存瑙?+ 鍙垏鎹㈡憳瑕佸崱 + 缁熶竴鍐呭鍗♀€濈粨鏋勶紝琛ラ綈 tab 璁℃暟銆侀潰鏉胯鏄庡拰鏍囩鍖栫姸鎬佽〃杈俱€傞獙璇侊細`PMS: Build Frontend` 閫氳繃锛汸laywright 鐧诲綍鎬佸洖褰?`hospital/360`锛岃繍琛屾椂 `ISSUES=0`锛屾埅鍥惧凡鍒锋柊銆?
 
 ## Goal
-- 将 Hospital360 视图主体从“摘要卡 + 裸 tabs/table”收口到统一的商务化详情页结构，补齐数据面板层级、tab 摘要与标签化信息表达。
+- 灏?PMS 鐨勯椤电湅鏉裤€侀」鐩垪琛?寰呭姙浠诲姟椤点€佹娊灞?寮圭獥琛ㄥ崟鍜屽叏灞€甯冨眬缁熶竴鎻愬崌鍒版洿鎺ヨ繎涓婄嚎浜や粯鐨勭畝绾﹀晢鍔￠珮绾ч锛岄噸鐐硅В鍐虫爣棰樺眰绾ф贩涔便€佸浘琛ㄩ粯璁ゆ劅寮恒€佸垪琛ㄩ槄璇诲瘑搴﹀樊鍜屽３灞傜己灏戣矾寰勭З搴忕殑闂銆?
 
 ## Non-goals
-- 不改动医院 360 的接口调用、路由参数和聚合逻辑。
-- 不扩散到其它医院管理页面。
+- 涓嶆敼鍔ㄤ换浣曚笟鍔℃帴鍙ｃ€佹潈闄愰€昏緫銆佹帴鍙ｅ绾︿笌璺敱璺緞銆?
+- 涓嶉噸鍐欓〉闈㈡暟鎹祦锛屼紭鍏堥€氳繃鍏变韩缁勪欢銆佽璁＄郴缁熶笌灏戦噺鍏抽敭椤甸潰妯℃澘閲嶆瀯瀹屾垚浣撻獙鍗囩骇銆?
 
 ## Constraints
-- 主要改动限制在 `pms-web/src/views/hospital/Hospital360View.vue`，优先复用现有 `SummaryMetrics`、`AppTableCard` 与全局设计系统。
-- 改完后必须执行前端构建验证。
+- 淇濇寔 Element Plus 涓庣幇鏈夌粍浠跺吋瀹癸紝涓嶆柊澧炶繍琛屾椂渚濊禆銆?
+- 闇€瑕佽鐩栨闈㈢涓诲満鏅紝骞朵互鏋勫缓涓庣櫥褰曟€佹埅鍥惧洖褰掍綔涓烘敹鍙ｆ爣鍑嗐€?
 
 ## Steps
-1. 将摘要卡改为与 tab 联动，明确当前激活数据面板。
-2. 为主内容区增加统一头部说明、记录计数与内容卡片容器。
-3. 用标签和说明条提升项目/告警/报修表格的可扫读性。
-4. 执行前端构建验证并回写进度。
+1. 鍚敤鐙珛璁捐绯荤粺鏂囦欢锛岀粺涓€ page head銆佽〃鏍笺€佽〃鍗曘€佹寜閽€佸崱鐗囧拰鍒嗛〉鐨勫晢鍔″寲浣庨ケ鍜岃鍒欍€?
+2. 鍗囩骇 `AppLayout`锛岃ˉ榻愰潰鍖呭睉銆佷晶鏍忔姌鍙犮€侀〉鑴氬拰鏇村厠鍒剁殑椤跺眰杈呭姪鏍忋€?
+3. 鍗囩骇 `ProTable`銆乣AppTableCard`銆乣ProDrawer`銆乣AppFormDialog`锛岀粺涓€闀垮垪琛ㄤ笌琛ㄥ崟瀹瑰櫒鐨勯槄璇昏妭濂忋€?
+4. 閲嶆瀯 `DashboardView` 涓?`MS010001013001View` 鐨勪俊鎭眰绾у拰鍥捐〃/鐪嬫澘瑙嗚锛岄伩鍏嶉粯璁ょ粍浠舵劅銆?
+5. 鎵ц鍓嶇鏋勫缓涓庣櫥褰曟€?Playwright 鎴浘鍥炲綊锛屽苟璁板綍缁撴灉銆?
 
 ## Status
-- 2026-04-23: 已完成。Hospital360 视图已切换到“页头概览 + 可切换摘要卡 + 统一内容卡”结构，补齐 tab 计数、面板说明和标签化状态表达。验证：`PMS: Build Frontend` 通过；Playwright 登录态回归 `hospital/360`，运行时 `ISSUES=0`，截图已刷新。
+- 2026-04-22: 宸插畬鎴愭楠?1-5銆傚凡鍚敤 `premium-ui.css` 浣滀负鐙珛璁捐绯荤粺瑕嗙洊灞傦紝缁熶竴鍏ㄥ眬鏍囬/琛ㄦ牸/琛ㄥ崟/鎸夐挳椋庢牸锛沗AppLayout` 宸茶ˉ榻愰潰鍖呭睉銆佹姌鍙犱晶鏍忓拰椤佃剼锛沗ProTable`銆乣AppTableCard`銆乣ProDrawer`銆乣AppFormDialog` 宸插垏鎹㈠埌缁熶竴鍟嗗姟瀹瑰櫒鏍峰紡锛沗DashboardView` 涓?`MS010001013001View` 宸插畬鎴愮湅鏉垮眰绾т笌浣庨ケ鍜岄厤鑹叉敹鍙ｃ€傞獙璇侊細`powershell -ExecutionPolicy Bypass -File c:\Users\Administrator\PMS-Standalone\scripts\build-frontend.ps1` 閫氳繃锛涚櫥褰曟€?Playwright 鎴浘澶嶆牳 `dashboard`銆乣project/list`銆乣complex-model/ms010001-013-001` 鍜岄」鐩紪杈戞娊灞夛紝杩愯鏃?`ISSUES=0`銆?
+- 2026-04-22: 宸插畬鎴愭湰杞渶缁堜竴鑷存€ф敹鍙ｃ€備笁瑙掕壊宸ヤ綔鍙般€乣AuditLogView`銆乣KpiDashboardView`銆乣PersonnelListView` 宸茬粺涓€鍒板叡浜寚鏍囧崱/瀹瑰櫒璇█锛涜ˉ榻?`pms-web/src/utils/echarts-basic.ts` 鐨?`GraphicComponent` 娉ㄥ唽锛屾秷闄?KPI 椤甸潰杩愯鏃跺憡璀︺€傞獙璇侊細`powershell -ExecutionPolicy Bypass -File c:\Users\Administrator\PMS-Standalone\scripts\build-frontend.ps1` 閫氳繃锛汸laywright 澶嶉獙 `dashboard/kpi`銆乣audit/log`銆乣permission/manage` 鍙婂瑙掕壊 `dashboard`锛岃繍琛屾椂 `ISSUES=0`锛屽苟鐢熸垚鏈€鏂版埅鍥惧洖褰掋€?
+- 2026-04-22: 宸插畬鎴愮浜岃疆鍒楄〃椤电粺璁″尯鍏变韩鍖栥€傛柊澧?`pms-web/src/components/SummaryMetrics.vue` 浣滀负鍏变韩鎽樿鍗＄粍浠讹紝骞跺皢 `AlertCenterView`銆乣ContractAlertView`銆乣RepairRecordView`銆乣WorkHoursView`銆乣InspectionPlanView`銆乣AnnualReportView`銆乣HospitalListView`銆乣HandoverListView`銆乣ProductListView`銆乣PersonnelListView`銆乣Hospital360View` 鐨勬棫 `stats-row/stat-card` 缁撴瀯杩佺Щ鍒扮粺涓€鎸囨爣鍗′綋绯汇€傞獙璇侊細`PMS: Build Frontend` 閫氳繃锛汸laywright 澶嶉獙 `annual-report/list`銆乣hospital/list`銆乣handover/list`銆乣product/list`銆乣permission/manage`銆乣hospital/360` 浠ュ強鍓嶄竴鎵?`contract/alerts`銆乣repair/list`銆乣workhours/list`銆乣inspection/plan`锛岃繍琛屾椂 `ISSUES=0`锛屾柊鎴浘鍥炲綊宸茬敓鎴愩€?
 
 ## Goal
-- 将 PMS 的首页看板、项目列表/待办任务页、抽屉/弹窗表单和全局布局统一提升到更接近上线交付的简约商务高级风，重点解决标题层级混乱、图表默认感强、列表阅读密度差和壳层缺少路径秩序的问题。
+- 灏?PMS 鍓嶇鏁翠綋椤甸潰銆佹寜閽拰浜や簰椋庢牸缁熶竴鍗囩骇涓烘洿鎺ヨ繎鎴愮啛澶у巶浼佷笟浜у搧鐨勪綋楠岋紝浼樺厛瀹屾垚鍏ㄥ眬璁捐绯荤粺銆佸簲鐢ㄥ３鍜岀櫥褰曞叆鍙ｇ殑椋庢牸鏀跺彛銆?
 
 ## Non-goals
-- 不改动任何业务接口、权限逻辑、接口契约与路由路径。
-- 不重写页面数据流，优先通过共享组件、设计系统与少量关键页面模板重构完成体验升级。
+- 涓嶄慨鏀逛换浣曚笟鍔℃帴鍙ｃ€佹潈闄愰€昏緫銆佽矾鐢辩粨鏋勪笌椤甸潰鏁版嵁娴併€?
+- 涓嶉€愰〉閲嶅啓涓氬姟妯℃澘锛屼紭鍏堥€氳繃鍏ㄥ眬鏍峰紡鍜屽叡鐢ㄧ粍浠跺畬鎴愯瑙夌粺涓€銆?
 
 ## Constraints
-- 保持 Element Plus 与现有组件兼容，不新增运行时依赖。
-- 需要覆盖桌面端主场景，并以构建与登录态截图回归作为收口标准。
+- 淇濇寔 Element Plus 鍏煎锛屼笉鏂板杩愯鏃朵緷璧栥€?
+- 淇濇寔妗岄潰绔笌绉诲姩绔彲鐢ㄦ€э紝骞堕€氳繃鏋勫缓鍛戒护鍋氭敹鍙ｉ獙璇併€?
 
 ## Steps
-1. 启用独立设计系统文件，统一 page head、表格、表单、按钮、卡片和分页的商务化低饱和规则。
-2. 升级 `AppLayout`，补齐面包屑、侧栏折叠、页脚和更克制的顶层辅助栏。
-3. 升级 `ProTable`、`AppTableCard`、`ProDrawer`、`AppFormDialog`，统一长列表与表单容器的阅读节奏。
-4. 重构 `DashboardView` 与 `MS010001013001View` 的信息层级和图表/看板视觉，避免默认组件感。
-5. 执行前端构建与登录态 Playwright 截图回归，并记录结果。
+1. 閲嶅鍏ㄥ眬璁捐浠ょ墝銆佹寜閽€佽緭鍏ユ銆佸崱鐗囥€佽〃鏍笺€佸脊绐楃瓑鍏辩敤瑙嗚銆?
+2. 鍗囩骇 `ProTable`銆乣AppLayout`銆乣LoginView` 鐨勫竷灞€灞傛涓庝氦浜掑弽棣堛€?
+3. 鎵ц鍓嶇鏋勫缓楠岃瘉锛岀‘璁ゆ牱寮忔敼閫犳湭鐮村潖缂栬瘧涓庡叆鍙ｆ覆鏌撱€?
+4. 鍦?`progress.md` 璁板綍鏈鏀归€犱笌楠岃瘉缁撴灉銆?
 
 ## Status
-- 2026-04-22: 已完成步骤 1-5。已启用 `premium-ui.css` 作为独立设计系统覆盖层，统一全局标题/表格/表单/按钮风格；`AppLayout` 已补齐面包屑、折叠侧栏和页脚；`ProTable`、`AppTableCard`、`ProDrawer`、`AppFormDialog` 已切换到统一商务容器样式；`DashboardView` 与 `MS010001013001View` 已完成看板层级与低饱和配色收口。验证：`powershell -ExecutionPolicy Bypass -File c:\Users\Administrator\PMS-Standalone\scripts\build-frontend.ps1` 通过；登录态 Playwright 截图复核 `dashboard`、`project/list`、`complex-model/ms010001-013-001` 和项目编辑抽屉，运行时 `ISSUES=0`。
-- 2026-04-22: 已完成本轮最终一致性收口。三角色工作台、`AuditLogView`、`KpiDashboardView`、`PersonnelListView` 已统一到共享指标卡/容器语言；补齐 `pms-web/src/utils/echarts-basic.ts` 的 `GraphicComponent` 注册，消除 KPI 页面运行时告警。验证：`powershell -ExecutionPolicy Bypass -File c:\Users\Administrator\PMS-Standalone\scripts\build-frontend.ps1` 通过；Playwright 复验 `dashboard/kpi`、`audit/log`、`permission/manage` 及多角色 `dashboard`，运行时 `ISSUES=0`，并生成最新截图回归。
-- 2026-04-22: 已完成第二轮列表页统计区共享化。新增 `pms-web/src/components/SummaryMetrics.vue` 作为共享摘要卡组件，并将 `AlertCenterView`、`ContractAlertView`、`RepairRecordView`、`WorkHoursView`、`InspectionPlanView`、`AnnualReportView`、`HospitalListView`、`HandoverListView`、`ProductListView`、`PersonnelListView`、`Hospital360View` 的旧 `stats-row/stat-card` 结构迁移到统一指标卡体系。验证：`PMS: Build Frontend` 通过；Playwright 复验 `annual-report/list`、`hospital/list`、`handover/list`、`product/list`、`permission/manage`、`hospital/360` 以及前一批 `contract/alerts`、`repair/list`、`workhours/list`、`inspection/plan`，运行时 `ISSUES=0`，新截图回归已生成。
+- 2026-04-22: 宸插畬鎴愭楠?1-4銆傚凡缁熶竴鍏ㄥ眬璁捐浠ょ墝銆佸垪琛ㄥ鍣ㄣ€佸簲鐢ㄥ３鍜岀櫥褰曞叆鍙ｇ殑瑙嗚涓庝氦浜掗鏍硷紝骞跺畬鎴愭瀯寤轰笌娴忚鍣ㄩ獙璇併€?
+- 2026-04-22: 宸茶ˉ瀹岀浜岃疆缁嗚妭鏀跺彛銆傛娊灞夈€佸脊绐椼€佸伐浣滃彴鍗＄墖銆佺┖鐘舵€併€佸姞杞芥€佸拰涓汉璧勬枡璇︽儏椤靛凡缁熶竴鍒板悓涓€濂椾氦浜掕瑷€锛屽苟閫氳繃鍓嶇鏋勫缓楠岃瘉銆?
 
 ## Goal
-- 将 PMS 前端整体页面、按钮和交互风格统一升级为更接近成熟大厂企业产品的体验，优先完成全局设计系统、应用壳和登录入口的风格收口。
+- 缁х画瀹炴柦鍒楄〃椤电揣鍑戝寲绗簩鎵规敹鍙ｏ細宸℃璁″垝銆佷氦鎺ョ鐞嗐€佸悎鍚岄璀︺€佸尰闄㈢鐞嗗洓椤靛湪淇濇寔鐜版湁鏁版嵁缁撴瀯涓嶅彉鐨勫墠鎻愪笅锛屽帇缂╂帓鐗堝苟灏介噺閬垮厤鍏抽敭鍒椾笌鎿嶄綔鍖烘崲琛屻€?
 
 ## Non-goals
-- 不修改任何业务接口、权限逻辑、路由结构与页面数据流。
-- 不逐页重写业务模板，优先通过全局样式和共用组件完成视觉统一。
+- 涓嶈皟鏁存帴鍙ｃ€佹潈闄愩€佺瓫閫夐€昏緫鎴?workflow 鍔ㄤ綔璇箟銆?
+- 涓嶅啀娆″ぇ鏀瑰叏灞€璁捐绯荤粺锛屼粎澶勭悊鏈〉鍒楀鍜屽眬閮ㄥ鍣ㄦ牱寮忋€?
 
 ## Constraints
-- 保持 Element Plus 兼容，不新增运行时依赖。
-- 保持桌面端与移动端可用性，并通过构建命令做收口验证。
+- 淇濇寔鐜版湁琛ㄦ牸瀛楁銆佹寜閽枃妗堝拰璺宠浆閫昏緫鍏煎銆?
+- 浼樺厛閫氳繃鍒楀銆乶owrap銆乪llipsis 鏀跺彛锛屼笉寮曞叆鏂扮殑浜や簰灞傘€?
+- 蹇呴』瀹屾垚鍓嶇鏋勫缓楠岃瘉銆?
 
 ## Steps
-1. 重塑全局设计令牌、按钮、输入框、卡片、表格、弹窗等共用视觉。
-2. 升级 `ProTable`、`AppLayout`、`LoginView` 的布局层次与交互反馈。
-3. 执行前端构建验证，确认样式改造未破坏编译与入口渲染。
-4. 在 `progress.md` 记录本次改造与验证结果。
+1. 璋冩暣 `InspectionPlanView.vue` 鐨勮鍒掕〃/缁撴灉琛ㄥ叧閿垪瀹斤紝骞惰 `deadline-cell` 涓庢搷浣滃尯淇濇寔鍗曡浼樺厛銆?
+2. 璋冩暣 `HandoverListView.vue` 鐨勫尰闄?浜у搧/缁勫埆/鎵规/闃舵鍒楀锛屽苟璁╄鎯呭姩浣滃尯鍜岀湅鏉?meta 鍗曡鐪佺暐銆?
+3. 璋冩暣 `ContractAlertView.vue` 涓?`HospitalListView.vue` 鐨勫叧閿枃鏈垪銆佽瘎绾у垪鍜屾搷浣滃尯瀹藉害锛岃ˉ榻愬眬閮?nowrap 鏍峰紡銆?
+4. 鎵ц `PMS: Build Frontend` 楠岃瘉鏈疆甯冨眬琛ヤ竵銆?
 
 ## Status
-- 2026-04-22: 已完成步骤 1-4。已统一全局设计令牌、列表容器、应用壳和登录入口的视觉与交互风格，并完成构建与浏览器验证。
-- 2026-04-22: 已补完第二轮细节收口。抽屉、弹窗、工作台卡片、空状态、加载态和个人资料详情页已统一到同一套交互语言，并通过前端构建验证。
+- 2026-04-23: 杩涜涓€傚凡纭鏈疆鎺у埗璺緞鏄€滄湰椤靛叧閿垪鍋忕獎 + action/meta 瀹瑰櫒鍏佽鎹㈣鈥濓紝鍑嗗鍦?`pms-web/src/views/inspection/InspectionPlanView.vue`銆乣pms-web/src/views/handover/HandoverListView.vue`銆乣pms-web/src/views/contract/ContractAlertView.vue`銆乣pms-web/src/views/hospital/HospitalListView.vue` 鍋氬眬閮ㄥ垪瀹藉拰 nowrap 鏀跺彛锛岀劧鍚庢墽琛屽墠绔瀯寤洪獙璇併€?
+- 2026-04-22: 宸插畬鎴愭渶缁堟埅鍥惧贰妫€鏀跺彛銆俙PersonnelListView` 鏉冮檺绠＄悊琛ㄥ彇娑?`fixed-right` 鎿嶄綔鍒楋紝瑙ｅ喅鐪熷疄鏁版嵁涓嬬殑鍒楀彔鍘嬩笌閫忓瓧闂锛涗娇鐢?admin 鏈夋晥浼氳瘽瀵?`dashboard`銆乣profile`銆乣permission/manage` 鍙婄紪杈戞娊灞夎繘琛?Playwright 瀹為〉楠岃瘉锛岃繍琛屾椂 `ISSUES=0`銆?
 
 ## Goal
-- 继续实施列表页紧凑化第二批收口：巡检计划、交接管理、合同预警、医院管理四页在保持现有数据结构不变的前提下，压缩排版并尽量避免关键列与操作区换行。
+- 褰诲簳淇鏈湴寮€鍙戠幆澧冧笅 PMS 鎵撲笉寮€涓旈〉闈㈢┖鐧界殑闂锛屾秷闄や粨搴撹縼绉诲悗 Vite 缂撳瓨鎸囧悜鏃х粷瀵硅矾寰勫鑷寸殑鍏ュ彛鍔犺浇澶辫触銆?
 
 ## Non-goals
-- 不调整接口、权限、筛选逻辑或 workflow 动作语义。
-- 不再次大改全局设计系统，仅处理本页列宽和局部容器样式。
+- 涓嶄慨鏀逛换浣曚笟鍔℃帴鍙ｃ€佹潈闄愬绾︿笌椤甸潰鍔熻兘娴佺▼銆?
+- 涓嶈皟鏁寸敓浜ч儴缃茶剼鏈笌鏈嶅姟绔彛閰嶇疆銆?
 
 ## Constraints
-- 保持现有表格字段、按钮文案和跳转逻辑兼容。
-- 优先通过列宽、nowrap、ellipsis 收口，不引入新的交互层。
-- 必须完成前端构建验证。
+- 鍙樻洿鑼冨洿闄愬埗鍦ㄥ墠绔叆鍙ｃ€乂ite 鍚姩閾捐矾鍜屾湰鍦板紑鍙戦槻鍛嗐€?
+- 姣忔鏀瑰姩鍚庡繀椤讳互鍙墽琛屽懡浠ら獙璇侊紝鑰屼笉鏄粎鐪嬩唬鐮併€?
 
 ## Steps
-1. 调整 `InspectionPlanView.vue` 的计划表/结果表关键列宽，并让 `deadline-cell` 与操作区保持单行优先。
-2. 调整 `HandoverListView.vue` 的医院/产品/组别/批次/阶段列宽，并让详情动作区和看板 meta 单行省略。
-3. 调整 `ContractAlertView.vue` 与 `HospitalListView.vue` 的关键文本列、评级列和操作区宽度，补齐局部 nowrap 样式。
-4. 执行 `PMS: Build Frontend` 验证本轮布局补丁。
+1. 淇 Vite 鍚姩鏃跺鏃т粨搴撹矾寰勭紦瀛樼殑鑷剤閫昏緫銆?
+2. 涓哄墠绔寕杞戒笌搴旂敤澹冲垵濮嬪寲澧炲姞棣栧睆鍏滃簳锛岄伩鍏嶅紓甯哥洿鎺ヨ惤鎴愮┖鐧介〉銆?
+3. 閲嶅惎鏈湴鍓嶇骞堕獙璇侀椤典笌 /src/main.ts 鍧囪繑鍥?200銆?
+4. 鎵ц鍓嶇鏋勫缓楠岃瘉骞惰褰曠粨鏋溿€?
 
 ## Status
-- 2026-04-23: 进行中。已确认本轮控制路径是“本页关键列偏窄 + action/meta 容器允许换行”，准备在 `pms-web/src/views/inspection/InspectionPlanView.vue`、`pms-web/src/views/handover/HandoverListView.vue`、`pms-web/src/views/contract/ContractAlertView.vue`、`pms-web/src/views/hospital/HospitalListView.vue` 做局部列宽和 nowrap 收口，然后执行前端构建验证。
-- 2026-04-22: 已完成最终截图巡检收口。`PersonnelListView` 权限管理表取消 `fixed-right` 操作列，解决真实数据下的列叠压与透字问题；使用 admin 有效会话对 `dashboard`、`profile`、`permission/manage` 及编辑抽屉进行 Playwright 实页验证，运行时 `ISSUES=0`。
+- 2026-04-22: 姝ラ 1-4 宸插畬鎴愩€傚凡淇杩佺Щ璺緞涓嬬殑 Vite stale cache / root 瑙ｆ瀽闂锛屽苟琛ラ綈棣栧睆鍒濆鍖栧厹搴曘€?
 
 ## Goal
-- 彻底修复本地开发环境下 PMS 打不开且页面空白的问题，消除仓库迁移后 Vite 缓存指向旧绝对路径导致的入口加载失败。
+- 鎻愬崌 PMS 鍓嶇鏁翠綋瑙傛劅锛屼紭鍏堟敼閫犲簲鐢ㄥ３涓庣櫥褰曢〉瑙嗚灞傛锛岃В鍐斥€滈〉闈㈠亸鏈寸礌鈥濋棶棰樸€?
 
 ## Non-goals
-- 不修改任何业务接口、权限契约与页面功能流程。
-- 不调整生产部署脚本与服务端口配置。
+- 涓嶆敼鍔ㄤ换浣曚笟鍔℃帴鍙ｃ€佹潈闄愰€昏緫涓庤矾鐢辩粨鏋勩€?
+- 涓嶈皟鏁撮〉闈㈠姛鑳戒氦浜掓祦绋嬨€?
 
 ## Constraints
-- 变更范围限制在前端入口、Vite 启动链路和本地开发防呆。
-- 每次改动后必须以可执行命令验证，而不是仅看代码。
+- 淇濇寔鐜版湁 Vue 缁勪欢缁撴瀯锛屼紭鍏堥€氳繃鏍峰紡涓庤交閲忔ā鏉垮寮哄疄鐜般€?
+- 淇濇寔绉诲姩绔彲鐢ㄦ€э紝涓嶅紩鍏ユ柊鐨勮繍琛屾椂渚濊禆銆?
 
 ## Steps
-1. 修复 Vite 启动时对旧仓库路径缓存的自愈逻辑。
-2. 为前端挂载与应用壳初始化增加首屏兜底，避免异常直接落成空白页。
-3. 重启本地前端并验证首页与 /src/main.ts 均返回 200。
-4. 执行前端构建验证并记录结果。
+1. 缁熶竴鍏ㄥ眬璁捐浠ょ墝涓庡熀纭€瑙嗚锛堣壊鏉裤€佽儗鏅€佸崱鐗囥€佹寜閽€佸姩鏁堬級銆?
+2. 浼樺寲 `AppLayout` 椤舵爮銆佷晶鏍忋€佷富鍐呭鍖哄眰娆″拰閫変腑鎬併€?
+3. 浼樺寲 `LoginView` 鍝佺墝琛ㄨ揪銆佽〃鍗曡鎰熶笌棣栧睆璐ㄦ劅銆?
+4. 鎵ц鍓嶇鏋勫缓楠岃瘉锛屽苟璁板綍缁撴灉銆?
 
 ## Status
-- 2026-04-22: 步骤 1-4 已完成。已修复迁移路径下的 Vite stale cache / root 解析问题，并补齐首屏初始化兜底。
-
-## Goal
-- 提升 PMS 前端整体观感，优先改造应用壳与登录页视觉层次，解决“页面偏朴素”问题。
-
-## Non-goals
-- 不改动任何业务接口、权限逻辑与路由结构。
-- 不调整页面功能交互流程。
-
-## Constraints
-- 保持现有 Vue 组件结构，优先通过样式与轻量模板增强实现。
-- 保持移动端可用性，不引入新的运行时依赖。
-
-## Steps
-1. 统一全局设计令牌与基础视觉（色板、背景、卡片、按钮、动效）。
-2. 优化 `AppLayout` 顶栏、侧栏、主内容区层次和选中态。
-3. 优化 `LoginView` 品牌表达、表单观感与首屏质感。
-4. 执行前端构建验证，并记录结果。
-
-## Status
-- 2026-04-22: 已完成步骤 1-3。
-- 2026-04-22: 步骤 4 已执行；构建失败，原因为现有 Vite/Rolldown 配置在当前路径下触发 `vite:build-html` 的 `fileName` 绝对路径报错（与本次样式改动无直接关系）。
+- 2026-04-22: 宸插畬鎴愭楠?1-3銆?
+- 2026-04-22: 姝ラ 4 宸叉墽琛岋紱鏋勫缓澶辫触锛屽師鍥犱负鐜版湁 Vite/Rolldown 閰嶇疆鍦ㄥ綋鍓嶈矾寰勪笅瑙﹀彂 `vite:build-html` 鐨?`fileName` 缁濆璺緞鎶ラ敊锛堜笌鏈鏍峰紡鏀瑰姩鏃犵洿鎺ュ叧绯伙級銆?
 
 ## Verification
-- `powershell -ExecutionPolicy Bypass -File c:\Users\Administrator\PMS-Standalone\scripts\build-frontend.ps1` 已通过，`vite build` 成功产出 dist。
-- 本地联调验证已通过：前端 `http://127.0.0.1:5173/` 返回 200，`/src/main.ts` 返回 200，后端 `http://127.0.0.1:5111/api/health` 返回 401（鉴权拦截，服务存活）。
+- `powershell -ExecutionPolicy Bypass -File c:\Users\Administrator\PMS-Standalone\scripts\build-frontend.ps1` 宸查€氳繃锛宍vite build` 鎴愬姛浜у嚭 dist銆?
+- 鏈湴鑱旇皟楠岃瘉宸查€氳繃锛氬墠绔?`http://127.0.0.1:5173/` 杩斿洖 200锛宍/src/main.ts` 杩斿洖 200锛屽悗绔?`http://127.0.0.1:5111/api/health` 杩斿洖 401锛堥壌鏉冩嫤鎴紝鏈嶅姟瀛樻椿锛夈€?
 
 ## Goal
-- 将 `tanweai/pua` 以项目级方式接入 PMS，支持在当前仓库内手动触发与技能调用。
-- 不覆盖现有 `copilot-instructions.md`，避免影响既有项目规则。
+- 灏?`tanweai/pua` 浠ラ」鐩骇鏂瑰紡鎺ュ叆 PMS锛屾敮鎸佸湪褰撳墠浠撳簱鍐呮墜鍔ㄨЕ鍙戜笌鎶€鑳借皟鐢ㄣ€?
+- 涓嶈鐩栫幇鏈?`copilot-instructions.md`锛岄伩鍏嶅奖鍝嶆棦鏈夐」鐩鍒欍€?
 
 ## Non-goals
-- 不修改任何业务代码与 API 契约。
-- 不替换现有全局 Copilot 指令文件。
+- 涓嶄慨鏀逛换浣曚笟鍔′唬鐮佷笌 API 濂戠害銆?
+- 涓嶆浛鎹㈢幇鏈夊叏灞€ Copilot 鎸囦护鏂囦欢銆?
 
 ## Constraints
-- 仅新增 AI 工具链配置文件（`.agents/`、`.github/prompts/`）。
-- 采用上游文件直拷贝，便于后续同步升级。
+- 浠呮柊澧?AI 宸ュ叿閾鹃厤缃枃浠讹紙`.agents/`銆乣.github/prompts/`锛夈€?
+- 閲囩敤涓婃父鏂囦欢鐩存嫹璐濓紝渚夸簬鍚庣画鍚屾鍗囩骇銆?
 
 ## Steps
-1. 通过 SSH 拉取 `tanweai/pua` 仓库到本机临时目录。
-2. 复制 Codex 项目级技能文件到 `.agents/skills/pua/SKILL.md`。
-3. 复制手动触发 prompt 到 `.agents/prompts/pua.md` 与 `.github/prompts/pua.prompt.md`。
-4. 验证文件存在并可在当前仓库使用。
+1. 閫氳繃 SSH 鎷夊彇 `tanweai/pua` 浠撳簱鍒版湰鏈轰复鏃剁洰褰曘€?
+2. 澶嶅埗 Codex 椤圭洰绾ф妧鑳芥枃浠跺埌 `.agents/skills/pua/SKILL.md`銆?
+3. 澶嶅埗鎵嬪姩瑙﹀彂 prompt 鍒?`.agents/prompts/pua.md` 涓?`.github/prompts/pua.prompt.md`銆?
+4. 楠岃瘉鏂囦欢瀛樺湪骞跺彲鍦ㄥ綋鍓嶄粨搴撲娇鐢ㄣ€?
 
 ## Status
-- 2026-04-22: 已完成步骤 1-4。
-- 2026-04-22: 已按实际使用体验去重入口，移除 `.agents/prompts/pua.md` 与 `.github/prompts/pua.prompt.md`，仅保留 `.agents/skills/pua/SKILL.md`。
+- 2026-04-22: 宸插畬鎴愭楠?1-4銆?
+- 2026-04-22: 宸叉寜瀹為檯浣跨敤浣撻獙鍘婚噸鍏ュ彛锛岀Щ闄?`.agents/prompts/pua.md` 涓?`.github/prompts/pua.prompt.md`锛屼粎淇濈暀 `.agents/skills/pua/SKILL.md`銆?
 
 ## Verification
-- `.agents/skills/pua/SKILL.md` 已生成（29106 bytes）。
-- 已验证当前仅保留一个 pua 入口来源（skill）。
-
+- `.agents/skills/pua/SKILL.md` 宸茬敓鎴愶紙29106 bytes锛夈€?- 宸查獙璇佸綋鍓嶄粎淇濈暀涓€涓?pua 鍏ュ彛鏉ユ簮锛坰kill锛夈€?
 ## Goal
-- 审查 PMS 项目前后端代码，覆盖后端权限/数据范围、认证、关键 API 契约以及前端登录态、路由和构建状态。
+- 瀹℃煡 PMS 椤圭洰鍓嶅悗绔唬鐮侊紝瑕嗙洊鍚庣鏉冮檺/鏁版嵁鑼冨洿銆佽璇併€佸叧閿?API 濂戠害浠ュ強鍓嶇鐧诲綍鎬併€佽矾鐢卞拰鏋勫缓鐘舵€併€?
+## Non-goals
+- 涓嶄慨鏀逛笟鍔′唬鐮併€佷笉閲嶆瀯妯″潡銆佷笉璋冩暣鎺ュ彛濂戠害銆?- 涓嶄慨澶嶅鏌ヤ腑鍙戠幇鐨勯棶棰橈紝浠呰緭鍑洪闄╂竻鍗曞拰楠岃瘉缁撴灉銆?
+## Constraints
+- 閬靛畧鐜版湁鍚庣鍒嗗眰鍜屽墠绔洰褰曠害鏉熴€?- 淇濈暀褰撳墠宸ヤ綔鍖哄凡鏈夋敼鍔紝涓嶅洖婊?`pms-web/src/views/login/LoginView.vue` 鎴栨暟鎹簱鏂囦欢銆?
+## Acceptance criteria
+- 瀹℃煡杈撳嚭鍖呭惈鍚庣鍜屽墠绔彂鐜帮紝鎸夐闄╂帓搴忓苟鏍囨槑鏂囦欢/琛屽彿銆?- 瀹屾垚鍚庣鍜屽墠绔瀯寤洪獙璇侊紝璁板綍 `.slnx` 涓庝紶缁?`.sln` 鐨勯獙璇佸樊寮傘€?
+## Steps
+1. 闃呰椤圭洰 brief銆佹灦鏋勮鏄庛€佸綋鍓嶅疄鐜拌鍒掑拰杩涘害銆?2. 瀹℃煡璁よ瘉銆佹潈闄愭槧灏勩€佹暟鎹寖鍥磋繃婊ゃ€佹姤琛?瀹¤/API 鍏抽敭閾捐矾銆?3. 瀹℃煡鍓嶇璇锋眰灏佽銆佽矾鐢辨潈闄愩€佺櫥褰曟€佸拰鍏抽敭椤甸潰 API 璋冪敤銆?4. 鎵ц `dotnet build PMS.slnx`銆乣dotnet build PMS.sln` 涓?`npm run build`銆?5. 璁板綍瀹℃煡杩涘害涓庢渶缁堝彂鐜般€?
+## Status
+- 2026-05-27: 宸插畬鎴愬墠鍚庣瀹℃煡銆備富瑕佸彂鐜板寘鎷?`/api/reports` 鏉冮檺鏄犲皠缂哄け銆佽璇佺瀛愰€昏緫閲嶇疆鏀瑰瘑璐﹀彿銆侀儴鍒嗗尰闄㈣寖鍥翠负绌烘椂鍒楄〃/姹囨€诲洖閫€鍏ㄩ噺銆丠andover 鐪嬫澘鏈寜鏁版嵁鑼冨洿杩囨护銆佽嫢骞叉槑缁?鍐欐帴鍙ｇ己灏戠洰鏍囪褰曡寖鍥存牎楠屻€?
+## Verification
+- `dotnet build PMS.slnx` 澶辫触锛氬綋鍓?SDK 涓嶈瘑鍒?`.slnx` 鐨?`<Solution>` 鏍煎紡銆?- `dotnet build PMS.sln` 閫氳繃锛? warning, 0 error銆?- `cd pms-web && npm run build` 閫氳繃锛沄ite 鎶ュ憡涓€涓害 590KB 鐨?chunk size warning銆?
+## Goal
+- 灏?PMS 鍚勪笟鍔℃ā鍧楃晫闈㈢粺涓€鏀跺彛涓虹畝绾︺€佸共鍑€銆佷綆瑙嗚鍣煶鐨勫悗鍙颁骇鍝侀鏍硷紝閲嶇偣缁熶竴瀛椾綋銆佽璁′护鐗屻€佸崱鐗囥€佽〃鏍笺€佺瓫閫夊尯銆佹娊灞変笌寮圭獥浣撻獙銆?
+## Non-goals
+- 涓嶆敼鍚庣 API銆佹潈闄愭ā鍨嬨€佷笟鍔℃祦绋嬬姸鎬佽涔夈€?- 涓嶉噸鍐欏悇涓氬姟椤甸潰鐨勬暟鎹祦锛屼笉鍋氳法妯″潡淇℃伅鏋舵瀯澶ц縼绉汇€?- 涓嶆柊澧炶惀閿€寮忔彃鐢绘垨瑁呴グ鍥剧墖锛涘綋鍓嶆槸杩愮淮鍚庡彴锛屼紭鍏堢敤鍏嬪埗 UI 璇█缁熶竴銆?
+## Constraints
+- 涓昏鏀瑰姩闄愬埗鍦?`pms-web/src` 鐨勫叏灞€鏍峰紡涓庨€氱敤缁勪欢銆?- 淇濈暀 Element Plus 鍏煎锛屼笉鏂板杩愯鏃朵緷璧栥€?- 椤甸潰鎿嶄綔鍏ュ彛鍜岀幇鏈変笟鍔″姩浣滃繀椤讳繚鎸佸彲鐢ㄣ€?
+## Acceptance criteria
+- 鍏ㄧ珯鑳屾櫙銆佸瓧浣撱€佹寜閽€佽〃鏍笺€佺瓫閫夈€佸崱鐗囥€佸脊绐?鎶藉眽瑙嗚璇█缁熶竴銆?- 閬垮厤缁х画鍙犲姞娓愬彉銆佸厜鏅曘€佹诞鍔ㄩ槾褰辩瓑瑙嗚鍣煶銆?- 鑷冲皯澶勭悊涓€涓槑鏄句笉涓€鑷寸殑鍘熺敓 `el-drawer` 浣跨敤鐐广€?- 鍓嶇鏋勫缓閫氳繃銆?
+## Steps
+1. 鏂板缁熶竴 clean UI 瑕嗙洊灞傦紝鏀惧湪鐜版湁鍏ㄥ眬鏍峰紡涔嬪悗鍔犺浇锛岄泦涓敹鍙ｈ璁′护鐗屽拰 Element Plus 缁勪欢瑙嗚銆?2. 璋冩暣 `ProTable`銆乣AppTableCard`銆乣AppFormDialog`銆乣ProDrawer` 鐨勫眬閮ㄦ牱寮忥紝閬垮厤涓庡叏灞€鏍峰紡浜掔浉鎵撴灦銆?3. 灏?`MajorDemandView` 鐨勫師鐢?`el-drawer` 鏀逛负缁熶竴 `ProDrawer`銆?4. 鎵ц `pms-web` 鍓嶇鏋勫缓楠岃瘉锛屽苟璁板綍杩涘害銆?
+## Status
+- 2026-05-27: 宸插畬鎴愭湰杞墠绔?UI 缁熶竴鏀跺彛銆傛柊澧?`clean-ui.css` 浣滀负鏈€鍚庡姞杞界殑缁熶竴瑕嗙洊灞傦紝鏀舵暃瀛椾綋銆佽儗鏅€侀鑹层€佸渾瑙掋€侀槾褰便€佹寜閽€佺瓫閫夊尯銆佽〃鏍笺€佸崱鐗囥€佸脊绐楀拰鎶藉眽锛涘悓姝ヨ皟鏁?`ProTable`銆乣AppTableCard`銆乣AppFormDialog`銆乣ProDrawer`锛屽苟灏嗛噸澶ч渶姹傝鎯呬粠鍘熺敓 `el-drawer` 鏀逛负 `ProDrawer`銆?
+## Verification
+- `cd pms-web && npm run build` 閫氳繃锛沄ite 浠嶆彁绀烘棦鏈夌害 590KB chunk size warning銆?- 鏈湴 Vite `http://127.0.0.1:5173/` 杩斿洖 200銆?- Playwright headless 鐧诲綍 `admin/123456` 鍚庤闂?`/major-demand/list`锛岀‘璁ら〉闈㈤潪绌恒€乣--pms-primary=#2563eb` 涓?`--pms-bg=#f5f7fa` 鐢熸晥锛岃〃鏍煎崱鐗囧急闃村奖鍜屽皬鍦嗚鐢熸晥锛岃鎯呮娊灞夌敱 `.pro-drawer` 娓叉煋銆?
+## Goal
+- 寮哄寲 PMS 鍓嶇璺ㄦā鍧楁暟鎹仈鍔ㄥ拰涓撲笟鍖栦氦浜掕川鎰燂細浠讳竴妯″潡鍐欐搷浣滄垚鍔熷悗锛岀浉鍏虫ā鍧椼€侀椤点€侀璀︺€佹姤琛ㄧ瓑渚濊禆瑙嗗浘鑳借嚜鍔ㄦ敹鍒板埛鏂颁俊鍙凤紝鍑忓皯鈥滄敼涓€澶勫叾浠栧湴鏂逛笉鍔ㄢ€濈殑鍓茶鎰熴€?
+## Non-goals
+- 涓嶆敼鍙樺悗绔?API 濂戠害銆佷笉鏂板鍚庣鎺ュ彛銆佷笉鏀逛笟鍔＄姸鎬佹満璇箟銆?- 涓嶄竴娆℃€ч噸鍐欐墍鏈夐〉闈㈡暟鎹祦锛涙湰杞厛钀藉湴缁熶竴鍙樻洿骞挎挱鍜屼緷璧栧埛鏂板熀纭€璁炬柦銆?- 涓嶅紩鍏ユ柊鐨勭姸鎬佺鐞嗗簱鎴栬繍琛屾椂渚濊禆銆?
+## Constraints
+- 淇濇寔鐜版湁 Vue 3 + Element Plus 鏋舵瀯锛屼紭鍏堝鐢?`useLinkedRealtimeRefresh`銆?- 閬垮厤椤甸潰鍒濆鍔犺浇閲嶅璇锋眰椋庢毚锛屼簨浠跺埛鏂伴渶瑕佽妭娴?鍘婚噸銆?- 淇濇寔鐜版湁鎵嬪姩 `notifyDataChanged` 璋冪敤鍏煎銆?
+## Acceptance criteria
+- 鍐欐帴鍙ｆ垚鍔熷悗鑳藉鑷姩骞挎挱妯″潡鏁版嵁鍙樻洿銆?- 椤甸潰榛樿鐩戝惉鏁版嵁鍙樻洿浜嬩欢锛屼笉鍐嶅洜涓?`enableAutoRefresh=false` 鑰屽け鏁堛€?- 鏀寔妯″潡渚濊禆鎵╂暎锛屼緥濡傞」鐩?鍖婚櫌/浜哄憳/宸ユ椂/鎶ヤ慨鍙樻洿浼氬埛鏂伴椤点€侀璀︽垨鎶ヨ〃绛夊叧鑱旇鍥俱€?- 瑙嗚涓婅繘涓€姝ュ帇浣?hero 娓愬彉鍜岃楗板櫔闊筹紝闈犳暟鎹崱鐗囧拰娓呮櫚灞傜骇鍛堢幇涓撲笟鍚庡彴鎰熴€?- 鍓嶇鏋勫缓閫氳繃锛屽苟瀹屾垚鑷冲皯涓€涓笟鍔￠〉鑱斿姩楠岃瘉銆?
+## Steps
+1. 鏂板鍓嶇鏁版嵁鍚屾宸ュ叿锛岄泦涓淮鎶?API 璺緞鍒颁笟鍔?scope 鐨勬槧灏勩€乻cope 渚濊禆鎵╂暎鍜屾祻瑙堝櫒浜嬩欢骞挎挱銆?2. 鏀归€?`useLinkedRealtimeRefresh`锛氶粯璁ょ洃鍚暟鎹彉鏇翠簨浠讹紝淇濈暀瀹氭椂/鑱氱劍鍒锋柊寮€鍏筹紝骞跺姞鍏ュ埛鏂板幓閲嶃€?3. 鍦?Axios 鍝嶅簲鎷︽埅鍣ㄤ腑瀵规垚鍔熷啓鎿嶄綔鑷姩骞挎挱鍙樻洿锛岃鐩?POST/PUT/PATCH/DELETE銆?4. 琛ュ厖 `clean-ui.css` 瀵规ā鍧?hero/淇″彿鍗?鎺у埗鍗＄殑涓撲笟鍖栨敹鍙ｏ紝鍑忓皯澶ч潰绉笎鍙樺拰寮鸿楗般€?5. 鎵ц鍓嶇鏋勫缓涓庢湰鍦伴〉闈㈤獙璇侊紝骞惰褰曡繘搴︺€?
+## Status
+- 2026-05-27: 宸插畬鎴愭湰杞暟鎹仈鍔ㄥ拰涓撲笟鍖栬瑙夋敹鍙ｃ€傛柊澧?`dataSync.ts` 闆嗕腑缁存姢鍙樻洿浜嬩欢銆丄PI 鍐欐搷浣?scope 鎺ㄦ柇鍜岃法妯″潡渚濊禆鎵╂暎锛涙敼閫?`useLinkedRealtimeRefresh` 浣块〉闈㈤粯璁ょ洃鍚彉鏇翠簨浠跺苟鑺傛祦鍒锋柊锛涘湪 Axios 鍝嶅簲鎷︽埅鍣ㄤ腑瀵规垚鍔熷啓鎿嶄綔鑷姩骞挎挱鍙樻洿锛涜ˉ鍏?`clean-ui.css` 瀵规ā鍧?hero 涓庝俊鍙峰崱鐨勪綆鍣煶瑕嗙洊銆?
+## Verification
+- `cd pms-web && npm run build` 閫氳繃锛沄ite 浠嶆彁绀烘棦鏈夌害 593KB chunk size warning銆?- 鏂板紑骞插噣 Vite 瀹炰緥 `http://127.0.0.1:5174/` 杩斿洖 200銆?- Playwright headless 鐧诲綍 `admin/123456` 鍚庤闂?`/dashboard`锛屾ā鎷?`workhours` 鏁版嵁鍙樻洿浜嬩欢锛岄椤佃嚜鍔ㄦ柊澧炶姹?`/api/projects`銆乣/api/alerts/center`銆乣/api/annual-reports/summary`銆乣/api/dashboard/v2`銆?- 鍚屼竴楠岃瘉涓‘璁?`clean-ui.css` 瑙勫垯宸插姞杞斤紝棣栭〉 hero 鑳屾櫙涓虹櫧搴曠嚎鎬у眰銆佹枃瀛椾负娣辫壊銆佸渾瑙掍负 10px銆侀槾褰变负寮遍槾褰便€?
+## Goal
+- 缁熶竴 PMS 鍚勬ā鍧楀垎椤垫帶浠惰瑙夛紝璁╅〉鐮併€佹€绘暟銆佹瘡椤垫潯鏁般€佽烦杞緭鍏ュ拰鍓嶅悗缈婚〉鎸夐挳绗﹀悎绠€绾︺€佷笓涓氥€佷綆鍣煶鍚庡彴椋庢牸銆?
+## Non-goals
+- 涓嶄慨鏀瑰垎椤垫暟鎹€昏緫銆侀粯璁?page size銆佹帴鍙ｅ弬鏁版垨琛ㄦ牸缁勪欢濂戠害銆?- 涓嶉€愰〉鏇挎崲 `el-pagination` 妯℃澘銆?
+## Constraints
+- 鍙湪鏈€缁堝叏灞€瑕嗙洊灞?`clean-ui.css` 涓鐞嗭紝閬垮厤缁х画澧炲姞椤甸潰绾ф牱寮忓啿绐併€?- 蹇呴』鍏煎宸叉湁 `background` 妯″紡鍜屾櫘閫?`el-pagination` 鐢ㄦ硶銆?- 绉诲姩绔渶瑕佸彲妯悜婊氬姩锛屼笉鎸ゅ帇琛ㄦ牸甯冨眬銆?
+## Acceptance criteria
+- 鍏ㄧ珯鍒嗛〉鎸夐挳灏哄銆侀棿璺濄€佽竟妗嗐€佹縺娲绘€併€佺鐢ㄦ€佺粺涓€銆?- 鍘婚櫎鏃ф牱寮忛噷鐨勬笎鍙樸€佷笂娴€侀噸闃村奖銆?- 姣忛〉鏉℃暟閫夋嫨鍣ㄣ€佽烦杞緭鍏ャ€佹€绘暟瀛椾綋涓庢暣浣?UI 鍙橀噺涓€鑷淬€?- 鍓嶇鏋勫缓閫氳繃锛屽苟閫氳繃椤甸潰瀹炴祴纭鍒嗛〉鏍峰紡鐢熸晥銆?
+## Steps
+1. 鎵╁睍 `clean-ui.css` 鐨勫垎椤垫渶缁堣鐩栬鍒欍€?2. 鎵ц鍓嶇鏋勫缓銆?3. 鐢?Playwright 妫€鏌ヨ嚦灏戜竴涓湁鍒嗛〉鐨勪笟鍔￠〉锛岀‘璁?computed style 鐢熸晥銆?
+## Status
+- 2026-05-27: 宸插畬鎴愬垎椤电粺涓€鏀跺彛銆俙clean-ui.css` 鐜板湪瑕嗙洊 `.pager`銆乣.el-pagination`銆侀〉鐮併€佷笂涓€椤?涓嬩竴椤点€佹€绘暟銆佹瘡椤垫潯鏁伴€夋嫨鍣ㄣ€佽烦杞緭鍏ャ€佺鐢ㄦ€佸拰绉诲姩绔í鍚戞粴鍔紝鍘婚櫎鏃у垎椤电殑娓愬彉銆佷笂娴拰閲嶉槾褰便€?
+## Verification
+- `cd pms-web && npm run build` 閫氳繃锛沄ite 浠嶆彁绀烘棦鏈夌害 593KB chunk size warning銆?- Playwright headless 鐧诲綍 `admin/123456` 鍚庤闂?`http://127.0.0.1:5174/project/list`锛岀‘璁ゅ垎椤佃鍒欏凡鍔犺浇锛屾櫘閫氶〉鐮佸拰婵€娲婚〉鐮佸潎涓?32px 楂樸€?px 鍦嗚銆佹棤闃村奖鏃犱笂娴紱婵€娲绘€佷负 `#2563eb`锛涙€绘暟鍜屾瘡椤垫潯鏁伴€夋嫨鍣ㄦ牱寮忕粺涓€銆?
+## Goal
+- 淇 Dashboard 閲嶅ぇ闇€姹傛槑缁嗕腑鍖婚櫌/瀹㈡埛銆佽礋璐ｄ汉銆佽鍒掑畬鎴愮瓑瀛楁鏄剧ず `--` 鐨勯棶棰橈紝骞朵妇涓€鍙嶄笁缁熶竴閲嶅ぇ闇€姹傚師濮嬪鍏ュ垪鐨勫瓧娈佃В鏋愯鍒欍€?
+## Non-goals
+- 涓嶄慨鏀归噸澶ч渶姹傚悗绔帴鍙ｅ绾︼紝涓嶈縼绉绘暟鎹紝涓嶆敼鍙?workflow 鐘舵€佹満銆?- 涓嶈皟鏁村浘琛ㄧ粨鏋勩€佽矾鐢辩粨鏋勬垨鏉冮檺閫昏緫銆?
+## Constraints
+- 瀛楁瑙ｆ瀽搴斿吋瀹?Excel 鍘熷鍒楀悕銆佸巻鍙插鍏ュ垪鍚嶅拰 `_RowId`銆?- 涓嶈兘鎶?`XXXX`銆乣--`銆乣鏈缃甡 绛夊崰浣嶅€煎綋鎴愭湁鏁堜笟鍔″瓧娈点€?- Dashboard 鍜岄噸澶ч渶姹傚垪琛ㄩ〉搴斿叡鐢ㄥ悓涓€濂楄В鏋愰€昏緫锛岄伩鍏嶄笅娆″瓧娈靛悕鍙樺寲鏃跺啀娆＄┖鐧姐€?
+## Acceptance criteria
+- Dashboard 閲嶅ぇ闇€姹傛槑缁嗚兘鏄剧ず鐪熷疄鍖婚櫌銆佽礋璐ｄ汉銆侀渶姹傛爣棰樸€?- 閲嶅ぇ闇€姹傚垪琛ㄩ〉璐熻矗浜鸿兘浠?`鏈嶅姟浜哄憳` 绛夊師濮嬪垪鍏滃簳灞曠ず銆?- 琛岃烦杞粛浣跨敤姝ｇ‘ rowId銆?- 鍓嶇鏋勫缓閫氳繃锛屽苟閫氳繃瀹為〉楠岃瘉銆?
+## Steps
+1. 鏂板 `majorDemandFields.ts`锛岄泦涓В鏋?rowId銆侀渶姹傛爣棰樸€佸尰闄?瀹㈡埛銆佽礋璐ｄ汉銆佽鍒掑畬鎴愩€佺姸鎬併€?2. 鏀归€?`DashboardView` 閲嶅ぇ闇€姹?drill 鏁版嵁婧愶紝鏀寔 `_RowId` 骞朵娇鐢ㄨВ鏋愬伐鍏枫€?3. 鏀归€?`MajorDemandView` 鐨?owner/filter/displayRows锛屼娇鐢ㄨВ鏋愬伐鍏蜂綔涓?workflow 瀛楁鍏滃簳銆?4. 鏋勫缓楠岃瘉骞剁敤 Playwright 妫€鏌?Dashboard 涓庨噸澶ч渶姹傚垪琛ㄩ〉瀛楁涓嶅啀绌虹櫧銆?
+## Status
+- 2026-05-27: 宸插畬鎴愩€傛柊澧為噸澶ч渶姹傚瓧娈佃В鏋愬伐鍏凤紝Dashboard 閲嶅ぇ闇€姹?drill 鏀逛负閫氳繃 `_RowId` 鍏宠仈鍘熷琛屽苟缁熶竴瑙ｆ瀽鍖婚櫌/瀹㈡埛銆佽礋璐ｄ汉銆佹爣棰樸€佺姸鎬佸拰璁″垝瀹屾垚锛涢噸澶ч渶姹傚垪琛ㄩ〉鐨勮礋璐ｄ汉绛涢€変笌灞曠ず鍚屾浣跨敤鍚屼竴濂楀厹搴曡鍒欙紝閬垮厤 workflow 瀛楁涓虹┖鏃堕〉闈㈠啀娆℃樉绀虹┖鐧姐€?
+## Verification
+- `cd pms-web && npm run build` 閫氳繃锛沄ite 浠嶆彁绀烘棦鏈夌害 593KB chunk size warning銆?- `dotnet build PMS.slnx` 澶辫触锛氬綋鍓?.NET SDK/MSBuild 涓嶈瘑鍒?`.slnx` 鐨?`<Solution>` 鏍煎紡銆?- `dotnet build PMS.sln` 閫氳繃锛? warning, 0 error銆?- Playwright headless 鐧诲綍 `admin/123456` 鍚庤闂?`http://127.0.0.1:5174/dashboard`锛屽垏鍒伴噸澶ч渶姹傛爣绛撅紝纭棣栧睆琛屾樉绀?`姝︽眽鍎跨鍖婚櫌`銆乣鑸掗珮鎴恅銆乣浼犳煋鐥呬笂鎶锛屼笉鍐嶆槸鍖婚櫌/璐熻矗浜哄叏 `--`銆?- Playwright headless 璁块棶 `http://127.0.0.1:5174/major-demand/list`锛岀‘璁ゅ垪琛ㄨ礋璐ｄ汉鍙粠鍘熷 `鏈嶅姟浜哄憳` 鍒楀厹搴曟樉绀猴紝濡?`鑸掗珮鎴恅銆乣瀛熷崜`銆乣鏋楀嘲`銆?
+## Goal
+- 寮哄寲鍚勬ā鍧楅《閮ㄥ伐浣滃彴/hero 鐨勪笓涓氬寲瑙嗚鍖哄垎锛岃棣栧睆椤跺尯鏄庢樉鎵挎媴鈥滄ā鍧楀伐浣滃彴鈥濊鑹诧紝鑰屼笉鏄笌鏅€氬唴瀹瑰崱鐗囨贩鍦ㄤ竴璧枫€?
+## Non-goals
+- 涓嶉€愰〉閲嶅啓椤甸潰妯℃澘锛屼笉鏀瑰彉涓氬姟鍏ュ彛銆佺瓫閫夐€昏緫銆佹寜閽姩浣滄垨鍚庣 API銆?- 涓嶆柊澧炲浘鐗囥€佹彃鐢绘垨瑁呴グ鎬ц祫婧愩€?
+## Constraints
+- 浼樺厛鍦ㄦ渶缁堝叏灞€瑕嗙洊灞?`clean-ui.css` 涓敹鍙ｏ紝閬垮厤缁х画鍒堕€犻〉闈㈢骇鏍峰紡鍒嗗弶銆?- 淇濇寔绠€绾︺€佸共鍑€銆佷綆瑙嗚鍣煶锛屼娇鐢ㄧ粨鏋勩€佽竟妗嗐€佹祬鑹插垎鍖哄拰妯″潡鑹叉爣鍖哄垎锛屼笉鍥炲埌澶ч潰绉己娓愬彉銆?- 闇€瑕佽鐩栧凡鏈?hero 绫诲拰浠嶄娇鐢?`.page-head` 鐨勬櫘閫氭ā鍧楅《閮ㄣ€?
+## Acceptance criteria
+- 椤堕儴宸ヤ綔鍙颁笌涓嬫柟琛ㄦ牸/绛涢€夊尯鏈夋竻鏅拌瑙夎竟鐣屻€?- 宸︿晶鏍囬鍖恒€佹寚鏍囧尯銆佸彸渚у姩浣滃尯灞傜骇娓呮锛屾枃瀛椾笉鍐嶅洜涓虹櫧搴?浣庡姣旇€屽彂娣°€?- project/contract/alert/inspection/handover/map/kpi/report/dashboard 绛?hero 鐨勬帶鍒跺崱銆佸揩鎹峰姩浣滃崱椋庢牸缁熶竴銆?- 鍓嶇鏋勫缓閫氳繃锛屽苟瀹炴祴鑷冲皯宸℃绠＄悊椤甸《閮ㄥ伐浣滃彴鏍峰紡鐢熸晥銆?
+## Steps
+1. 鎵╁睍 `clean-ui.css` 鐨勯《閮ㄥ伐浣滃彴瑙勫垯锛岃ˉ榻愬悇妯″潡 hero銆乻ignal銆乧ontrol銆乹uick action 鐨勭粺涓€瑕嗙洊銆?2. 瀵?`.page-head` 澧炲姞杞婚噺宸ヤ綔鍙拌竟鐣屽拰鏍囬灞傜骇锛岃鐩栨湭鍗囩骇 hero 鐨勬ā鍧椼€?3. 鏋勫缓骞剁敤 Playwright 楠岃瘉宸℃绠＄悊椤甸《閮ㄥ伐浣滃彴瀵规瘮搴︺€佽竟鐣屽拰鍔ㄤ綔鍖烘牱寮忋€?
+## Status
+- 2026-05-27: 宸插畬鎴愩€俙clean-ui.css` 宸茬粺涓€鍚勬ā鍧楅《閮ㄥ伐浣滃彴鐨勬ā鍧楄壊鏍囥€佹祬鑹茶儗鏅€侀《閮ㄥ己璋冪嚎銆佹寚鏍囧崱宸︿晶鑹叉爣銆佸彸渚у姩浣滃尯鍒嗘爮銆乧ontrol 鍗″拰 quick action 鍗★紱鍚屾缁欎粛浣跨敤 `.page-head` 鐨勬櫘閫氭ā鍧楀鍔犺交閲忓伐浣滃彴杈圭晫銆?
+## Verification
+- `cd pms-web && npm run build` 閫氳繃锛沄ite 浠嶆彁绀烘棦鏈夌害 593KB chunk size warning銆?- `dotnet build PMS.slnx` 澶辫触锛氬綋鍓?.NET SDK/MSBuild 涓嶈瘑鍒?`.slnx` 鐨?`<Solution>` 鏍煎紡銆?- `dotnet build PMS.sln` 閫氳繃锛? warning, 0 error銆?- Playwright headless 鐧诲綍 `admin/123456` 鍚庤闂?`http://127.0.0.1:5174/inspection/plan`锛岀‘璁?`.inspection-hero` 浣跨敤宸℃妯″潡鑹叉爣銆佸彸渚у姩浣滃尯鏈夋祬鑹插垎鏍忥紝quick action 鏍囬涓烘繁鑹层€佽鏄庝负鐏拌壊锛屼笉鍐嶅嚭鐜扮櫧搴曚綆瀵规瘮銆?- Playwright headless 璁块棶 `http://127.0.0.1:5174/product/list`锛岀‘璁ゆ櫘閫?`.page-head` 鍏峰 4px 宸︿晶涓昏壊杈圭晫銆佹祬鑹茶儗鏅拰缁熶竴鍦嗚闃村奖銆?
+## Goal
+- Upgrade `pms-web/src/views/workhours/WorkHoursView.vue` from a plain list page into an operations-oriented work-hours service desk.
 
 ## Non-goals
-- 不修改业务代码、不重构模块、不调整接口契约。
-- 不修复审查中发现的问题，仅输出风险清单和验证结果。
+- Do not change backend work-hours contracts, workflow APIs, or access-control logic in this task.
+- Do not redesign unrelated operations modules in the same patch.
 
 ## Constraints
-- 遵守现有后端分层和前端目录约束。
-- 保留当前工作区已有改动，不回滚 `pms-web/src/views/login/LoginView.vue` 或数据库文件。
+- Keep existing work-hours search, export, create, edit, submit, confirm, reject, delete, detail, and route-deep-link behavior available.
+- Scope implementation to `pms-web/src/views/workhours/WorkHoursView.vue` plus memory-bank records only.
+- Keep the page aligned with the current clean-ui language and avoid introducing new frontend dependencies.
 
 ## Acceptance criteria
-- 审查输出包含后端和前端发现，按风险排序并标明文件/行号。
-- 完成后端和前端构建验证，记录 `.slnx` 与传统 `.sln` 的验证差异。
+- The work-hours page shows a clear first-screen service desk with hero signals, quick actions, insight cards, and the existing summary/table workflow below.
+- Overview cards stay synchronized with search, reset, type filtering, manual refresh, route query changes, and record mutations.
+- Detail deep links with `action=detail` continue to work.
+- `cd pms-web && npm run build` passes, and the logged-in page is checked in browser.
 
 ## Steps
-1. 阅读项目 brief、架构说明、当前实现计划和进度。
-2. 审查认证、权限映射、数据范围过滤、报表/审计/API 关键链路。
-3. 审查前端请求封装、路由权限、登录态和关键页面 API 调用。
-4. 执行 `dotnet build PMS.slnx`、`dotnet build PMS.sln` 与 `npm run build`。
-5. 记录审查进度与最终发现。
+1. Add a filtered overview data load alongside the existing paged table.
+2. Rebuild the first screen into a work-hours service desk with signals, quick actions, and insight cards tied to the current filter state.
+3. Keep route query sync, detail deep links, and mutation refresh behavior consistent across overview and table areas.
+4. Build and verify in browser, then record progress.
 
 ## Status
-- 2026-05-27: 已完成前后端审查。主要发现包括 `/api/reports` 权限映射缺失、认证种子逻辑重置改密账号、部分医院范围为空时列表/汇总回退全量、Handover 看板未按数据范围过滤、若干明细/写接口缺少目标记录范围校验。
-
-## Verification
-- `dotnet build PMS.slnx` 失败：当前 SDK 不识别 `.slnx` 的 `<Solution>` 格式。
-- `dotnet build PMS.sln` 通过：0 warning, 0 error。
-- `cd pms-web && npm run build` 通过；Vite 报告一个约 590KB 的 chunk size warning。
+- 2026-06-04: Completed the `WorkHoursView` service-desk upgrade. The page now loads filtered overview data in parallel with the paged table, adds a hero work area, quick actions, review queue, personnel/hospital/type insight cards, extends the detail drawer with product and delivery fields, and keeps overview/table state synchronized across search, reset, type filtering, route deep links, and mutation refresh.
+- 2026-06-04: Continued the same slice by aligning work-hours summary metrics with the current filter scope. `/api/workhours/summary` now accepts the same personnel/hospital/date/type filters and access scope as the list query, and `WorkHoursView.vue` refreshes summary, overview, and table data together so first-screen cards no longer drift from the current result set.
 
 ## Goal
-- 将 PMS 各业务模块界面统一收口为简约、干净、低视觉噪音的后台产品风格，重点统一字体、设计令牌、卡片、表格、筛选区、抽屉与弹窗体验。
+- Upgrade `pms-web/src/views/handover/HandoverListView.vue` from a workflow-heavy list page into a clearer handover service desk for operations supervisors.
 
 ## Non-goals
-- 不改后端 API、权限模型、业务流程状态语义。
-- 不重写各业务页面的数据流，不做跨模块信息架构大迁移。
-- 不新增营销式插画或装饰图片；当前是运维后台，优先用克制 UI 语言统一。
+- Do not change handover backend contracts, workflow actions, or kanban APIs in this task.
+- Do not redesign unrelated operations modules in the same patch.
 
 ## Constraints
-- 主要改动限制在 `pms-web/src` 的全局样式与通用组件。
-- 保留 Element Plus 兼容，不新增运行时依赖。
-- 页面操作入口和现有业务动作必须保持可用。
+- Keep existing search, export, detail drawer, workflow actions, route deep links, and kanban behavior intact.
+- Scope implementation to `pms-web/src/views/handover/HandoverListView.vue` plus memory-bank records only.
+- Make first-screen insights derive from the currently filtered dataset instead of introducing a second conflicting business口径.
 
 ## Acceptance criteria
-- 全站背景、字体、按钮、表格、筛选、卡片、弹窗/抽屉视觉语言统一。
-- 避免继续叠加渐变、光晕、浮动阴影等视觉噪音。
-- 至少处理一个明显不一致的原生 `el-drawer` 使用点。
-- 前端构建通过。
+- The handover page shows a clearer first-screen service desk with insight cards for queue priority, source groups, owner load, and batch/type structure.
+- Hero signals, summary metrics, and quick actions stay aligned with the current filtered result set.
+- Existing detail, workflow, and kanban actions continue to work.
+- The live Vite module compiles and the page is checked in browser.
 
 ## Steps
-1. 新增统一 clean UI 覆盖层，放在现有全局样式之后加载，集中收口设计令牌和 Element Plus 组件视觉。
-2. 调整 `ProTable`、`AppTableCard`、`AppFormDialog`、`ProDrawer` 的局部样式，避免与全局样式互相打架。
-3. 将 `MajorDemandView` 的原生 `el-drawer` 改为统一 `ProDrawer`。
-4. 执行 `pms-web` 前端构建验证，并记录进度。
+1. Reuse the existing handover full dataset load to derive a filter-scoped overview model.
+2. Add first-screen insight cards without removing the current hero, summary strip, detail drawer, or kanban workflow.
+3. Validate the runtime module and page behavior, then record progress.
 
 ## Status
-- 2026-05-27: 已完成本轮前端 UI 统一收口。新增 `clean-ui.css` 作为最后加载的统一覆盖层，收敛字体、背景、颜色、圆角、阴影、按钮、筛选区、表格、卡片、弹窗和抽屉；同步调整 `ProTable`、`AppTableCard`、`AppFormDialog`、`ProDrawer`，并将重大需求详情从原生 `el-drawer` 改为 `ProDrawer`。
-
-## Verification
-- `cd pms-web && npm run build` 通过；Vite 仍提示既有约 590KB chunk size warning。
-- 本地 Vite `http://127.0.0.1:5173/` 返回 200。
-- Playwright headless 登录 `admin/123456` 后访问 `/major-demand/list`，确认页面非空、`--pms-primary=#2563eb` 与 `--pms-bg=#f5f7fa` 生效，表格卡片弱阴影和小圆角生效，详情抽屉由 `.pro-drawer` 渲染。
+- 2026-06-05: Completed the `HandoverListView` service-desk upgrade. The page now derives a filter-scoped overview from the existing full handover dataset, uses that scope for first-screen summary values, and adds four insight cards for priority queue, source group distribution, owner load, and batch/type structure while preserving export, detail, workflow, and kanban behavior.
 
 ## Goal
-- 强化 PMS 前端跨模块数据联动和专业化交互质感：任一模块写操作成功后，相关模块、首页、预警、报表等依赖视图能自动收到刷新信号，减少“改一处其他地方不动”的割裂感。
+- Upgrade `pms-web/src/views/major-demand/MajorDemandView.vue` from a plain workflow list into a clearer operations-first major-demand service desk.
 
 ## Non-goals
-- 不改变后端 API 契约、不新增后端接口、不改业务状态机语义。
-- 不一次性重写所有页面数据流；本轮先落地统一变更广播和依赖刷新基础设施。
-- 不引入新的状态管理库或运行时依赖。
+- Do not change the major-demand backend contracts, import structure, or workflow/comment APIs in this task.
+- Do not redesign unrelated operations modules in the same patch.
 
 ## Constraints
-- 保持现有 Vue 3 + Element Plus 架构，优先复用 `useLinkedRealtimeRefresh`。
-- 避免页面初始加载重复请求风暴，事件刷新需要节流/去重。
-- 保持现有手动 `notifyDataChanged` 调用兼容。
+- Keep existing filter form, batch actions, table operations, detail drawer, comment flow, edit flow, and export behavior intact.
+- Scope implementation to `pms-web/src/views/major-demand/MajorDemandView.vue` plus memory-bank records only.
+- Reuse the current `displayRows` filtered dataset as the single source of truth for first-screen insights.
 
 ## Acceptance criteria
-- 写接口成功后能够自动广播模块数据变更。
-- 页面默认监听数据变更事件，不再因为 `enableAutoRefresh=false` 而失效。
-- 支持模块依赖扩散，例如项目/医院/人员/工时/报修变更会刷新首页、预警或报表等关联视图。
-- 视觉上进一步压低 hero 渐变和装饰噪音，靠数据卡片和清晰层级呈现专业后台感。
-- 前端构建通过，并完成至少一个业务页联动验证。
+- The major-demand page shows a clear first-screen service desk with hero signals, quick actions, summary cards, and four insight cards.
+- First-screen values stay aligned with the current filtered result set and react to quick actions and summary selection.
+- Existing major-demand workflow, edit, comment, and export behaviors remain available.
+- The live Vite module compiles and the page is checked in browser.
 
 ## Steps
-1. 新增前端数据同步工具，集中维护 API 路径到业务 scope 的映射、scope 依赖扩散和浏览器事件广播。
-2. 改造 `useLinkedRealtimeRefresh`：默认监听数据变更事件，保留定时/聚焦刷新开关，并加入刷新去重。
-3. 在 Axios 响应拦截器中对成功写操作自动广播变更，覆盖 POST/PUT/PATCH/DELETE。
-4. 补充 `clean-ui.css` 对模块 hero/信号卡/控制卡的专业化收口，减少大面积渐变和强装饰。
-5. 执行前端构建与本地页面验证，并记录进度。
+1. Reuse `displayRows` to derive major-demand overview signals, ranking queues, and distribution buckets.
+2. Add a service-desk first screen ahead of the existing filter/table workflow without breaking actions.
+3. Validate the runtime module and page behavior, then record progress.
 
 ## Status
-- 2026-05-27: 已完成本轮数据联动和专业化视觉收口。新增 `dataSync.ts` 集中维护变更事件、API 写操作 scope 推断和跨模块依赖扩散；改造 `useLinkedRealtimeRefresh` 使页面默认监听变更事件并节流刷新；在 Axios 响应拦截器中对成功写操作自动广播变更；补充 `clean-ui.css` 对模块 hero 与信号卡的低噪音覆盖。
-
-## Verification
-- `cd pms-web && npm run build` 通过；Vite 仍提示既有约 593KB chunk size warning。
-- 新开干净 Vite 实例 `http://127.0.0.1:5174/` 返回 200。
-- Playwright headless 登录 `admin/123456` 后访问 `/dashboard`，模拟 `workhours` 数据变更事件，首页自动新增请求 `/api/projects`、`/api/alerts/center`、`/api/annual-reports/summary`、`/api/dashboard/v2`。
-- 同一验证中确认 `clean-ui.css` 规则已加载，首页 hero 背景为白底线性层、文字为深色、圆角为 10px、阴影为弱阴影。
+- 2026-06-05: Completed the `MajorDemandView` service-desk upgrade. The page now adds a hero workspace, quick actions, summary cards, and four insight cards for the priority queue, hospital distribution, owner load, and status structure, all derived from the existing filter-scoped `displayRows` dataset while preserving batch actions, workflow actions, detail, comment, edit, and export flows.
 
 ## Goal
-- 统一 PMS 各模块分页控件视觉，让页码、总数、每页条数、跳转输入和前后翻页按钮符合简约、专业、低噪音后台风格。
+- Upgrade `pms-web/src/views/alert/AlertCenterView.vue` from a summary-first list page into a clearer alert command desk for operations users.
 
 ## Non-goals
-- 不修改分页数据逻辑、默认 page size、接口参数或表格组件契约。
-- 不逐页替换 `el-pagination` 模板。
+- Do not change alert-center backend contracts, alert aggregation rules, or export behavior in this task.
+- Do not redesign unrelated operations modules in the same patch.
 
 ## Constraints
-- 只在最终全局覆盖层 `clean-ui.css` 中处理，避免继续增加页面级样式冲突。
-- 必须兼容已有 `background` 模式和普通 `el-pagination` 用法。
-- 移动端需要可横向滚动，不挤压表格布局。
+- Keep existing filter, export, pagination, and row jump behavior intact.
+- Scope implementation to `pms-web/src/views/alert/AlertCenterView.vue` plus memory-bank records only.
+- Reuse the current `/alerts/center` endpoint and derive first-screen insight cards from the same filtered dataset as the list.
 
 ## Acceptance criteria
-- 全站分页按钮尺寸、间距、边框、激活态、禁用态统一。
-- 去除旧样式里的渐变、上浮、重阴影。
-- 每页条数选择器、跳转输入、总数字体与整体 UI 变量一致。
-- 前端构建通过，并通过页面实测确认分页样式生效。
+- The alert center shows a clearer first-screen service desk with summary cards plus four insight cards for queue priority, hospital concentration, owner load, and source structure.
+- First-screen values stay aligned with the current filter state and react to quick actions and summary selection.
+- Existing row navigation and export behavior remain available.
+- The live Vite module compiles and the page is checked in browser.
 
 ## Steps
-1. 扩展 `clean-ui.css` 的分页最终覆盖规则。
-2. 执行前端构建。
-3. 用 Playwright 检查至少一个有分页的业务页，确认 computed style 生效。
+1. Reuse the current alert-center query to load a filtered overview dataset alongside the paged table.
+2. Add insight cards and move summary metrics onto the shared `SummaryMetrics` component while preserving filters and row jumps.
+3. Validate the runtime module and page behavior, then record progress.
 
 ## Status
-- 2026-05-27: 已完成分页统一收口。`clean-ui.css` 现在覆盖 `.pager`、`.el-pagination`、页码、上一页/下一页、总数、每页条数选择器、跳转输入、禁用态和移动端横向滚动，去除旧分页的渐变、上浮和重阴影。
-
-## Verification
-- `cd pms-web && npm run build` 通过；Vite 仍提示既有约 593KB chunk size warning。
-- Playwright headless 登录 `admin/123456` 后访问 `http://127.0.0.1:5174/project/list`，确认分页规则已加载，普通页码和激活页码均为 32px 高、6px 圆角、无阴影无上浮；激活态为 `#2563eb`；总数和每页条数选择器样式统一。
+- 2026-06-05: Completed the `AlertCenterView` service-desk upgrade. The page now keeps the existing hero and filter flow, switches summary metrics onto `SummaryMetrics`, loads a filtered overview dataset from the same `/alerts/center` endpoint, and adds four insight cards for the priority queue, hospital concentration, owner load, and source structure while preserving export, pagination, and row jump behavior.
 
 ## Goal
-- 修复 Dashboard 重大需求明细中医院/客户、负责人、计划完成等字段显示 `--` 的问题，并举一反三统一重大需求原始导入列的字段解析规则。
+- Upgrade `pms-web/src/views/inspection/InspectionPlanView.vue` into a clearer inspection command desk while preserving both the plan and result workflows.
 
 ## Non-goals
-- 不修改重大需求后端接口契约，不迁移数据，不改变 workflow 状态机。
-- 不调整图表结构、路由结构或权限逻辑。
+- Do not change inspection backend contracts, workflow actions, imports, or route semantics in this task.
+- Do not redesign unrelated operations modules in the same patch.
 
 ## Constraints
-- 字段解析应兼容 Excel 原始列名、历史导入列名和 `_RowId`。
-- 不能把 `XXXX`、`--`、`未设置` 等占位值当成有效业务字段。
-- Dashboard 和重大需求列表页应共用同一套解析逻辑，避免下次字段名变化时再次空白。
+- Keep the existing hero, tabs, filter forms, plan/result actions, detail drawers, deep links, and upload/export flows intact.
+- Scope implementation to `pms-web/src/views/inspection/InspectionPlanView.vue` plus memory-bank records only.
+- Derive the new first-screen insights from the existing filtered plan dataset and a filtered full result dataset so summary cards and insight cards stay on the same business口径.
 
 ## Acceptance criteria
-- Dashboard 重大需求明细能显示真实医院、负责人、需求标题。
-- 重大需求列表页负责人能从 `服务人员` 等原始列兜底展示。
-- 行跳转仍使用正确 rowId。
-- 前端构建通过，并通过实页验证。
+- The inspection page shows four first-screen insight cards in the plan tab and four in the result tab.
+- Hero signals, summary metrics, and quick actions stay aligned with the active filtered plan/result scope.
+- Existing plan/result workflow actions and route-driven tab switching continue to work.
+- The live Vite module compiles and the page is checked in browser.
 
 ## Steps
-1. 新增 `majorDemandFields.ts`，集中解析 rowId、需求标题、医院/客户、负责人、计划完成、状态。
-2. 改造 `DashboardView` 重大需求 drill 数据源，支持 `_RowId` 并使用解析工具。
-3. 改造 `MajorDemandView` 的 owner/filter/displayRows，使用解析工具作为 workflow 字段兜底。
-4. 构建验证并用 Playwright 检查 Dashboard 与重大需求列表页字段不再空白。
+1. Reuse the current plan full dataset plus a filtered full result dataset to derive queue, distribution, and structure insights.
+2. Add plan/result insight cards without removing the current hero, summary strip, filters, or action flows.
+3. Validate the runtime module and browser behavior, then record progress.
 
 ## Status
-- 2026-05-27: 已完成。新增重大需求字段解析工具，Dashboard 重大需求 drill 改为通过 `_RowId` 关联原始行并统一解析医院/客户、负责人、标题、状态和计划完成；重大需求列表页的负责人筛选与展示同步使用同一套兜底规则，避免 workflow 字段为空时页面再次显示空白。
-
-## Verification
-- `cd pms-web && npm run build` 通过；Vite 仍提示既有约 593KB chunk size warning。
-- `dotnet build PMS.slnx` 失败：当前 .NET SDK/MSBuild 不识别 `.slnx` 的 `<Solution>` 格式。
-- `dotnet build PMS.sln` 通过：0 warning, 0 error。
-- Playwright headless 登录 `admin/123456` 后访问 `http://127.0.0.1:5174/dashboard`，切到重大需求标签，确认首屏行显示 `武汉儿童医院`、`舒高成`、`传染病上报`，不再是医院/负责人全 `--`。
-- Playwright headless 访问 `http://127.0.0.1:5174/major-demand/list`，确认列表负责人可从原始 `服务人员` 列兜底显示，如 `舒高成`、`孟卓`、`林峰`。
+- 2026-06-05: Completed the `InspectionPlanView` service-desk upgrade. The page now adds four plan insight cards and four result insight cards, aligns hero signals and summary cards with the filtered plan/result datasets, and expands `loadResults()` to fetch a filtered full result set for the result-side overview while preserving plan/result actions, tabs, route query behavior, uploads, and export flow.
 
 ## Goal
-- 强化各模块顶部工作台/hero 的专业化视觉区分，让首屏顶区明显承担“模块工作台”角色，而不是与普通内容卡片混在一起。
+- Upgrade `pms-web/src/views/contract/ContractAlertView.vue` into a clearer contract-risk service desk for operations users.
 
 ## Non-goals
-- 不逐页重写页面模板，不改变业务入口、筛选逻辑、按钮动作或后端 API。
-- 不新增图片、插画或装饰性资源。
+- Do not change contract-alert backend contracts, export format, or project drill-down behavior in this task.
+- Do not redesign unrelated operations modules in the same patch.
 
 ## Constraints
-- 优先在最终全局覆盖层 `clean-ui.css` 中收口，避免继续制造页面级样式分叉。
-- 保持简约、干净、低视觉噪音，使用结构、边框、浅色分区和模块色标区分，不回到大面积强渐变。
-- 需要覆盖已有 hero 类和仍使用 `.page-head` 的普通模块顶部。
+- Keep the existing hero, filter form, export behavior, and project jump flow intact.
+- Scope implementation to `pms-web/src/views/contract/ContractAlertView.vue` plus memory-bank records only.
+- Reuse the existing `/contracts/alerts` endpoint and derive first-screen insights from the same filtered dataset as the table.
 
 ## Acceptance criteria
-- 顶部工作台与下方表格/筛选区有清晰视觉边界。
-- 左侧标题区、指标区、右侧动作区层级清楚，文字不再因为白底/低对比而发淡。
-- project/contract/alert/inspection/handover/map/kpi/report/dashboard 等 hero 的控制卡、快捷动作卡风格统一。
-- 前端构建通过，并实测至少巡检管理页顶部工作台样式生效。
+- The contract alert page shows a clearer first-screen service desk with four insight cards for priority queue, hospital concentration, service-group load, and validity/level structure.
+- Hero signals and summary metrics stay aligned with the active filtered dataset.
+- Existing filter, export, and row jump behavior remain available.
+- The live Vite module compiles and the page is checked in browser.
 
 ## Steps
-1. 扩展 `clean-ui.css` 的顶部工作台规则，补齐各模块 hero、signal、control、quick action 的统一覆盖。
-2. 对 `.page-head` 增加轻量工作台边界和标题层级，覆盖未升级 hero 的模块。
-3. 构建并用 Playwright 验证巡检管理页顶部工作台对比度、边界和动作区样式。
+1. Load a filtered full contract-alert dataset alongside the paged table and use it as the single source of truth for first-screen metrics.
+2. Add insight cards ahead of the existing table flow without removing current controls.
+3. Validate runtime compilation and browser behavior, then record progress.
 
 ## Status
-- 2026-05-27: 已完成。`clean-ui.css` 已统一各模块顶部工作台的模块色标、浅色背景、顶部强调线、指标卡左侧色标、右侧动作区分栏、control 卡和 quick action 卡；同步给仍使用 `.page-head` 的普通模块增加轻量工作台边界。
+- 2026-06-05: Completed the `ContractAlertView` service-desk upgrade. The page now loads a filtered full alert dataset alongside the paged table, derives summary cards and hero signals from that shared scope, and adds four insight cards for the priority queue, hospital concentration, service-group load, and validity/level structure while preserving filter, export, and project jump behavior.
 
-## Verification
-- `cd pms-web && npm run build` 通过；Vite 仍提示既有约 593KB chunk size warning。
-- `dotnet build PMS.slnx` 失败：当前 .NET SDK/MSBuild 不识别 `.slnx` 的 `<Solution>` 格式。
-- `dotnet build PMS.sln` 通过：0 warning, 0 error。
-- Playwright headless 登录 `admin/123456` 后访问 `http://127.0.0.1:5174/inspection/plan`，确认 `.inspection-hero` 使用巡检模块色标、右侧动作区有浅色分栏，quick action 标题为深色、说明为灰色，不再出现白底低对比。
-- Playwright headless 访问 `http://127.0.0.1:5174/product/list`，确认普通 `.page-head` 具备 4px 左侧主色边界、浅色背景和统一圆角阴影。
+## Goal
+- Upgrade `pms-web/src/views/dashboard/DashboardView.vue` into a clearer manager command desk that surfaces global risk, routing signals, and module coordination ahead of the chart layer.
+
+## Non-goals
+- Do not change dashboard backend contracts, chart drill-down behavior, or operator/supervisor/regional manager routing in this task.
+- Do not redesign unrelated modules in the same patch.
+
+## Constraints
+- Keep the existing hero, metrics, operations task panel, chart sections, and drill tables intact.
+- Scope implementation to `pms-web/src/views/dashboard/DashboardView.vue` plus memory-bank records only.
+- Reuse the current dashboard, alert-center, project, annual-report, major-demand, and operations-task data already loaded by the page.
+
+## Acceptance criteria
+- The manager dashboard shows a clearer first-screen command layer with four insight cards for priority queue, risk-source structure, regional focus, and closure pressure.
+- First-screen insight values stay aligned with the same live datasets already used by the dashboard and operations task panel.
+- Existing chart drill-down and quick-action navigation remain available.
+- The live Vite module compiles and the page is checked in browser.
+
+## Steps
+1. Reuse the currently loaded dashboard datasets to derive a global insight layer above the task panel and chart grid.
+2. Add the insight cards and supporting click-through behavior without removing the current charts or drill tables.
+3. Validate runtime compilation and browser behavior, then record progress.
+
+## Status
+- 2026-06-05: Completed the `DashboardView` command-desk upgrade. The page now adds a first-screen insight layer for the operations priority queue, risk-source structure, regional focus, and closure pressure using the same live datasets already loaded by the manager dashboard, while preserving the hero, KPI cards, operations task panel, charts, and drill tables.

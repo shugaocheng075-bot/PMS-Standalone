@@ -19,6 +19,22 @@
       </button>
     </div>
 
+    <OperationsTaskPanel
+      title="区域运维任务池"
+      subtitle="把区域内的任务压力聚到一个面板上，先盯逾期和高风险，再拆到具体医院。"
+      :summary="operationsSummary"
+      :tasks="operationsTasks"
+      :query="operationsQuery"
+      :loading="operationsLoading"
+      @refresh="void loadOperationsTasks()"
+      @query-change="void applyOperationsTaskQuery($event)"
+      @reset-query="void resetOperationsTaskQuery()"
+    >
+      <template #actions>
+        <el-button size="small" :loading="operationsLoading" @click="void loadOperationsTasks()" icon="Refresh">刷新任务</el-button>
+      </template>
+    </OperationsTaskPanel>
+
     <div class="workbench-grid">
       <AppTableCard class="todo-card">
           <template #header>
@@ -111,13 +127,24 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import AppTableCard from '../../components/AppTableCard.vue'
+import OperationsTaskPanel from '../../components/OperationsTaskPanel.vue'
 import { fetchWorkbench } from '../../api/modules/dashboard'
+import { useOperationsTasks } from '../../composables/useOperationsTasks'
 import type { WorkbenchData } from '../../types/workbench'
 import { getErrorMessage } from '../../utils/error'
 
 const router = useRouter()
 const loading = ref(false)
 const data = ref<WorkbenchData | null>(null)
+const {
+  loading: operationsLoading,
+  summary: operationsSummary,
+  tasks: operationsTasks,
+  query: operationsQuery,
+  loadOperationsTasks,
+  applyQuery: applyOperationsTaskQuery,
+  resetQuery: resetOperationsTaskQuery,
+} = useOperationsTasks(10)
 
 const statCards = computed(() => [
   { title: '区域项目', value: String(data.value?.myProjects ?? 0), context: '区域总览', note: '当前区域范围内需要持续管理的项目数量', onClick: () => void router.push('/project/list') },
@@ -129,7 +156,10 @@ const statCards = computed(() => [
 async function loadWorkbench() {
   loading.value = true
   try {
-    const res = await fetchWorkbench()
+    const [res] = await Promise.all([
+      fetchWorkbench(),
+      loadOperationsTasks(),
+    ])
     data.value = res.data
   } catch (err) {
     ElMessage.error(getErrorMessage(err, '加载工作台失败'))

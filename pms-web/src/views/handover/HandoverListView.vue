@@ -4,12 +4,12 @@
       <div class="handover-hero-main">
         <div class="handover-hero-kicker-row">
           <span class="handover-hero-kicker">Handover Management</span>
-          <span class="handover-hero-badge">{{ handoverFilterLabel }}</span>
+          <span class="handover-hero-badge">{{ activeHandoverFilterLabel }}</span>
         </div>
         <h2 class="handover-hero-title">交接管理</h2>
         <div class="handover-hero-subtitle">跟踪交接批次、阶段流转与看板进度</div>
         <div class="handover-hero-signals">
-          <div v-for="item in handoverHeroSignals" :key="item.label" class="handover-signal-card">
+          <div v-for="item in activeHandoverHeroSignals" :key="item.label" class="handover-signal-card">
             <span class="handover-signal-label">{{ item.label }}</span>
             <strong class="handover-signal-value">{{ item.value }}</strong>
             <span class="handover-signal-note">{{ item.note }}</span>
@@ -25,7 +25,7 @@
           </div>
         </div>
         <div class="handover-quick-grid">
-          <button v-for="action in handoverQuickActions" :key="action.title" class="handover-quick-action" @click="action.onClick()">
+          <button v-for="action in activeHandoverQuickActions" :key="action.title" class="handover-quick-action" @click="action.onClick()">
             <span class="handover-quick-title">{{ action.title }}</span>
             <span class="handover-quick-note">{{ action.note }}</span>
           </button>
@@ -35,7 +35,88 @@
 
     <SummaryMetrics :items="summaryCards" :columns="5" @select="onSummaryCardSelect" />
 
-    
+    <div class="handover-insight-grid">
+      <section class="handover-insight-card">
+        <div class="handover-insight-head">
+          <div>
+            <div class="handover-insight-title">待推进清单</div>
+            <div class="handover-insight-note">优先处理仍未完成的交接任务，先看未发起、再看待承接、最后看交接中批次。</div>
+          </div>
+          <el-tag size="small" type="warning" effect="light">{{ priorityQueue.length }} 项重点</el-tag>
+        </div>
+        <div v-if="priorityQueue.length" class="handover-queue-list">
+          <button
+            v-for="item in priorityQueue"
+            :key="item.id"
+            type="button"
+            class="handover-queue-item"
+            @click="onOpenDetail(item)"
+          >
+            <div class="handover-queue-main">
+              <strong>{{ item.hospitalName }}</strong>
+              <span>{{ item.productName || '未登记产品' }} · {{ item.handoverNo }}</span>
+            </div>
+            <div class="handover-queue-meta">
+              <el-tag size="small" :type="stageTag(item.stage)">{{ item.stage }}</el-tag>
+              <span>{{ responsibilityNode(item) }}</span>
+            </div>
+          </button>
+        </div>
+        <el-empty v-else description="当前范围内没有待推进交接任务" :image-size="72" />
+      </section>
+
+      <section class="handover-insight-card">
+        <div class="handover-insight-head">
+          <div>
+            <div class="handover-insight-title">来源组别分布</div>
+            <div class="handover-insight-note">快速判断当前交接主要来自哪些服务组，便于安排主管协同和交接节奏。</div>
+          </div>
+          <span class="handover-insight-meta">{{ fromGroupBuckets.length }} 个重点组别</span>
+        </div>
+        <div v-if="fromGroupBuckets.length" class="handover-chip-list">
+          <div v-for="item in fromGroupBuckets" :key="item.label" class="handover-chip">
+            <strong>{{ item.label }}</strong>
+            <span>{{ item.value }} 项</span>
+          </div>
+        </div>
+        <el-empty v-else description="暂无来源组别分布" :image-size="72" />
+      </section>
+
+      <section class="handover-insight-card">
+        <div class="handover-insight-head">
+          <div>
+            <div class="handover-insight-title">对接人负载</div>
+            <div class="handover-insight-note">查看当前范围内任务集中在哪些对接人，及时发现承接压力和待分配缺口。</div>
+          </div>
+          <span class="handover-insight-meta">{{ ownerBuckets.length }} 个对接口径</span>
+        </div>
+        <div v-if="ownerBuckets.length" class="handover-chip-list">
+          <div v-for="item in ownerBuckets" :key="item.label" class="handover-chip">
+            <strong>{{ item.label }}</strong>
+            <span>{{ item.value }} 项</span>
+          </div>
+        </div>
+        <el-empty v-else description="暂无对接人负载分布" :image-size="72" />
+      </section>
+
+      <section class="handover-insight-card">
+        <div class="handover-insight-head">
+          <div>
+            <div class="handover-insight-title">批次与类型结构</div>
+            <div class="handover-insight-note">帮助判断当前交接是实施转运维为主，还是组间交接更集中，以及批次节奏是否稳定。</div>
+          </div>
+          <span class="handover-insight-meta">{{ batchTypeBuckets.length }} 个结构标签</span>
+        </div>
+        <div v-if="batchTypeBuckets.length" class="handover-chip-list">
+          <div v-for="item in batchTypeBuckets" :key="item.label" class="handover-chip handover-chip--soft">
+            <strong>{{ item.label }}</strong>
+            <span>{{ item.value }} 项</span>
+          </div>
+        </div>
+        <el-empty v-else description="暂无批次和类型结构数据" :image-size="72" />
+      </section>
+    </div>
+
 
     <ProTable
       title="明细数据列表"
@@ -275,11 +356,16 @@ type HandoverSummaryCard = {
   active: boolean
 }
 
+type InsightBucket = {
+  label: string
+  value: number
+}
+
 const summaryCards = computed<HandoverSummaryCard[]>(() => [
   {
     key: '未发',
     title: '未发',
-    value: summary.value.pendingCount,
+    value: stageCounts.value.pending,
     context: '交接阶段',
     note: '查看尚未发起邮件的交接任务',
     color: '#7c98bc',
@@ -288,7 +374,7 @@ const summaryCards = computed<HandoverSummaryCard[]>(() => [
   {
     key: '已发邮件',
     title: '已发邮件',
-    value: summary.value.emailSentCount,
+    value: stageCounts.value.emailSent,
     context: '交接阶段',
     note: '查看已发起邮件等待承接的任务',
     color: '#8db3a8',
@@ -297,7 +383,7 @@ const summaryCards = computed<HandoverSummaryCard[]>(() => [
   {
     key: '交接中',
     title: '交接中',
-    value: summary.value.inProgressCount,
+    value: stageCounts.value.inProgress,
     context: '交接阶段',
     note: '聚焦仍在推进中的交接批次',
     color: '#c7a06c',
@@ -306,7 +392,7 @@ const summaryCards = computed<HandoverSummaryCard[]>(() => [
   {
     key: '已交接',
     title: '已交接',
-    value: summary.value.completedCount,
+    value: stageCounts.value.completed,
     context: '交接阶段',
     note: '查看已完成交接的历史记录',
     color: '#7d9f92',
@@ -315,7 +401,7 @@ const summaryCards = computed<HandoverSummaryCard[]>(() => [
   {
     key: 'all',
     title: '总数',
-    value: summary.value.total,
+    value: filteredRows.value.length,
     context: '全量视图',
     note: '返回全部交接记录与阶段分布',
     color: '#3f4f63',
@@ -426,6 +512,28 @@ const buildFilteredRows = (rows: HandoverItem[]) => {
   })
 }
 
+const buildScopedRows = (rows: HandoverItem[]) => buildFilteredRows(rows)
+  .filter((item) => !query.stage || item.stage === query.stage)
+  .filter((item) => !query.batch || item.batch === query.batch)
+  .filter((item) => !query.type || item.type === query.type)
+  .filter((item) => !query.fromGroup || item.fromGroup === query.fromGroup)
+  .filter((item) => !query.toOwner || item.toOwner === query.toOwner)
+
+const filteredRows = computed(() => buildScopedRows(allRows.value))
+
+const buildBuckets = (rows: HandoverItem[], getLabel: (item: HandoverItem) => string, limit = 5): InsightBucket[] => {
+  const counts = new Map<string, number>()
+  rows.forEach((item) => {
+    const label = getLabel(item).trim() || '未设置'
+    counts.set(label, (counts.get(label) ?? 0) + 1)
+  })
+
+  return Array.from(counts.entries())
+    .map(([label, value]) => ({ label, value }))
+    .sort((a, b) => (b.value - a.value) || a.label.localeCompare(b.label, 'zh-CN'))
+    .slice(0, limit)
+}
+
 type HandoverFilterState = {
   stage: string
   batch: string
@@ -460,6 +568,42 @@ const stageTag = (stage: string) => {
   if (stage === '已发邮件') return 'info'
   return 'danger'
 }
+
+const stageOrder: Record<string, number> = {
+  '鏈彂': 0,
+  '宸插彂閭欢': 1,
+  '浜ゆ帴涓?': 2,
+  '宸蹭氦鎺?': 3,
+}
+
+const getStageReferenceDate = (item: HandoverItem) => item.startedAt || item.emailSentDate || item.completedAt || ''
+
+const stageCounts = computed(() => ({
+  pending: filteredRows.value.filter((item) => item.stage === '鏈彂').length,
+  emailSent: filteredRows.value.filter((item) => item.stage === '宸插彂閭欢').length,
+  inProgress: filteredRows.value.filter((item) => item.stage === '浜ゆ帴涓?').length,
+  completed: filteredRows.value.filter((item) => item.stage === '宸蹭氦鎺?').length,
+}))
+
+const priorityQueue = computed(() => filteredRows.value
+  .filter((item) => item.stage !== '宸蹭氦鎺?')
+  .slice()
+  .sort((left, right) => {
+    const stageDiff = (stageOrder[left.stage] ?? 99) - (stageOrder[right.stage] ?? 99)
+    if (stageDiff !== 0) {
+      return stageDiff
+    }
+
+    return getStageReferenceDate(left).localeCompare(getStageReferenceDate(right), 'zh-CN')
+  })
+  .slice(0, 5))
+
+const fromGroupBuckets = computed(() => buildBuckets(filteredRows.value, (item) => item.fromGroup || '未设置组别'))
+const ownerBuckets = computed(() => buildBuckets(filteredRows.value, (item) => item.toOwner || '未分配对接人'))
+const batchTypeBuckets = computed(() => buildBuckets(
+  filteredRows.value,
+  (item) => `${item.batch || '未设置批次'} · ${item.type || '未设置类型'}`,
+))
 
 const formatDate = (value: string) => value.slice(0, 10)
 
@@ -590,12 +734,7 @@ const syncSingleDetailFromFilters = () => {
     return
   }
 
-  const filtered = buildFilteredRows(allRows.value)
-    .filter((item) => !query.stage || item.stage === query.stage)
-    .filter((item) => !query.batch || item.batch === query.batch)
-    .filter((item) => !query.type || item.type === query.type)
-    .filter((item) => !query.fromGroup || item.fromGroup === query.fromGroup)
-    .filter((item) => !query.toOwner || item.toOwner === query.toOwner)
+  const filtered = buildScopedRows(allRows.value)
 
   const matched = filtered[0]
   if (filtered.length === 1 && matched) {
@@ -669,12 +808,7 @@ const loadData = async () => {
         allRows.value = source
       }
 
-      const filtered = buildFilteredRows(source)
-        .filter((item) => !query.stage || item.stage === query.stage)
-        .filter((item) => !query.batch || item.batch === query.batch)
-        .filter((item) => !query.type || item.type === query.type)
-        .filter((item) => !query.fromGroup || item.fromGroup === query.fromGroup)
-        .filter((item) => !query.toOwner || item.toOwner === query.toOwner)
+      const filtered = buildScopedRows(source)
 
       total.value = filtered.length
       const start = (query.page - 1) * query.size
@@ -921,6 +1055,33 @@ const handoverQuickActions = computed(() => [
   { title: '未发邮件', note: `${summary.value.pendingCount} 项待推进`, onClick: () => onStatClick('未发') },
   { title: '已发邮件', note: `${summary.value.emailSentCount} 项等待承接`, onClick: () => onStatClick('已发邮件') },
   { title: '交接中', note: `${summary.value.inProgressCount} 项进行中`, onClick: () => onStatClick('交接中') },
+  { title: '全部重置', note: '恢复全量视图', onClick: () => onStatClick('') },
+])
+
+const activeHandoverFilterLabel = computed(() => {
+  const hospitalName = getRouteHospitalName()
+  const productName = getRouteProductName()
+  if (hospitalName) return `医院：${hospitalName}`
+  if (productName) return `产品：${productName}`
+  if (query.stage) return `阶段：${query.stage}`
+  if (query.batch) return `批次：${query.batch}`
+  if (query.type) return `类型：${query.type}`
+  if (query.fromGroup) return `来源：${query.fromGroup}`
+  if (query.toOwner) return `对接人：${query.toOwner}`
+  return '全部交接记录'
+})
+
+const activeHandoverHeroSignals = computed(() => [
+  { label: '未发邮件', value: stageCounts.value.pending, note: '待发起交接' },
+  { label: '交接中', value: stageCounts.value.inProgress, note: '正在推进' },
+  { label: '已发邮件', value: stageCounts.value.emailSent, note: '等待承接' },
+  { label: '已完成', value: stageCounts.value.completed, note: `共 ${filteredRows.value.length} 项` },
+])
+
+const activeHandoverQuickActions = computed(() => [
+  { title: '未发邮件', note: `${stageCounts.value.pending} 项待推进`, onClick: () => onSummaryCardSelect(summaryCards.value[0]) },
+  { title: '已发邮件', note: `${stageCounts.value.emailSent} 项等待承接`, onClick: () => onSummaryCardSelect(summaryCards.value[1]) },
+  { title: '交接中', note: `${stageCounts.value.inProgress} 项进行中`, onClick: () => onSummaryCardSelect(summaryCards.value[2]) },
   { title: '全部重置', note: '恢复全量视图', onClick: () => onStatClick('') },
 ])
 
@@ -1202,6 +1363,124 @@ onMounted(async () => {
   opacity: 0.65;
 }
 
+.handover-insight-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.handover-insight-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px 20px;
+  border-radius: 20px;
+  background: #ffffff;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.06);
+}
+
+.handover-insight-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.handover-insight-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #111827;
+}
+
+.handover-insight-note {
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #64748b;
+}
+
+.handover-insight-meta {
+  font-size: 12px;
+  font-weight: 600;
+  color: #475569;
+  white-space: nowrap;
+}
+
+.handover-queue-list,
+.handover-chip-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.handover-queue-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  background: #f8fafc;
+  cursor: pointer;
+  text-align: left;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.handover-queue-item:hover {
+  transform: translateY(-1px);
+  border-color: rgba(59, 130, 246, 0.22);
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.08);
+}
+
+.handover-queue-main,
+.handover-queue-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.handover-queue-main strong,
+.handover-chip strong {
+  font-size: 13px;
+  font-weight: 700;
+  color: #111827;
+}
+
+.handover-queue-main span,
+.handover-queue-meta span,
+.handover-chip span {
+  font-size: 12px;
+  line-height: 1.5;
+  color: #64748b;
+}
+
+.handover-queue-meta {
+  align-items: flex-end;
+}
+
+.handover-chip-list {
+  gap: 8px;
+}
+
+.handover-chip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 14px;
+  border-radius: 14px;
+  background: #f8fafc;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+}
+
+.handover-chip--soft {
+  background: #f5f7fb;
+}
+
 @media (max-width: 1280px) {
   .handover-hero {
     grid-template-columns: 1fr;
@@ -1209,6 +1488,10 @@ onMounted(async () => {
 
   .handover-hero-signals {
     grid-template-columns: repeat(4, 1fr);
+  }
+
+  .handover-insight-grid {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -1223,6 +1506,17 @@ onMounted(async () => {
 
   .handover-quick-grid {
     grid-template-columns: repeat(4, 1fr);
+  }
+
+  .handover-queue-item,
+  .handover-chip,
+  .handover-insight-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .handover-queue-meta {
+    align-items: flex-start;
   }
 }
 </style>

@@ -42,22 +42,88 @@
       </div>
     </div>
 
-    <div class="metrics-grid metrics-grid--6">
-      <button
-        v-for="card in summaryCards"
-        :key="card.title"
-        type="button"
-        class="metric-card metric-card--action"
-        :class="{ 'is-active': card.active }"
-        @click="card.onClick()"
-      >
-        <div class="metric-card-head">
-          <span class="metric-title">{{ card.title }}</span>
-          <span class="metric-context">{{ card.context }}</span>
+    <SummaryMetrics :items="summaryCards" :columns="6" @select="onSummaryCardSelect" />
+
+    <div class="alert-insight-grid">
+      <section class="alert-insight-card">
+        <div class="alert-insight-head">
+          <div>
+            <div class="alert-insight-title">优先处理清单</div>
+            <div class="alert-insight-note">按级别和逾期天数排序，优先下钻最急迫的预警项。</div>
+          </div>
+          <el-tag size="small" type="danger" effect="light">{{ priorityQueue.length }} 项</el-tag>
         </div>
-        <div class="metric-value" :style="{ color: card.color }">{{ card.value }}</div>
-        <div class="metric-note">{{ card.note }}</div>
-      </button>
+        <div v-if="priorityQueue.length" class="alert-queue-list">
+          <button
+            v-for="item in priorityQueue"
+            :key="item.id"
+            type="button"
+            class="alert-queue-item"
+            @click="onGoto(item)"
+          >
+            <div class="alert-queue-main">
+              <strong>{{ item.hospitalName || '未填写医院' }}</strong>
+              <span>{{ item.title }}</span>
+            </div>
+            <div class="alert-queue-meta">
+              <el-tag size="small" :type="levelTagType(item.level)">{{ item.level }}</el-tag>
+              <span>{{ item.owner || '未分配责任人' }} · {{ item.overdueDays }} 天</span>
+            </div>
+          </button>
+        </div>
+        <el-empty v-else description="当前筛选下没有需要优先推进的预警项" :image-size="72" />
+      </section>
+
+      <section class="alert-insight-card">
+        <div class="alert-insight-head">
+          <div>
+            <div class="alert-insight-title">医院关注</div>
+            <div class="alert-insight-note">看预警最集中的医院，便于主管按医院专题推进处理。</div>
+          </div>
+          <span class="alert-insight-meta">{{ overviewRows.length }} 项预警</span>
+        </div>
+        <div v-if="topHospitalBuckets.length" class="alert-chip-list">
+          <div v-for="item in topHospitalBuckets" :key="item.label" class="alert-chip">
+            <strong>{{ item.label }}</strong>
+            <span>{{ item.value }} 项</span>
+          </div>
+        </div>
+        <el-empty v-else description="暂无医院分布" :image-size="72" />
+      </section>
+
+      <section class="alert-insight-card">
+        <div class="alert-insight-head">
+          <div>
+            <div class="alert-insight-title">责任人负载</div>
+            <div class="alert-insight-note">按当前预警责任人分布查看负载，便于及时分流和跟催。</div>
+          </div>
+          <span class="alert-insight-meta">{{ activeOwnerCount }} 个责任人口径</span>
+        </div>
+        <div v-if="topOwnerBuckets.length" class="alert-chip-list">
+          <div v-for="item in topOwnerBuckets" :key="item.label" class="alert-chip">
+            <strong>{{ item.label }}</strong>
+            <span>{{ item.value }} 项</span>
+          </div>
+        </div>
+        <el-empty v-else description="暂无责任人分布" :image-size="72" />
+      </section>
+
+      <section class="alert-insight-card">
+        <div class="alert-insight-head">
+          <div>
+            <div class="alert-insight-title">来源结构</div>
+            <div class="alert-insight-note">快速判断当前是合同风险、交接待办还是巡检异常更集中。</div>
+          </div>
+          <span class="alert-insight-meta">{{ activeFilterLabel }}</span>
+        </div>
+        <div v-if="sourceBuckets.length" class="alert-chip-list">
+          <div v-for="item in sourceBuckets" :key="item.label" class="alert-chip alert-chip--soft">
+            <strong>{{ item.label }}</strong>
+            <span>{{ item.value }} 项</span>
+          </div>
+        </div>
+        <el-empty v-else description="暂无来源结构" :image-size="72" />
+      </section>
     </div>
 
     <AppFilterCard>
@@ -133,6 +199,7 @@ import { useLinkedRealtimeRefresh } from '../../composables/useLinkedRealtimeRef
 import { useResilientLoad } from '../../composables/useResilientLoad'
 import AppFilterCard from '../../components/AppFilterCard.vue'
 import AppTableCard from '../../components/AppTableCard.vue'
+import SummaryMetrics from '../../components/SummaryMetrics.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -140,6 +207,7 @@ const route = useRoute()
 const loading = ref(false)
 const exporting = ref(false)
 const tableData = ref<AlertCenterItem[]>([])
+const overviewRows = ref<AlertCenterItem[]>([])
 const total = ref(0)
 const summary = reactive({
   total: 0,
@@ -159,7 +227,52 @@ const query = reactive({
   size: 15,
 })
 
-const summaryCards = computed(() => [
+type AlertSummaryCard = {
+  key: string
+  title: string
+  value: number
+  context: string
+  note: string
+  color: string
+  active: boolean
+}
+
+type AlertBucket = {
+  label: string
+  value: number
+}
+
+const buildBuckets = (items: AlertCenterItem[], resolveLabel: (item: AlertCenterItem) => string, limit = 5): AlertBucket[] => {
+  const counts = new Map<string, number>()
+  items.forEach((item) => {
+    const label = resolveLabel(item).trim() || '未设置'
+    counts.set(label, (counts.get(label) ?? 0) + 1)
+  })
+
+  return Array.from(counts.entries())
+    .map(([label, value]) => ({ label, value }))
+    .sort((a, b) => (b.value - a.value) || a.label.localeCompare(b.label, 'zh-CN'))
+    .slice(0, limit)
+}
+
+const priorityQueue = computed(() => overviewRows.value
+  .slice()
+  .sort((left, right) => {
+    const priorityDiff = right.priority - left.priority
+    if (priorityDiff !== 0) {
+      return priorityDiff
+    }
+
+    return right.overdueDays - left.overdueDays
+  })
+  .slice(0, 5))
+
+const topHospitalBuckets = computed(() => buildBuckets(overviewRows.value, (item) => item.hospitalName || '未填写医院'))
+const topOwnerBuckets = computed(() => buildBuckets(overviewRows.value, (item) => item.owner || '未分配责任人'))
+const sourceBuckets = computed(() => buildBuckets(overviewRows.value, (item) => item.source || '未设置来源', 6))
+const activeOwnerCount = computed(() => new Set(overviewRows.value.map((item) => (item.owner || '未分配责任人').trim() || '未分配责任人')).size)
+
+const rawSummaryCards = computed(() => [
   {
     title: '严重',
     context: '级别筛选',
@@ -255,6 +368,12 @@ const heroSignals = computed(() => [
   },
 ])
 
+const summaryCardKeys = ['severe', 'warning', 'reminder', 'contract', 'handover', 'inspection'] as const
+const summaryCards = computed<AlertSummaryCard[]>(() => rawSummaryCards.value.map((card, index) => ({
+  ...card,
+  key: summaryCardKeys[index],
+})))
+
 type AlertFilterState = {
   source: string
   level: string
@@ -327,10 +446,25 @@ const levelTagType = (level: string) => {
   return 'info'
 }
 
+const loadOverview = async () => {
+  const res = await fetchAlertCenter({
+    source: query.source,
+    level: query.level,
+    keyword: query.keyword,
+    page: 1,
+    size: 5000,
+  })
+  overviewRows.value = res.data.items
+}
+
 const loadData = async () => {
   loading.value = true
   try {
-    const res = await fetchAlertCenter(query)
+    const [pageRes] = await Promise.all([
+      fetchAlertCenter(query),
+      loadOverview(),
+    ])
+    const res = pageRes
     tableData.value = res.data.items
     total.value = res.data.total
     summary.total = res.data.summary.total
@@ -342,6 +476,7 @@ const loadData = async () => {
     summary.inspection = res.data.summary.inspection
   } catch (error) {
     tableData.value = []
+    overviewRows.value = []
     total.value = 0
     ElMessage.error(getErrorMessage(error, '加载统一预警中心失败，请稍后重试'))
   } finally {
@@ -396,6 +531,42 @@ const filterByLevel = (level: string) => {
   query.keyword = ''
   query.page = 1
   loadData()
+}
+
+const onSummaryCardSelect = (card: { key?: string | number }) => {
+  if (typeof card.key !== 'string') {
+    return
+  }
+
+  if (card.key === 'severe') {
+    filterByLevel('涓ラ噸')
+    return
+  }
+
+  if (card.key === 'warning') {
+    filterByLevel('璀﹀憡')
+    return
+  }
+
+  if (card.key === 'reminder') {
+    filterByLevel('鎻愰啋')
+    return
+  }
+
+  if (card.key === 'contract') {
+    filterBySource('鍚堝悓')
+    return
+  }
+
+  if (card.key === 'handover') {
+    filterBySource('浜ゆ帴')
+    return
+  }
+
+  if (card.key === 'inspection') {
+    filterBySource('宸℃')
+    return
+  }
 }
 
 const quickActions = computed(() => [
@@ -627,6 +798,124 @@ watch(() => route.fullPath, () => {
   color: rgba(247, 236, 229, 0.76);
 }
 
+.alert-insight-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.alert-insight-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px 20px;
+  border-radius: 20px;
+  background: #ffffff;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.06);
+}
+
+.alert-insight-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.alert-insight-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #111827;
+}
+
+.alert-insight-note {
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #64748b;
+}
+
+.alert-insight-meta {
+  font-size: 12px;
+  font-weight: 600;
+  color: #475569;
+  white-space: nowrap;
+}
+
+.alert-queue-list,
+.alert-chip-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.alert-queue-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  background: #f8fafc;
+  cursor: pointer;
+  text-align: left;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.alert-queue-item:hover {
+  transform: translateY(-1px);
+  border-color: rgba(59, 130, 246, 0.22);
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.08);
+}
+
+.alert-queue-main,
+.alert-queue-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.alert-queue-main strong,
+.alert-chip strong {
+  font-size: 13px;
+  font-weight: 700;
+  color: #111827;
+}
+
+.alert-queue-main span,
+.alert-queue-meta span,
+.alert-chip span {
+  font-size: 12px;
+  line-height: 1.5;
+  color: #64748b;
+}
+
+.alert-queue-meta {
+  align-items: flex-end;
+}
+
+.alert-chip-list {
+  gap: 8px;
+}
+
+.alert-chip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 14px;
+  border-radius: 14px;
+  background: #f8fafc;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+}
+
+.alert-chip--soft {
+  background: #f5f7fb;
+}
+
 .metric-card--action {
   position: relative;
   overflow: hidden;
@@ -645,6 +934,10 @@ watch(() => route.fullPath, () => {
 
 @media (max-width: 1280px) {
   .alert-hero {
+    grid-template-columns: 1fr;
+  }
+
+  .alert-insight-grid {
     grid-template-columns: 1fr;
   }
 }
@@ -666,6 +959,17 @@ watch(() => route.fullPath, () => {
   .alert-control-actions {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .alert-queue-item,
+  .alert-chip,
+  .alert-insight-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .alert-queue-meta {
+    align-items: flex-start;
   }
 }
 </style>

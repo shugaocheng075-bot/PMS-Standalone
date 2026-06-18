@@ -12,6 +12,7 @@ using PMS.Application.Contracts.Product;
 using PMS.Application.Contracts.RepairRecord;
 using PMS.Application.Contracts.WorkHours;
 using PMS.Application.Contracts.MonthlyReport;
+using PMS.Application.Contracts.Operations;
 using PMS.Application.Contracts.Notification;
 using PMS.Application.Contracts.AuditLog;
 using PMS.Infrastructure.Services;
@@ -58,6 +59,7 @@ builder.Services.AddSingleton<IAuthService, InMemoryAuthService>();
 builder.Services.AddSingleton<IRepairRecordService, InMemoryRepairRecordService>();
 builder.Services.AddSingleton<IWorkHoursService, InMemoryWorkHoursService>();
 builder.Services.AddSingleton<IMonthlyReportService, InMemoryMonthlyReportService>();
+builder.Services.AddSingleton<IOperationsTaskService, InMemoryOperationsTaskService>();
 builder.Services.AddSingleton<INotificationService, InMemoryNotificationService>();
 builder.Services.AddSingleton<IAuditLogService, InMemoryAuditLogService>();
 

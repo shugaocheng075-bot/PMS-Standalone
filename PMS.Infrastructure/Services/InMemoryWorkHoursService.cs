@@ -32,23 +32,27 @@ public class InMemoryWorkHoursService : IWorkHoursService
                     ImplementationStatus = x.ImplementationStatus,
                     Description = x.Description,
                     CreatedAt = x.CreatedAt,
-                    UpdatedAt = x.UpdatedAt
+                    UpdatedAt = x.UpdatedAt,
+                    Status = x.Status,
+                    ConfirmedBy = x.ConfirmedBy,
+                    ConfirmedAt = x.ConfirmedAt
                 })
                 .ToList();
         }
     }
 
-    public Task<WorkHoursSummaryDto> GetSummaryAsync(CancellationToken cancellationToken = default)
+    public Task<WorkHoursSummaryDto> GetSummaryAsync(WorkHoursQuery? query = null, CancellationToken cancellationToken = default)
     {
         lock (SyncRoot)
         {
+            var filtered = ApplyFilters(Records, query).ToList();
             return Task.FromResult(new WorkHoursSummaryDto
             {
-                Total = Records.Count,
-                TotalHours = Records.Sum(x => x.Hours),
-                OnsiteCount = Records.Count(x => x.WorkType == "驻场"),
-                RemoteCount = Records.Count(x => x.WorkType == "远程"),
-                TravelCount = Records.Count(x => x.WorkType == "出差")
+                Total = filtered.Count,
+                TotalHours = filtered.Sum(x => x.Hours),
+                OnsiteCount = filtered.Count(x => x.WorkType == "驻场"),
+                RemoteCount = filtered.Count(x => x.WorkType == "远程"),
+                TravelCount = filtered.Count(x => x.WorkType == "出差")
             });
         }
     }
@@ -57,36 +61,7 @@ public class InMemoryWorkHoursService : IWorkHoursService
     {
         lock (SyncRoot)
         {
-            IEnumerable<WorkHoursEntity> filtered = Records;
-
-            // 数据范围过滤
-            if (query.AccessiblePersonnelNames is { Count: > 0 })
-            {
-                var nameSet = new HashSet<string>(query.AccessiblePersonnelNames, StringComparer.Ordinal);
-                filtered = filtered.Where(x => nameSet.Contains(x.PersonnelName));
-            }
-
-            if (!string.IsNullOrWhiteSpace(query.PersonnelName))
-                filtered = filtered.Where(x => x.PersonnelName.Contains(query.PersonnelName, StringComparison.OrdinalIgnoreCase));
-
-            if (!string.IsNullOrWhiteSpace(query.HospitalName))
-                filtered = filtered.Where(x => x.HospitalName.Contains(query.HospitalName, StringComparison.OrdinalIgnoreCase));
-
-            if (!string.IsNullOrWhiteSpace(query.ProductName))
-                filtered = filtered.Where(x => x.ProductName.Contains(query.ProductName, StringComparison.OrdinalIgnoreCase));
-
-            if (!string.IsNullOrWhiteSpace(query.ImplementationStatus))
-                filtered = filtered.Where(x => x.ImplementationStatus == query.ImplementationStatus);
-
-            if (!string.IsNullOrWhiteSpace(query.WorkType))
-                filtered = filtered.Where(x => x.WorkType == query.WorkType);
-
-            if (!string.IsNullOrWhiteSpace(query.WorkDateFrom))
-                filtered = filtered.Where(x => string.Compare(x.WorkDate, query.WorkDateFrom, StringComparison.Ordinal) >= 0);
-
-            if (!string.IsNullOrWhiteSpace(query.WorkDateTo))
-                filtered = filtered.Where(x => string.Compare(x.WorkDate, query.WorkDateTo, StringComparison.Ordinal) <= 0);
-
+            var filtered = ApplyFilters(Records, query);
             var total = filtered.Count();
             var page = query.Page < 1 ? 1 : query.Page;
             var size = query.Size <= 0 ? 20 : query.Size;
@@ -151,9 +126,15 @@ public class InMemoryWorkHoursService : IWorkHoursService
         lock (SyncRoot)
         {
             var entity = Records.FirstOrDefault(x => x.Id == id);
-            if (entity is null) return Task.FromResult<WorkHoursItemDto?>(null);
+            if (entity is null)
+            {
+                return Task.FromResult<WorkHoursItemDto?>(null);
+            }
+
             if (entity.Status != "draft" && entity.Status != "rejected")
+            {
                 throw new InvalidOperationException($"仅草稿或已退回的工时记录可以编辑，当前状态：{entity.Status}");
+            }
 
             entity.ProjectId = dto.ProjectId;
             entity.OpportunityNumber = dto.OpportunityNumber.Trim();
@@ -176,14 +157,132 @@ public class InMemoryWorkHoursService : IWorkHoursService
         lock (SyncRoot)
         {
             var entity = Records.FirstOrDefault(x => x.Id == id);
-            if (entity is null) return Task.FromResult(false);
+            if (entity is null)
+            {
+                return Task.FromResult(false);
+            }
+
             if (entity.Status == "submitted")
+            {
                 throw new InvalidOperationException("已提交待确认的工时记录不可删除，请先处理为退回后再删除");
+            }
 
             var removed = Records.RemoveAll(x => x.Id == id);
-            if (removed > 0) SqliteTableStore.Delete(TableName, id);
+            if (removed > 0)
+            {
+                SqliteTableStore.Delete(TableName, id);
+            }
+
             return Task.FromResult(removed > 0);
         }
+    }
+
+    public Task<bool> SubmitAsync(long id, CancellationToken cancellationToken = default)
+    {
+        lock (SyncRoot)
+        {
+            var entity = Records.FirstOrDefault(x => x.Id == id);
+            if (entity is null || (entity.Status != "draft" && entity.Status != "rejected"))
+            {
+                return Task.FromResult(false);
+            }
+
+            entity.Status = "submitted";
+            entity.ConfirmedBy = null;
+            entity.ConfirmedAt = null;
+            entity.UpdatedAt = DateTime.UtcNow;
+            SqliteTableStore.Update(TableName, entity, entity.Id);
+            return Task.FromResult(true);
+        }
+    }
+
+    public Task<bool> ConfirmAsync(long id, string confirmedBy, CancellationToken cancellationToken = default)
+    {
+        lock (SyncRoot)
+        {
+            var entity = Records.FirstOrDefault(x => x.Id == id);
+            if (entity is null || entity.Status != "submitted")
+            {
+                return Task.FromResult(false);
+            }
+
+            entity.Status = "confirmed";
+            entity.ConfirmedBy = confirmedBy;
+            entity.ConfirmedAt = DateTime.UtcNow;
+            entity.UpdatedAt = DateTime.UtcNow;
+            SqliteTableStore.Update(TableName, entity, entity.Id);
+            return Task.FromResult(true);
+        }
+    }
+
+    public Task<bool> RejectAsync(long id, string rejectedBy, CancellationToken cancellationToken = default)
+    {
+        lock (SyncRoot)
+        {
+            var entity = Records.FirstOrDefault(x => x.Id == id);
+            if (entity is null || entity.Status != "submitted")
+            {
+                return Task.FromResult(false);
+            }
+
+            entity.Status = "rejected";
+            entity.ConfirmedBy = rejectedBy;
+            entity.ConfirmedAt = DateTime.UtcNow;
+            entity.UpdatedAt = DateTime.UtcNow;
+            SqliteTableStore.Update(TableName, entity, entity.Id);
+            return Task.FromResult(true);
+        }
+    }
+
+    /// <summary>Bulk-replace all rows (used by Excel import).</summary>
+    internal static void PersistAll()
+    {
+        SqliteTableStore.ReplaceAll(TableName, Records);
+    }
+
+    private static IEnumerable<WorkHoursEntity> ApplyFilters(IEnumerable<WorkHoursEntity> source, WorkHoursQuery? query)
+    {
+        if (query is null)
+        {
+            return source;
+        }
+
+        IEnumerable<WorkHoursEntity> filtered = source;
+
+        if (query.AccessiblePersonnelNames is { Count: > 0 })
+        {
+            var nameSet = new HashSet<string>(query.AccessiblePersonnelNames, StringComparer.Ordinal);
+            filtered = filtered.Where(x => nameSet.Contains(x.PersonnelName));
+        }
+
+        if (query.AccessibleHospitalNames is { Count: > 0 })
+        {
+            var hospitalSet = new HashSet<string>(query.AccessibleHospitalNames, StringComparer.Ordinal);
+            filtered = filtered.Where(x => hospitalSet.Contains(x.HospitalName));
+        }
+
+        if (!string.IsNullOrWhiteSpace(query.PersonnelName))
+            filtered = filtered.Where(x => x.PersonnelName.Contains(query.PersonnelName, StringComparison.OrdinalIgnoreCase));
+
+        if (!string.IsNullOrWhiteSpace(query.HospitalName))
+            filtered = filtered.Where(x => x.HospitalName.Contains(query.HospitalName, StringComparison.OrdinalIgnoreCase));
+
+        if (!string.IsNullOrWhiteSpace(query.ProductName))
+            filtered = filtered.Where(x => x.ProductName.Contains(query.ProductName, StringComparison.OrdinalIgnoreCase));
+
+        if (!string.IsNullOrWhiteSpace(query.ImplementationStatus))
+            filtered = filtered.Where(x => x.ImplementationStatus == query.ImplementationStatus);
+
+        if (!string.IsNullOrWhiteSpace(query.WorkType))
+            filtered = filtered.Where(x => x.WorkType == query.WorkType);
+
+        if (!string.IsNullOrWhiteSpace(query.WorkDateFrom))
+            filtered = filtered.Where(x => string.Compare(x.WorkDate, query.WorkDateFrom, StringComparison.Ordinal) >= 0);
+
+        if (!string.IsNullOrWhiteSpace(query.WorkDateTo))
+            filtered = filtered.Where(x => string.Compare(x.WorkDate, query.WorkDateTo, StringComparison.Ordinal) <= 0);
+
+        return filtered;
     }
 
     private static WorkHoursItemDto MapToDto(WorkHoursEntity entity)
@@ -207,56 +306,5 @@ public class InMemoryWorkHoursService : IWorkHoursService
             ConfirmedBy = entity.ConfirmedBy,
             ConfirmedAt = entity.ConfirmedAt
         };
-    }
-
-    /// <summary>Bulk-replace all rows (used by Excel import).</summary>
-    internal static void PersistAll()
-    {
-        SqliteTableStore.ReplaceAll(TableName, Records);
-    }
-
-    public Task<bool> SubmitAsync(long id, CancellationToken cancellationToken = default)
-    {
-        lock (SyncRoot)
-        {
-            var entity = Records.FirstOrDefault(x => x.Id == id);
-            if (entity is null || (entity.Status != "draft" && entity.Status != "rejected")) return Task.FromResult(false);
-            entity.Status = "submitted";
-            entity.ConfirmedBy = null;
-            entity.ConfirmedAt = null;
-            entity.UpdatedAt = DateTime.UtcNow;
-            SqliteTableStore.Update(TableName, entity, entity.Id);
-            return Task.FromResult(true);
-        }
-    }
-
-    public Task<bool> ConfirmAsync(long id, string confirmedBy, CancellationToken cancellationToken = default)
-    {
-        lock (SyncRoot)
-        {
-            var entity = Records.FirstOrDefault(x => x.Id == id);
-            if (entity is null || entity.Status != "submitted") return Task.FromResult(false);
-            entity.Status = "confirmed";
-            entity.ConfirmedBy = confirmedBy;
-            entity.ConfirmedAt = DateTime.UtcNow;
-            entity.UpdatedAt = DateTime.UtcNow;
-            SqliteTableStore.Update(TableName, entity, entity.Id);
-            return Task.FromResult(true);
-        }
-    }
-
-    public Task<bool> RejectAsync(long id, string rejectedBy, CancellationToken cancellationToken = default)
-    {
-        lock (SyncRoot)
-        {
-            var entity = Records.FirstOrDefault(x => x.Id == id);
-            if (entity is null || entity.Status != "submitted") return Task.FromResult(false);
-            entity.Status = "rejected";
-            entity.ConfirmedBy = rejectedBy;
-            entity.ConfirmedAt = DateTime.UtcNow;
-            entity.UpdatedAt = DateTime.UtcNow;
-            SqliteTableStore.Update(TableName, entity, entity.Id);
-            return Task.FromResult(true);
-        }
     }
 }

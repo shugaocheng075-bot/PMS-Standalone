@@ -112,7 +112,7 @@ public class DashboardController(
 
         var trend = BuildTrend(trendSource, startMonth, monthSpan);
         var sourceDistribution = BuildSourceDistribution(events);
-        var ownerWorkload = BuildOwnerWorkload(events);
+        var ownerWorkload = BuildSalesWorkload(events);
 
         var summary = new
         {
@@ -361,10 +361,11 @@ public class DashboardController(
         }).ToList();
     }
 
-    private static IReadOnlyList<object> BuildOwnerWorkload(IReadOnlyList<DashboardAlertEvent> source)
+    private static IReadOnlyList<object> BuildSalesWorkload(IReadOnlyList<DashboardAlertEvent> source)
     {
         return source
-            .GroupBy(x => string.IsNullOrWhiteSpace(x.Owner) ? "未分配" : x.Owner.Trim(), StringComparer.OrdinalIgnoreCase)
+            .Where(x => x.Source == "合同")
+            .GroupBy(x => string.IsNullOrWhiteSpace(x.Owner) ? "未分配销售" : x.Owner.Trim(), StringComparer.OrdinalIgnoreCase)
             .Select(group => new
             {
                 owner = group.Key,

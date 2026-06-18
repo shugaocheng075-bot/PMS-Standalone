@@ -284,6 +284,11 @@ public class InMemoryAccessControlService(IPersonnelService personnelService) : 
             return "dashboard.view";
         }
 
+        if (path.StartsWith("/api/operations"))
+        {
+            return "dashboard.view";
+        }
+
         if (path.StartsWith("/api/projects"))
         {
             return httpMethod == "GET" ? "project.view" : "project.manage";

@@ -10,7 +10,7 @@
         <div class="inspection-hero-subtitle">管理巡检排期、执行状态与实际巡检结果，先在首屏确认计划负载和执行压力，再切入计划与结果双视图继续处理。</div>
 
         <div class="inspection-hero-signals">
-          <div v-for="item in inspectionHeroSignals" :key="item.label" class="inspection-signal-card">
+          <div v-for="item in activeInspectionHeroSignals" :key="item.label" class="inspection-signal-card">
             <span class="inspection-signal-label">{{ item.label }}</span>
             <strong class="inspection-signal-value">{{ item.value }}</strong>
             <span class="inspection-signal-note">{{ item.note }}</span>
@@ -32,7 +32,7 @@
         </div>
 
         <div class="inspection-quick-grid">
-          <button v-for="action in inspectionQuickActions" :key="action.title" type="button" class="inspection-quick-action" @click="action.onClick()">
+          <button v-for="action in activeInspectionQuickActions" :key="action.title" type="button" class="inspection-quick-action" @click="action.onClick()">
             <span class="inspection-quick-title">{{ action.title }}</span>
             <span class="inspection-quick-note">{{ action.note }}</span>
           </button>
@@ -44,6 +44,88 @@
       <!-- ===================== 巡检计划 Tab ===================== -->
       <el-tab-pane label="巡检计划" name="plan">
         <SummaryMetrics :items="planSummaryCards" :columns="6" @select="onPlanSummaryCardSelect" />
+
+        <div class="inspection-insight-grid">
+          <section class="inspection-insight-card">
+            <div class="inspection-insight-head">
+              <div>
+                <div class="inspection-insight-title">优先推进计划</div>
+                <div class="inspection-insight-note">先看已逾期、执行中和高优先级计划，直接进入详情或编辑继续推进。</div>
+              </div>
+              <el-tag size="small" type="warning" effect="light">{{ planPriorityQueue.length }} 项</el-tag>
+            </div>
+            <div v-if="planPriorityQueue.length" class="inspection-queue-list">
+              <button
+                v-for="item in planPriorityQueue"
+                :key="item.id"
+                type="button"
+                class="inspection-queue-item"
+                @click="onOpenPlanDetail(item)"
+              >
+                <div class="inspection-queue-main">
+                  <strong>{{ item.hospitalName }}</strong>
+                  <span>{{ item.productName || '未填写产品' }} · {{ item.inspector || '未分配巡检人' }}</span>
+                </div>
+                <div class="inspection-queue-meta">
+                  <el-tag size="small" :type="statusTag(item.status)">{{ item.status }}</el-tag>
+                  <span>{{ formatPlanSlaText(item) }}</span>
+                </div>
+              </button>
+            </div>
+            <el-empty v-else description="当前筛选下没有需要优先推进的巡检计划" :image-size="72" />
+          </section>
+
+          <section class="inspection-insight-card">
+            <div class="inspection-insight-head">
+              <div>
+                <div class="inspection-insight-title">医院关注</div>
+                <div class="inspection-insight-note">查看计划最集中的医院，便于主管按医院维度安排巡检节奏。</div>
+              </div>
+              <span class="inspection-insight-meta">{{ filteredPlanRows.length }} 条计划</span>
+            </div>
+            <div v-if="topPlanHospitalBuckets.length" class="inspection-chip-list">
+              <div v-for="item in topPlanHospitalBuckets" :key="item.label" class="inspection-chip">
+                <strong>{{ item.label }}</strong>
+                <span>{{ item.value }} 条</span>
+              </div>
+            </div>
+            <el-empty v-else description="暂无医院分布" :image-size="72" />
+          </section>
+
+          <section class="inspection-insight-card">
+            <div class="inspection-insight-head">
+              <div>
+                <div class="inspection-insight-title">巡检人负载</div>
+                <div class="inspection-insight-note">按未闭环计划看巡检人当前负载，帮助主管判断是否需要分流。</div>
+              </div>
+              <span class="inspection-insight-meta">{{ openPlanCount }} 项未闭环</span>
+            </div>
+            <div v-if="topInspectorBuckets.length" class="inspection-chip-list">
+              <div v-for="item in topInspectorBuckets" :key="item.label" class="inspection-chip">
+                <strong>{{ item.label }}</strong>
+                <span>{{ item.value }} 条</span>
+              </div>
+            </div>
+            <el-empty v-else description="暂无巡检人负载" :image-size="72" />
+          </section>
+
+          <section class="inspection-insight-card">
+            <div class="inspection-insight-head">
+              <div>
+                <div class="inspection-insight-title">方式与优先级结构</div>
+                <div class="inspection-insight-note">快速判断当前是现场还是远程为主，以及高优先级计划是否在积压。</div>
+              </div>
+              <span class="inspection-insight-meta">{{ overduePlanCount }} 项逾期</span>
+            </div>
+            <div v-if="planStructureBuckets.length" class="inspection-chip-list">
+              <div v-for="item in planStructureBuckets" :key="item.label" class="inspection-chip inspection-chip--soft">
+                <strong>{{ item.label }}</strong>
+                <span>{{ item.value }} 条</span>
+              </div>
+            </div>
+            <el-empty v-else description="暂无方式与优先级结构" :image-size="72" />
+          </section>
+        </div>
 
   
 
@@ -182,6 +264,88 @@
       <el-tab-pane label="巡检结果" name="results">
         <!-- 结果统计概览 -->
         <SummaryMetrics :items="resultSummaryCards" :columns="4" @select="onResultSummaryCardSelect" />
+
+        <div class="inspection-insight-grid">
+          <section class="inspection-insight-card">
+            <div class="inspection-insight-head">
+              <div>
+                <div class="inspection-insight-title">重点结果清单</div>
+                <div class="inspection-insight-note">先看严重和警告结果，再进入详情核对风险项和环境状态。</div>
+              </div>
+              <el-tag size="small" type="danger" effect="light">{{ resultPriorityQueue.length }} 项</el-tag>
+            </div>
+            <div v-if="resultPriorityQueue.length" class="inspection-queue-list">
+              <button
+                v-for="item in resultPriorityQueue"
+                :key="item.id"
+                type="button"
+                class="inspection-queue-item"
+                @click="showResultDetail(item)"
+              >
+                <div class="inspection-queue-main">
+                  <strong>{{ item.hospitalName }}</strong>
+                  <span>{{ item.productName || '未填写产品' }} · {{ item.inspector || '未填写巡检人' }}</span>
+                </div>
+                <div class="inspection-queue-meta">
+                  <el-tag size="small" :type="healthTag(item.healthLevel)">{{ item.healthLevel }}</el-tag>
+                  <span>{{ item.warningCount + item.criticalCount }} 项风险</span>
+                </div>
+              </button>
+            </div>
+            <el-empty v-else description="当前筛选下没有重点巡检结果" :image-size="72" />
+          </section>
+
+          <section class="inspection-insight-card">
+            <div class="inspection-insight-head">
+              <div>
+                <div class="inspection-insight-title">医院分布</div>
+                <div class="inspection-insight-note">看当前结果最集中的医院，便于按医院安排复核和整改跟进。</div>
+              </div>
+              <span class="inspection-insight-meta">{{ filteredResultRows.length }} 条结果</span>
+            </div>
+            <div v-if="topResultHospitalBuckets.length" class="inspection-chip-list">
+              <div v-for="item in topResultHospitalBuckets" :key="item.label" class="inspection-chip">
+                <strong>{{ item.label }}</strong>
+                <span>{{ item.value }} 条</span>
+              </div>
+            </div>
+            <el-empty v-else description="暂无医院分布" :image-size="72" />
+          </section>
+
+          <section class="inspection-insight-card">
+            <div class="inspection-insight-head">
+              <div>
+                <div class="inspection-insight-title">巡检人结果负载</div>
+                <div class="inspection-insight-note">查看当前结果集中在哪些巡检人，便于主管复核执行质量。</div>
+              </div>
+              <span class="inspection-insight-meta">{{ activeResultInspectorCount }} 个巡检人口径</span>
+            </div>
+            <div v-if="topResultInspectorBuckets.length" class="inspection-chip-list">
+              <div v-for="item in topResultInspectorBuckets" :key="item.label" class="inspection-chip">
+                <strong>{{ item.label }}</strong>
+                <span>{{ item.value }} 条</span>
+              </div>
+            </div>
+            <el-empty v-else description="暂无巡检人结果分布" :image-size="72" />
+          </section>
+
+          <section class="inspection-insight-card">
+            <div class="inspection-insight-head">
+              <div>
+                <div class="inspection-insight-title">健康等级结构</div>
+                <div class="inspection-insight-note">快速判断当前范围内是良好结果主导，还是警告、严重结果更集中。</div>
+              </div>
+              <span class="inspection-insight-meta">{{ highRiskResultCount }} 条高风险</span>
+            </div>
+            <div v-if="resultHealthBuckets.length" class="inspection-chip-list">
+              <div v-for="item in resultHealthBuckets" :key="item.label" class="inspection-chip inspection-chip--soft">
+                <strong>{{ item.label }}</strong>
+                <span>{{ item.value }} 条</span>
+              </div>
+            </div>
+            <el-empty v-else description="暂无健康等级结构" :image-size="72" />
+          </section>
+        </div>
 
         <!-- 结果筛选 -->
         <AppFilterCard>
@@ -472,6 +636,11 @@ const summary = ref<InspectionSummary>({
   total: 0,
 })
 
+type InsightBucket = {
+  label: string
+  value: number
+}
+
 const query = reactive({
   hospitalName: '',
   status: '',
@@ -496,11 +665,97 @@ type InspectionSummaryCard = {
   clickable?: boolean
 }
 
+const buildBuckets = <T>(items: T[], resolveLabel: (item: T) => string, limit = 5): InsightBucket[] => {
+  const counts = new Map<string, number>()
+  items.forEach((item) => {
+    const label = resolveLabel(item).trim() || '未设置'
+    counts.set(label, (counts.get(label) ?? 0) + 1)
+  })
+
+  return Array.from(counts.entries())
+    .map(([label, value]) => ({ label, value }))
+    .sort((a, b) => (b.value - a.value) || a.label.localeCompare(b.label, 'zh-CN'))
+    .slice(0, limit)
+}
+
+const parsePlanDateValue = (value?: string | null) => {
+  if (!value) {
+    return null
+  }
+
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? null : date
+}
+
+const filteredPlanRows = computed(() => allPlanRows.value
+  .filter((item) => !query.hospitalName || item.hospitalName.includes(query.hospitalName))
+  .filter((item) => !getRoutePlanHospitalName() || item.hospitalName === getRoutePlanHospitalName())
+  .filter((item) => !query.status || isSameStatus(item.status, query.status))
+  .filter((item) => !query.province || item.province === query.province)
+  .filter((item) => !query.productName || item.productName === query.productName)
+  .filter((item) => !query.groupName || item.groupName === query.groupName)
+  .filter((item) => !query.inspector || item.inspector === query.inspector)
+  .filter((item) => !query.inspectionType || item.inspectionType === query.inspectionType)
+  .filter((item) => !query.priority || item.priority === query.priority))
+
+const isClosedPlan = (status: string) => isSameStatus(status, '已完成') || isSameStatus(status, '已取消')
+const isOverduePlan = (item: InspectionPlanItem) => {
+  if (isClosedPlan(item.status)) {
+    return false
+  }
+
+  const dueAt = parsePlanDateValue(item.slaDueAt)
+  return Boolean(dueAt) && dueAt!.getTime() <= nowTick.value
+}
+
+const openPlanCount = computed(() => filteredPlanRows.value.filter((item) => !isClosedPlan(item.status)).length)
+const overduePlanCount = computed(() => filteredPlanRows.value.filter((item) => isOverduePlan(item)).length)
+const plannedPlanCount = computed(() => filteredPlanRows.value.filter((item) => isSameStatus(item.status, '已计划')).length)
+const inProgressPlanCount = computed(() => filteredPlanRows.value.filter((item) => isSameStatus(item.status, '执行中')).length)
+const completedPlanCount = computed(() => filteredPlanRows.value.filter((item) => isSameStatus(item.status, '已完成')).length)
+const cancelledPlanCount = computed(() => filteredPlanRows.value.filter((item) => isSameStatus(item.status, '已取消')).length)
+const thisMonthPlanCount = computed(() => {
+  const now = new Date(nowTick.value)
+  return filteredPlanRows.value.filter((item) => {
+    const date = parsePlanDateValue(item.planDate)
+    return Boolean(date) && date!.getFullYear() === now.getFullYear() && date!.getMonth() === now.getMonth()
+  }).length
+})
+
+const planPriorityQueue = computed(() => filteredPlanRows.value
+  .filter((item) => !isClosedPlan(item.status))
+  .slice()
+  .sort((left, right) => {
+    const overdueDiff = Number(isOverduePlan(right)) - Number(isOverduePlan(left))
+    if (overdueDiff !== 0) {
+      return overdueDiff
+    }
+
+    const leftPriority = left.priority === '高' ? 3 : left.priority === '中' ? 2 : 1
+    const rightPriority = right.priority === '高' ? 3 : right.priority === '中' ? 2 : 1
+    if (rightPriority !== leftPriority) {
+      return rightPriority - leftPriority
+    }
+
+    return String(left.planDate || '').localeCompare(String(right.planDate || ''), 'zh-CN')
+  })
+  .slice(0, 5))
+
+const topPlanHospitalBuckets = computed(() => buildBuckets(filteredPlanRows.value, (item) => item.hospitalName || '未填写医院'))
+const topInspectorBuckets = computed(() => buildBuckets(
+  filteredPlanRows.value.filter((item) => !isClosedPlan(item.status)),
+  (item) => item.inspector || '未分配巡检人',
+))
+const planStructureBuckets = computed(() => buildBuckets(
+  filteredPlanRows.value,
+  (item) => `${item.inspectionType || '未设置方式'} · ${item.priority || '未设置优先级'}`,
+))
+
 const planSummaryCards = computed<InspectionSummaryCard[]>(() => [
   {
     key: '已计划',
     title: '已计划',
-    value: summary.value.plannedCount,
+    value: plannedPlanCount.value,
     context: '计划状态',
     note: '查看已排期待执行的巡检任务',
     color: '#7c98bc',
@@ -509,7 +764,7 @@ const planSummaryCards = computed<InspectionSummaryCard[]>(() => [
   {
     key: '执行中',
     title: '执行中',
-    value: summary.value.inProgressCount,
+    value: inProgressPlanCount.value,
     context: '计划状态',
     note: '跟进当前执行中的巡检任务',
     color: '#c7a06c',
@@ -518,7 +773,7 @@ const planSummaryCards = computed<InspectionSummaryCard[]>(() => [
   {
     key: '已完成',
     title: '已完成',
-    value: summary.value.completedCount,
+    value: completedPlanCount.value,
     context: '计划状态',
     note: '查看已完成的巡检计划闭环情况',
     color: '#7d9f92',
@@ -527,7 +782,7 @@ const planSummaryCards = computed<InspectionSummaryCard[]>(() => [
   {
     key: '已取消',
     title: '已取消',
-    value: summary.value.cancelledCount,
+    value: cancelledPlanCount.value,
     context: '计划状态',
     note: '核查已取消计划的原因与记录',
     color: '#c58a87',
@@ -536,7 +791,7 @@ const planSummaryCards = computed<InspectionSummaryCard[]>(() => [
   {
     key: 'month',
     title: '本月计划',
-    value: summary.value.thisMonthCount,
+    value: thisMonthPlanCount.value,
     context: '节奏概览',
     note: '本月周期内已纳入排期的巡检数量',
     color: '#3f4f63',
@@ -545,7 +800,7 @@ const planSummaryCards = computed<InspectionSummaryCard[]>(() => [
   {
     key: 'all',
     title: '总数',
-    value: summary.value.total,
+    value: filteredPlanRows.value.length,
     context: '全量视图',
     note: '查看全部巡检计划与状态分布',
     color: '#3f4f63',
@@ -645,6 +900,34 @@ const inspectionQuickActions = computed(() => [
     },
   },
 ])
+
+const activeInspectionHeroSignals = computed(() => {
+  const planHospitalCount = new Set(filteredPlanRows.value.map((item) => item.hospitalName).filter(Boolean)).size
+  return [
+    {
+      label: '计划总数',
+      value: String(filteredPlanRows.value.length),
+      note: '当前口径下全部巡检计划数量',
+    },
+    {
+      label: '执行中',
+      value: String(inProgressPlanCount.value),
+      note: '仍在推进中的巡检任务',
+    },
+    {
+      label: '本月排期',
+      value: String(thisMonthPlanCount.value),
+      note: '当前月度已排入巡检节奏的任务',
+    },
+    {
+      label: '结果风险',
+      value: String(highRiskResultCount.value),
+      note: `当前结果页高风险记录，覆盖 ${planHospitalCount} 家医院`,
+    },
+  ]
+})
+
+const activeInspectionQuickActions = computed(() => inspectionQuickActions.value)
 
 const route = useRoute()
 const planDetailVisible = ref(false)
@@ -1070,6 +1353,7 @@ useLinkedRealtimeRefresh({
 const resultLoading = ref(false)
 const resultTotal = ref(0)
 const resultTableData = ref<InspectionResult[]>([])
+const allResultRows = ref<InspectionResult[]>([])
 const detailVisible = ref(false)
 const detailRow = ref<InspectionResult | null>(null)
 
@@ -1089,12 +1373,23 @@ const resultUploadLoading = ref(false)
 const resultUploadInput = ref<HTMLInputElement | null>(null)
 
 const resultHealthCounts = reactive({ good: 0, warning: 0, critical: 0 })
+const filteredResultRows = computed(() => allResultRows.value)
+const highRiskResultCount = computed(() => filteredResultRows.value.filter((item) => item.healthLevel === '严重' || item.healthLevel === '警告').length)
+const resultPriorityQueue = computed(() => filteredResultRows.value
+  .filter((item) => item.healthLevel === '严重' || item.healthLevel === '警告')
+  .slice()
+  .sort((left, right) => (right.criticalCount + right.warningCount) - (left.criticalCount + left.warningCount))
+  .slice(0, 5))
+const topResultHospitalBuckets = computed(() => buildBuckets(filteredResultRows.value, (item) => item.hospitalName || '未填写医院'))
+const topResultInspectorBuckets = computed(() => buildBuckets(filteredResultRows.value, (item) => item.inspector || '未填写巡检人'))
+const resultHealthBuckets = computed(() => buildBuckets(filteredResultRows.value, (item) => item.healthLevel || '未设置等级', 4))
+const activeResultInspectorCount = computed(() => new Set(filteredResultRows.value.map((item) => (item.inspector || '未填写巡检人').trim() || '未填写巡检人')).size)
 
 const resultSummaryCards = computed<InspectionSummaryCard[]>(() => [
   {
     key: 'all',
     title: '全部结果',
-    value: resultTotal.value,
+    value: filteredResultRows.value.length,
     context: '结果视图',
     note: '查看全部巡检结果与健康分布',
     color: '#3f4f63',
@@ -1103,7 +1398,7 @@ const resultSummaryCards = computed<InspectionSummaryCard[]>(() => [
   {
     key: '良好',
     title: '良好',
-    value: resultHealthCounts.good,
+    value: filteredResultRows.value.filter((item) => item.healthLevel === '良好').length,
     context: '健康等级',
     note: '健康状态正常的巡检结果',
     color: '#7d9f92',
@@ -1112,7 +1407,7 @@ const resultSummaryCards = computed<InspectionSummaryCard[]>(() => [
   {
     key: '警告',
     title: '警告',
-    value: resultHealthCounts.warning,
+    value: filteredResultRows.value.filter((item) => item.healthLevel === '警告').length,
     context: '健康等级',
     note: '需要跟进但未到严重级别的结果',
     color: '#c7a06c',
@@ -1121,7 +1416,7 @@ const resultSummaryCards = computed<InspectionSummaryCard[]>(() => [
   {
     key: '严重',
     title: '严重',
-    value: resultHealthCounts.critical,
+    value: filteredResultRows.value.filter((item) => item.healthLevel === '严重').length,
     context: '健康等级',
     note: '优先处理的严重风险巡检结果',
     color: '#c58a87',
@@ -1132,12 +1427,17 @@ const resultSummaryCards = computed<InspectionSummaryCard[]>(() => [
 const loadResults = async () => {
   resultLoading.value = true
   try {
-    const res = await fetchInspectionResults(resultQuery)
+    const [res, allRes] = await Promise.all([
+      fetchInspectionResults(resultQuery),
+      fetchInspectionResults({ ...resultQuery, page: 1, size: 100000 }),
+    ])
     resultTableData.value = res.data.items
     resultTotal.value = res.data.total
+    allResultRows.value = allRes.data.items
   } catch (error) {
     resultTableData.value = []
     resultTotal.value = 0
+    allResultRows.value = []
     ElMessage.error(getErrorMessage(error, '加载巡检结果失败'))
   } finally {
     resultLoading.value = false
@@ -1867,6 +2167,124 @@ watch(() => route.fullPath, async () => {
   color: rgba(232, 245, 247, 0.76);
 }
 
+.inspection-insight-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin: 16px 0;
+}
+
+.inspection-insight-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px 20px;
+  border-radius: 20px;
+  background: #ffffff;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.06);
+}
+
+.inspection-insight-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.inspection-insight-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #111827;
+}
+
+.inspection-insight-note {
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #64748b;
+}
+
+.inspection-insight-meta {
+  font-size: 12px;
+  font-weight: 600;
+  color: #475569;
+  white-space: nowrap;
+}
+
+.inspection-queue-list,
+.inspection-chip-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.inspection-queue-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  background: #f8fafc;
+  cursor: pointer;
+  text-align: left;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.inspection-queue-item:hover {
+  transform: translateY(-1px);
+  border-color: rgba(59, 130, 246, 0.22);
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.08);
+}
+
+.inspection-queue-main,
+.inspection-queue-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.inspection-queue-main strong,
+.inspection-chip strong {
+  font-size: 13px;
+  font-weight: 700;
+  color: #111827;
+}
+
+.inspection-queue-main span,
+.inspection-queue-meta span,
+.inspection-chip span {
+  font-size: 12px;
+  line-height: 1.5;
+  color: #64748b;
+}
+
+.inspection-queue-meta {
+  align-items: flex-end;
+}
+
+.inspection-chip-list {
+  gap: 8px;
+}
+
+.inspection-chip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 14px;
+  border-radius: 14px;
+  background: #f8fafc;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+}
+
+.inspection-chip--soft {
+  background: #f5f7fb;
+}
+
 .main-tabs {
   margin-bottom: 0;
 }
@@ -1926,6 +2344,10 @@ watch(() => route.fullPath, async () => {
   .inspection-hero {
     grid-template-columns: 1fr;
   }
+
+  .inspection-insight-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 768px) {
@@ -1945,6 +2367,17 @@ watch(() => route.fullPath, async () => {
   .inspection-control-actions {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .inspection-queue-item,
+  .inspection-chip,
+  .inspection-insight-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .inspection-queue-meta {
+    align-items: flex-start;
   }
 }
 </style>

@@ -26,6 +26,7 @@ PMS-Standalone/
 │   │   ├── Inspection/
 │   │   ├── MajorDemand/
 │   │   ├── MonthlyReport/
+│   │   ├── Operations/
 │   │   ├── Personnel/
 │   │   ├── Product/
 │   │   ├── RepairRecord/
@@ -57,8 +58,8 @@ PMS-Standalone/
 ## RBAC / 数据范围
 - `IAccessControlService.GetDataScopeAsync(username)` → DataScope { ScopeType, AccessiblePersonnelNames, AccessibleHospitalNames }
 - ScopeType: Own (个人) / Subordinates (下属) / All (全量)
-- 已实现过滤的控制器: Projects, WorkHours, Alerts(合同), AnnualReports, Handovers, RepairRecords, Inspections, MajorDemands
-- **未实现过滤**: DashboardController, AlertCenterController
+- 已实现过滤的控制器: Projects, WorkHours, Alerts(合同), AlertCenter, Dashboard, AnnualReports, Handovers, RepairRecords, Inspections, MajorDemands, Operations
+- `OperationsController` 统一承接 `/api/operations/tasks` 与 `/api/operations/tasks/summary`，在 API 层复用 `GetDataScopeAsync` 注入 hospital scope，并在 Infrastructure 层聚合项目、报修、巡检、交接、重大需求、年报、月报和数据质量任务
 
 ## 前端技术栈
 - Vue 3.5 + TypeScript + Vite 8.0

@@ -51,6 +51,11 @@ public class WorkHoursQuery
     /// 数据范围过滤 - 可访问的运维人员姓名列表。null 表示不限制（全部可见）。
     /// </summary>
     public List<string>? AccessiblePersonnelNames { get; set; }
+
+    /// <summary>
+    /// 医院范围过滤 - 可访问的医院名称列表。null/空列表表示不限制。
+    /// </summary>
+    public List<string>? AccessibleHospitalNames { get; set; }
 }
 
 public class WorkHoursSummaryDto

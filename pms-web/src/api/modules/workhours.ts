@@ -2,8 +2,8 @@ import request from '../request'
 import type { ApiResponse, PagedResult } from '../../types/project'
 import type { WorkHoursItem, WorkHoursQuery, WorkHoursSummary, WorkHoursUpsert } from '../../types/workhours'
 
-export function fetchWorkHoursSummary() {
-  return request.get<any, ApiResponse<WorkHoursSummary>>('/workhours/summary')
+export function fetchWorkHoursSummary(params?: Partial<WorkHoursQuery>) {
+  return request.get<any, ApiResponse<WorkHoursSummary>>('/workhours/summary', { params })
 }
 
 export function fetchWorkHours(params: WorkHoursQuery) {

@@ -1,27 +1,145 @@
 ﻿<template>
   <div class="page-shell">
-    <div class="page-head">
-      <div>
-        <h2 class="page-title">权限管理</h2>
-        <div class="page-subtitle">人员信息、权限模板与角色权限统一管理</div>
+    <div class="personnel-hero">
+      <div class="personnel-hero-main">
+        <div class="personnel-hero-kicker-row">
+          <span class="personnel-hero-kicker">Personnel Desk</span>
+          <span class="personnel-hero-badge">{{ activePersonnelFilterLabel }}</span>
+        </div>
+        <h2 class="personnel-hero-title">权限管理</h2>
+        <div class="personnel-hero-subtitle">
+          统一查看当前筛选范围内的人员结构、角色分布、驻场情况和权限配置风险，直接从第一屏进入编辑、详情和权限维护动作。
+        </div>
+        <div class="personnel-hero-signals">
+          <div v-for="item in heroSignals" :key="item.label" class="personnel-signal-card">
+            <span class="personnel-signal-label">{{ item.label }}</span>
+            <strong class="personnel-signal-value">{{ item.value }}</strong>
+            <span class="personnel-signal-note">{{ item.note }}</span>
+          </div>
+        </div>
       </div>
-      <el-space>
-        <el-button
-          v-if="canManagePersonnel"
-          :loading="syncLoading"
-          :disabled="syncLoading"
-          @click="onSyncExternal"
-        >
-          <el-icon v-if="!syncLoading" style="margin-right:4px"><Refresh /></el-icon>
-          同步外部人员
-        </el-button>
-        <el-button v-if="canManagePersonnel" type="primary" @click="onOpenCreate" icon="Plus">新增人员</el-button>
-      </el-space>
+
+      <div class="personnel-hero-side">
+        <div class="personnel-control-card">
+          <div class="personnel-control-copy">
+            <span class="personnel-control-title">人员台动作</span>
+            <span class="personnel-control-note">先锁定角色、组别、主管或驻场范围，再进入编辑、权限配置和外部同步动作。</span>
+          </div>
+          <div class="personnel-control-actions">
+            <el-button
+              v-if="canManagePersonnel"
+              size="small"
+              :loading="syncLoading"
+              :disabled="syncLoading"
+              @click="onSyncExternal"
+            >
+              <el-icon v-if="!syncLoading" style="margin-right:4px"><Refresh /></el-icon>
+              同步外部人员
+            </el-button>
+            <el-button size="small" :loading="loading" icon="Refresh" @click="refreshDesk">刷新</el-button>
+            <el-button v-if="canManagePersonnel" size="small" type="primary" @click="onOpenCreate" icon="Plus">新增人员</el-button>
+          </div>
+        </div>
+
+        <div class="personnel-quick-grid">
+          <button
+            v-for="action in quickActions"
+            :key="action.title"
+            type="button"
+            class="personnel-quick-action"
+            @click="action.onClick()"
+          >
+            <span class="personnel-quick-title">{{ action.title }}</span>
+            <span class="personnel-quick-note">{{ action.note }}</span>
+          </button>
+        </div>
+      </div>
     </div>
 
-    <SummaryMetrics :items="summaryCards" :columns="4" @select="onSummaryCardSelect" />
+    <div class="personnel-insight-grid">
+      <section class="personnel-insight-card">
+        <div class="personnel-insight-head">
+          <div>
+            <div class="personnel-insight-title">待补齐资料</div>
+            <div class="personnel-insight-note">优先处理手机号、组别、角色或主管缺失的人员，避免后续权限和任务分派断层。</div>
+          </div>
+          <el-tag size="small" type="warning" effect="light">{{ dataQualityQueue.length }} 人</el-tag>
+        </div>
+        <div v-if="dataQualityQueue.length" class="personnel-queue-list">
+          <button
+            v-for="item in dataQualityQueue"
+            :key="item.id"
+            type="button"
+            class="personnel-queue-item"
+            @click="onOpenQueueItem(item)"
+          >
+            <div class="personnel-queue-main">
+              <strong>{{ item.name || '未命名人员' }}</strong>
+              <span>{{ item.department || '未设置部门' }} · {{ item.groupName || '未设置组别' }}</span>
+            </div>
+            <div class="personnel-queue-meta">
+              <el-tag size="small" :type="roleTag(resolveRoleType(item))">{{ resolveRoleType(item) || '未设置角色' }}</el-tag>
+              <span>{{ describePersonnelIssue(item) }}</span>
+            </div>
+          </button>
+        </div>
+        <el-empty v-else description="当前筛选下没有待补齐资料的人员" :image-size="72" />
+      </section>
 
-    
+      <section class="personnel-insight-card">
+        <div class="personnel-insight-head">
+          <div>
+            <div class="personnel-insight-title">组别分布</div>
+            <div class="personnel-insight-note">查看当前范围内的组别覆盖，便于安排运维协作和权限归属。</div>
+          </div>
+          <span class="personnel-insight-meta">{{ groupBuckets.length }} 个重点组别</span>
+        </div>
+        <div v-if="groupBuckets.length" class="personnel-chip-list">
+          <div v-for="item in groupBuckets" :key="item.label" class="personnel-chip">
+            <strong>{{ item.label }}</strong>
+            <span>{{ item.value }} 人</span>
+          </div>
+        </div>
+        <el-empty v-else description="暂无组别分布" :image-size="72" />
+      </section>
+
+      <section class="personnel-insight-card">
+        <div class="personnel-insight-head">
+          <div>
+            <div class="personnel-insight-title">主管分布</div>
+            <div class="personnel-insight-note">快速判断当前范围内哪些主管带人更多，哪些人员还没有归属上级。</div>
+          </div>
+          <span class="personnel-insight-meta">{{ supervisorBuckets.length }} 个主管口径</span>
+        </div>
+        <div v-if="supervisorBuckets.length" class="personnel-chip-list">
+          <div v-for="item in supervisorBuckets" :key="item.label" class="personnel-chip">
+            <strong>{{ item.label }}</strong>
+            <span>{{ item.value }} 人</span>
+          </div>
+        </div>
+        <el-empty v-else description="暂无主管分布" :image-size="72" />
+      </section>
+
+      <section class="personnel-insight-card">
+        <div class="personnel-insight-head">
+          <div>
+            <div class="personnel-insight-title">驻场与角色结构</div>
+            <div class="personnel-insight-note">查看驻场比例和角色构成，便于平衡实施、服务和现场投入。</div>
+          </div>
+          <span class="personnel-insight-meta">{{ filteredRows.length }} 人</span>
+        </div>
+        <div class="personnel-chip-list">
+          <div v-for="item in onsiteAndRoleBuckets" :key="item.label" class="personnel-chip">
+            <strong>{{ item.label }}</strong>
+            <span>{{ item.value }} 人</span>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <div class="personnel-summary-wrap">
+      <SummaryMetrics :items="summaryCards" :columns="4" @select="onSummaryCardSelect" />
+    </div>
 
     <ProTable
       title="数据列表"
@@ -379,20 +497,25 @@ type PersonnelSummaryCard = {
   active: boolean
 }
 
+type PersonnelBucket = {
+  label: string
+  value: number
+}
+
 const summaryCards = computed<PersonnelSummaryCard[]>(() => [
   {
     key: 'all',
     title: '总人数',
-    value: summary.value.total,
-    context: '人员总览',
-    note: '查看全部人员与权限配置概览',
+    value: filteredRows.value.length,
+    context: '当前范围',
+    note: '查看当前筛选后的完整人员范围',
     color: '#3f4f63',
     active: !activeStatFilter.value,
   },
   {
     key: 'service',
     title: '服务人员',
-    value: summary.value.serviceCount,
+    value: filteredRows.value.filter((row) => resolveRoleType(row) === '服务').length,
     context: '角色筛选',
     note: '聚焦服务类人员与权限分配',
     color: '#7d9f92',
@@ -401,7 +524,7 @@ const summaryCards = computed<PersonnelSummaryCard[]>(() => [
   {
     key: 'impl',
     title: '实施人员',
-    value: summary.value.implementationCount,
+    value: filteredRows.value.filter((row) => resolveRoleType(row) === '实施').length,
     context: '角色筛选',
     note: '查看实施类人员与岗位分布',
     color: '#c7a06c',
@@ -410,7 +533,7 @@ const summaryCards = computed<PersonnelSummaryCard[]>(() => [
   {
     key: 'onsite',
     title: '驻场人数',
-    value: summary.value.onsiteCount,
+    value: filteredRows.value.filter((row) => row.isOnsite).length,
     context: '角色筛选',
     note: '查看驻场人员与现场配置情况',
     color: '#c58a87',
@@ -663,6 +786,29 @@ const formatUserStatus = (row: PersonnelItem) => {
   return ''
 }
 
+const describePersonnelIssue = (row: PersonnelItem) => {
+  const issues: string[] = []
+  if (!row.phone?.trim()) {
+    issues.push('缺手机号')
+  }
+  if (!row.groupName?.trim()) {
+    issues.push('缺组别')
+  }
+  if (!resolveRoleType(row)) {
+    issues.push('缺角色')
+  }
+  if (!resolveSupervisorName(row)) {
+    issues.push('缺主管')
+  }
+  return issues.join(' / ') || '资料完整'
+}
+
+const roleTag = (role: string) => {
+  if (role === '服务') return 'success'
+  if (role === '实施') return 'warning'
+  return 'info'
+}
+
 const onsiteValue = ref('')
 
 const hasActiveFilter = computed(() => {
@@ -678,6 +824,102 @@ const hasActiveFilter = computed(() => {
 })
 
 const resolveSupervisorName = (row: PersonnelItem) => personnelSupervisorMap.value[row.id] || ''
+
+const filteredRows = computed(() =>
+  allPersonnelRows.value
+    .filter((row) => matchesFilter(row))
+    .sort((a, b) => a.name.localeCompare(b.name, 'zh-CN')),
+)
+
+const heroSignals = computed(() => [
+  {
+    label: '当前范围',
+    value: filteredRows.value.length,
+    note: '当前筛选后纳入工作台的人员总量',
+  },
+  {
+    label: '服务人员',
+    value: filteredRows.value.filter((row) => resolveRoleType(row) === '服务').length,
+    note: '当前范围内承担日常服务和运维的人数',
+  },
+  {
+    label: '驻场人数',
+    value: filteredRows.value.filter((row) => row.isOnsite).length,
+    note: '当前范围内驻场执行和现场支持的人数',
+  },
+  {
+    label: '待补齐',
+    value: filteredRows.value.filter((row) => describePersonnelIssue(row) !== '资料完整').length,
+    note: '手机号、组别、角色或主管仍需补齐的人员',
+  },
+])
+
+const buildBuckets = (rows: PersonnelItem[], resolver: (row: PersonnelItem) => string, fallback: string, limit = 6): PersonnelBucket[] => {
+  const counter = new Map<string, number>()
+  rows.forEach((row) => {
+    const key = resolver(row).trim() || fallback
+    counter.set(key, (counter.get(key) ?? 0) + 1)
+  })
+
+  return Array.from(counter.entries())
+    .map(([label, value]) => ({ label, value }))
+    .sort((a, b) => b.value - a.value)
+    .slice(0, limit)
+}
+
+const groupBuckets = computed(() => buildBuckets(filteredRows.value, (row) => row.groupName, '未设置组别'))
+
+const supervisorBuckets = computed(() =>
+  buildBuckets(filteredRows.value, (row) => resolveSupervisorName(row), '未分配主管'),
+)
+
+const onsiteAndRoleBuckets = computed<PersonnelBucket[]>(() => [
+  { label: '驻场', value: filteredRows.value.filter((row) => row.isOnsite).length },
+  { label: '非驻场', value: filteredRows.value.filter((row) => !row.isOnsite).length },
+  { label: '服务', value: filteredRows.value.filter((row) => resolveRoleType(row) === '服务').length },
+  { label: '实施', value: filteredRows.value.filter((row) => resolveRoleType(row) === '实施').length },
+])
+
+const dataQualityQueue = computed(() =>
+  filteredRows.value
+    .filter((row) => describePersonnelIssue(row) !== '资料完整')
+    .slice(0, 6),
+)
+
+const quickActions = computed(() => [
+  {
+    title: '服务人员',
+    note: `${filteredRows.value.filter((row) => resolveRoleType(row) === '服务').length} 人`,
+    onClick: () => onStatClick('service'),
+  },
+  {
+    title: '实施人员',
+    note: `${filteredRows.value.filter((row) => resolveRoleType(row) === '实施').length} 人`,
+    onClick: () => onStatClick('impl'),
+  },
+  {
+    title: '驻场人员',
+    note: `${filteredRows.value.filter((row) => row.isOnsite).length} 人`,
+    onClick: () => onStatClick('onsite'),
+  },
+  {
+    title: '全部范围',
+    note: `${allPersonnelRows.value.length} 人`,
+    onClick: () => onStatClick('all'),
+  },
+])
+
+const activePersonnelFilterLabel = computed(() => {
+  if (activeStatFilter.value === 'service') return '服务人员'
+  if (activeStatFilter.value === 'impl') return '实施人员'
+  if (activeStatFilter.value === 'onsite') return '驻场人员'
+  if (query.groupName) return query.groupName
+  if (query.department) return query.department
+  if (query.roleType) return query.roleType
+  if (query.supervisor) return `主管：${query.supervisor}`
+  if (query.name.trim()) return `搜索：${query.name.trim()}`
+  return '当前全部范围'
+})
 
 const matchesFilter = (row: PersonnelItem, exclude: 'department' | 'groupName' | 'roleType' | null = null) => {
   if (!textContains(row.name, query.name)) {
@@ -751,21 +993,16 @@ const refreshLinkedOptions = () => {
 }
 
 const applyFilterAndPagination = () => {
-  const filtered = allPersonnelRows.value
-    .filter((row) => matchesFilter(row))
-    .sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'))
-
-  total.value = filtered.length
-  displayTotal.value = hasActiveFilter.value ? filtered.length : Math.max(filtered.length, 679)
-
+  total.value = filteredRows.value.length
+  displayTotal.value = hasActiveFilter.value ? filteredRows.value.length : Math.max(filteredRows.value.length, 679)
   const size = query.size <= 0 ? 15 : query.size
-  const maxPage = Math.max(1, Math.ceil(filtered.length / size))
+  const maxPage = Math.max(1, Math.ceil(filteredRows.value.length / size))
   if (query.page > maxPage) {
     query.page = maxPage
   }
 
   const start = (query.page - 1) * size
-  tableData.value = filtered.slice(start, start + size)
+  tableData.value = filteredRows.value.slice(start, start + size)
 }
 
 const updateTableMaxHeight = () => {
@@ -1079,6 +1316,10 @@ const loadData = async () => {
   applyFilterAndPagination()
 }
 
+const refreshDesk = async () => {
+  await Promise.allSettled([loadSummary(), loadAllPersonnelRows()])
+}
+
 const onStatClick = (key: string) => {
   query.name = ''
   query.department = ''
@@ -1129,6 +1370,15 @@ const onReset = () => {
   query.size = 15
   clearFilterState()
   loadData()
+}
+
+const onOpenQueueItem = (row: PersonnelItem) => {
+  if (canManagePersonnel.value) {
+    onOpenEdit(row)
+    return
+  }
+
+  void onOpenDetail(row.id)
 }
 
 const onSyncExternal = async () => {
@@ -1582,6 +1832,272 @@ watch(
 </script>
 
 <style scoped>
+.personnel-hero {
+  display: grid;
+  gap: 20px;
+  grid-template-columns: minmax(0, 1.4fr) minmax(340px, 0.9fr);
+  margin-bottom: 20px;
+}
+
+.personnel-hero-main,
+.personnel-control-card,
+.personnel-insight-card,
+.personnel-summary-wrap {
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.04);
+}
+
+.personnel-hero-main {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.personnel-hero-kicker-row,
+.personnel-control-actions,
+.personnel-insight-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.personnel-hero-kicker {
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #2563eb;
+}
+
+.personnel-hero-badge {
+  align-self: flex-start;
+  border-radius: 999px;
+  padding: 4px 10px;
+  background: rgba(37, 99, 235, 0.08);
+  color: #2563eb;
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: 600;
+}
+
+.personnel-hero-title {
+  margin: 0;
+  font-size: 20px;
+  line-height: 28px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.personnel-hero-subtitle {
+  font-size: 14px;
+  line-height: 22px;
+  color: #475569;
+}
+
+.personnel-hero-signals {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.personnel-signal-card {
+  min-height: 108px;
+  border-radius: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  background: linear-gradient(180deg, rgba(248, 250, 252, 0.96) 0%, rgba(255, 255, 255, 1) 100%);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.personnel-signal-label {
+  font-size: 13px;
+  line-height: 20px;
+  color: #64748b;
+}
+
+.personnel-signal-value {
+  font-size: 22px;
+  line-height: 30px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.personnel-signal-note {
+  font-size: 12px;
+  line-height: 18px;
+  color: #64748b;
+}
+
+.personnel-hero-side {
+  display: grid;
+  gap: 16px;
+  align-content: start;
+}
+
+.personnel-control-card {
+  padding: 18px 20px;
+  display: grid;
+  gap: 14px;
+}
+
+.personnel-control-copy {
+  display: grid;
+  gap: 6px;
+}
+
+.personnel-control-title {
+  font-size: 18px;
+  line-height: 26px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.personnel-control-note {
+  font-size: 13px;
+  line-height: 21px;
+  color: #64748b;
+}
+
+.personnel-quick-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.personnel-quick-action {
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: #fff;
+  border-radius: 10px;
+  padding: 14px 16px;
+  text-align: left;
+  display: grid;
+  gap: 4px;
+  cursor: pointer;
+  transition: border-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.personnel-quick-action:hover {
+  border-color: rgba(37, 99, 235, 0.32);
+  box-shadow: 0 12px 24px rgba(37, 99, 235, 0.08);
+  transform: translateY(-1px);
+}
+
+.personnel-quick-title {
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.personnel-quick-note {
+  font-size: 12px;
+  line-height: 18px;
+  color: #64748b;
+}
+
+.personnel-insight-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.personnel-insight-card {
+  padding: 18px;
+  display: grid;
+  gap: 14px;
+}
+
+.personnel-insight-title {
+  font-size: 18px;
+  line-height: 26px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.personnel-insight-note {
+  font-size: 13px;
+  line-height: 21px;
+  color: #64748b;
+  margin-top: 4px;
+}
+
+.personnel-insight-meta {
+  font-size: 12px;
+  line-height: 18px;
+  color: #64748b;
+  font-weight: 600;
+}
+
+.personnel-queue-list,
+.personnel-chip-list {
+  display: grid;
+  gap: 10px;
+}
+
+.personnel-queue-item {
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  background: rgba(248, 250, 252, 0.9);
+  border-radius: 10px;
+  padding: 14px 16px;
+  text-align: left;
+  display: grid;
+  gap: 8px;
+  cursor: pointer;
+  transition: border-color 0.2s ease, background-color 0.2s ease;
+}
+
+.personnel-queue-item:hover {
+  border-color: rgba(37, 99, 235, 0.3);
+  background: rgba(239, 246, 255, 0.9);
+}
+
+.personnel-queue-main,
+.personnel-queue-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.personnel-queue-main strong,
+.personnel-chip strong {
+  color: #0f172a;
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 600;
+}
+
+.personnel-queue-main span,
+.personnel-queue-meta span,
+.personnel-chip span {
+  color: #64748b;
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.personnel-chip {
+  border-radius: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  background: rgba(248, 250, 252, 0.84);
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.personnel-summary-wrap {
+  padding: 4px;
+  margin-bottom: 16px;
+}
+
 .permission-groups {
   width: 100%;
   display: flex;
@@ -1638,6 +2154,45 @@ watch(
 .table-card :deep(.permission-table .el-table__body-wrapper) {
   overflow-x: auto;
   overflow-y: auto;
+}
+
+@media (max-width: 1280px) {
+  .personnel-hero {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 900px) {
+  .personnel-insight-grid,
+  .personnel-hero-signals {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .personnel-hero-main,
+  .personnel-control-card,
+  .personnel-insight-card,
+  .personnel-summary-wrap {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .personnel-hero-signals,
+  .personnel-insight-grid,
+  .personnel-quick-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .personnel-hero-kicker-row,
+  .personnel-insight-head,
+  .personnel-control-actions,
+  .personnel-queue-main,
+  .personnel-queue-meta,
+  .personnel-chip {
+    flex-direction: column;
+    align-items: flex-start;
+  }
 }
 </style>
 
