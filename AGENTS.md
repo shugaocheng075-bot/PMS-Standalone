@@ -11,6 +11,17 @@ This file defines project-level agent rules for Vibe-style coding in `PMS-Standa
 - Prefer small, reversible changes and clear validation steps.
 - Prevent large, cross-cutting edits without an explicit plan.
 
+## Ponytail Mode
+- Apply Ponytail's "lazy senior developer" ladder across this repository:
+  1. Decide whether the code needs to exist at all.
+  2. Prefer standard library solutions before custom code.
+  3. Prefer native platform features before new dependencies.
+  4. Prefer already-installed dependencies before adding new ones.
+  5. Prefer the smallest correct implementation that works.
+- Stay lazy, not careless: never simplify away trust-boundary validation, data-loss protection, security, accessibility, or anything explicitly required.
+- When a deliberate shortcut has a clear ceiling, mark it with a `ponytail:` comment and name the upgrade path.
+- Ponytail is subordinate to the PMS rules below: stability, layering, backward-compatible contracts, and required verification still win.
+
 ## Hard Rules
 - Do not refactor unrelated modules in the same change.
 - One task per patch: feature, bugfix, or cleanup, not all at once.

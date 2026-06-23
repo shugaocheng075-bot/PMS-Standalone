@@ -149,6 +149,46 @@
 # Implementation Plan
 
 ## Goal
+- 恢复 `memory-bank/progress.md` 删除前的历史内容，并修复可逆的历史乱码。
+
+## Non-goals
+- 不修改业务代码、数据库、API 合同或前端页面行为。
+- 不尝试把已经不可逆损坏的每一条历史记录逐字还原。
+
+## Constraints
+- 先从 Git 历史恢复原有进度日志，不用摘要替代历史记录。
+- 对典型 UTF-8/GBK 误解码内容做机械逆转，已不可逆损坏的字符保留原样。
+- 本次改动限定在 memory-bank 文档记录。
+
+## Acceptance criteria
+- `memory-bank/progress.md` 保留删除前的历史记录。
+- 可逆的 mojibake 行已恢复为 UTF-8 中文。
+- 文件头部包含本次恢复记录、Ponytail/插件配置记录和历史进展。
+
+## Goal
+- Install the `DietrichGebert/ponytail` agent rules into this repository and make them apply project-wide for future coding tasks.
+
+## Non-goals
+- Do not change PMS backend/frontend runtime behavior, dependencies, or deployment defaults.
+- Do not replace the existing PMS project guardrails with Ponytail; integrate Ponytail underneath the current rules.
+
+## Constraints
+- Keep the change scoped to agent/instruction files plus required memory-bank records.
+- Preserve the existing `AGENTS.md` workflow, architecture, and verification requirements.
+- Reuse the upstream Ponytail wording where practical so future updates stay understandable.
+
+## Acceptance criteria
+- Root `AGENTS.md` explicitly states that Ponytail's minimal-implementation ladder applies across this repository.
+- A local `.agents/skills/ponytail/SKILL.md` exists so the Ponytail skill can be discovered from this project.
+- The work is recorded in `memory-bank/progress.md` with a verification note.
+
+## Steps
+1. Inspect the upstream Ponytail repository and determine the smallest project-level integration path.
+2. Merge Ponytail guidance into the repository's root `AGENTS.md` without weakening the PMS-specific rules.
+3. Add a local Ponytail skill file under `.agents/skills/`.
+4. Verify the files exist and record the result in `progress.md`.
+
+## Goal
 - 灏嗛」鐩彴璐︽寜鍏变韩鏂囨。鈥滅淮鎶ゆ儏鍐电粺璁¤〃20260527 / 椤圭洰鏄庣粏.xlsx鈥濈殑 `缁存姢椤圭洰鏄庣粏` 宸ヤ綔琛ㄥ悓姝ュ埌 PMS锛氬彧鏇存柊 PMS 椤圭洰鍙拌处涓凡瀛樺湪鐨勯」鐩紝鎴栨柊澧炲叡浜枃妗ｄ腑 `鏈嶅姟缁勫埆=鑸掗珮鎴恅 鐨勯」鐩€?- 鍚屾鏃朵繚鐣欑幇鏈夐」鐩?`Id`锛岄伩鍏嶅勾搴︽姤鍛娿€佸贰妫€銆佷氦鎺ャ€佸憡璀︺€佸伐鏃剁瓑渚濊禆椤圭洰 ID 鐨勬ā鍧楄鍏ㄩ噺閲嶆帓鎵撴柇銆?
 ## Non-goals
 - 涓嶅仛鍏ㄩ噺鏇挎崲銆佷笉鍒犻櫎 PMS 閲屽綋鍓嶅瓨鍦ㄤ絾鍏变韩鏂囨。鏈懡涓殑椤圭洰銆?- 涓嶆敼鍙樺墠绔」鐩彴璐﹀垪琛?API 濂戠害锛屼笉璋冩暣椤甸潰鏍峰紡鍜屼笟鍔℃祦绋嬨€?- 涓嶆妸 KDocs 鐧诲綍鎬併€丆ookie 鎴栧閮ㄥ鍑鸿兘鍔涘浐鍖栧埌浠ｇ爜涓紝鏈浠ュ凡鍚屾鍒版湰鏈虹殑 Excel 鏂囦欢浣滀负鍏变韩鏂囨。鍙婧愩€?
